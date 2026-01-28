@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Claude Code用スキルコレクション",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "homepage": "https://github.com/haboshi/claude-code-skills"
   },
   "plugins": [
@@ -19,6 +19,16 @@
       "category": "document-generation",
       "keywords": ["pdf", "markdown", "japanese", "document", "weasyprint", "日本語"],
       "skills": ["./pdf-creator-jp"]
+    },
+    {
+      "name": "image-creator",
+      "description": "Google GeminiまたはOpenAI GPT Imageの画像生成モデルで画像を生成・編集。「画像を生成して」「イラストを作って」「この画像を編集して」などの指示で自動的に使用される。ステッカーシート生成・分割にも対応。",
+      "source": "./",
+      "strict": false,
+      "version": "1.0.0",
+      "category": "image-generation",
+      "keywords": ["image", "ai", "gemini", "openai", "generate", "画像生成", "イラスト"],
+      "skills": ["./image-creator"]
     }
   ]
 }

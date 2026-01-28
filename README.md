@@ -1,8 +1,8 @@
 # Claude Code Skills
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](#)
-[![Skills](https://img.shields.io/badge/skills-1-green.svg)](#利用可能なスキル)
+[![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](#)
+[![Skills](https://img.shields.io/badge/skills-2-green.svg)](#利用可能なスキル)
 
 Claude Code用スキルコレクション
 
@@ -41,11 +41,34 @@ uv run --with weasyprint --with markdown scripts/md_to_pdf.py input.md output.pd
 
 詳細: [pdf-creator-jp/SKILL.md](./pdf-creator-jp/SKILL.md)
 
+### image-creator
+
+Google Gemini / OpenAI GPT Imageで画像を生成・編集します。
+
+**特徴:**
+- Gemini / OpenAI 両対応
+- 透過背景生成
+- 背景除去（Vision API / マゼンタ除去）
+- ステッカーシート生成・分割
+
+**使用例:**
+```bash
+python3 scripts/generate_openai.py "かわいい猫のイラスト" -b transparent -o cat.png
+```
+
+詳細: [image-creator/SKILL.md](./image-creator/SKILL.md)
+
 ## 動作要件
 
+**pdf-creator-jp:**
 - macOS（ヒラギノ/游書体が必要）
 - Python 3.9+
-- weasyprint, markdown（uv経由で自動インストール）
+- weasyprint, markdown
+
+**image-creator:**
+- macOS 14.0+ (Vision API使用時)
+- Python 3.9+
+- `GEMINI_API_KEY` または `OPENAI_API_KEY`
 
 ## Contributing
 

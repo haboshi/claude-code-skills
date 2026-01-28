@@ -18,7 +18,7 @@
       "version": "1.0.0",
       "category": "document-generation",
       "keywords": ["pdf", "markdown", "japanese", "document", "weasyprint", "日本語"],
-      "skills": ["pdf-creator-jp"]
+      "skills": ["./pdf-creator-jp"]
     }
   ]
 }

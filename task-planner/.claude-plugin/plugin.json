@@ -1,0 +1,8 @@
+{
+  "name": "task-planner",
+  "description": "実装計画とタスク分解のプラグイン。コードベース探索→要件明確化→計画策定→タスク分解→検証。タスク規模に応じて自動的に深度を調整。",
+  "author": {
+    "name": "haboshi",
+    "email": "haboshi@allambitious.co.jp"
+  }
+}

@@ -6,29 +6,39 @@
   },
   "metadata": {
     "description": "Claude Code用スキルコレクション",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "homepage": "https://github.com/haboshi/claude-code-skills"
   },
   "plugins": [
     {
       "name": "pdf-creator-jp",
       "description": "MarkdownファイルをPDFに変換（日本語フォント対応）。weasyprintを使用し、ヒラギノ/游書体で美しい日本語ドキュメントを生成。「PDFに変換」「PDF生成」「レポートをPDFで」「ドキュメントを印刷用に」「資料をPDF化」「マークダウンをPDFに」などのリクエストで使用される。",
-      "source": "./",
+      "source": "./pdf-creator-jp",
       "strict": false,
       "version": "1.0.0",
       "category": "document-generation",
       "keywords": ["pdf", "markdown", "japanese", "document", "weasyprint", "日本語"],
-      "skills": ["./pdf-creator-jp"]
+      "skills": ["./"]
     },
     {
       "name": "image-creator",
       "description": "Google GeminiまたはOpenAI GPT Imageの画像生成モデルで画像を生成・編集。「画像を生成して」「イラストを作って」「この画像を編集して」などの指示で自動的に使用される。ステッカーシート生成・分割にも対応。",
-      "source": "./",
+      "source": "./image-creator",
       "strict": false,
       "version": "1.0.0",
       "category": "image-generation",
       "keywords": ["image", "ai", "gemini", "openai", "generate", "画像生成", "イラスト"],
-      "skills": ["./image-creator"]
+      "skills": ["./"]
+    },
+    {
+      "name": "task-planner",
+      "description": "実装計画とタスク分解のプラグイン。コードベース探索→要件明確化→計画策定→タスク分解→検証。タスク規模に応じて自動的に深度を調整。",
+      "author": {
+        "name": "haboshi",
+        "email": "haboshi@allambitious.co.jp"
+      },
+      "source": "./task-planner",
+      "category": "planning"
     }
   ]
 }

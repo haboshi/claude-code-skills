@@ -129,14 +129,15 @@ def generate_image(
             print("警告: 画像データが取得できませんでした")
             return ""
         dl_headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"}
-        max_retries = 5
+        max_retries = 8
         for attempt in range(max_retries):
             if attempt > 0:
-                time.sleep(2)
+                wait = min(2 * attempt, 10)
+                print(f"CDN配信待機 {wait}秒... ({attempt + 1}/{max_retries})")
+                time.sleep(wait)
             dl_resp = requests.get(image_url, headers=dl_headers, timeout=60)
             if dl_resp.status_code == 200 and len(dl_resp.content) > 1000:
                 break
-            print(f"ダウンロードリトライ ({attempt + 1}/{max_retries})...")
         else:
             print(f"画像ダウンロードエラー ({dl_resp.status_code}): {image_url}")
             sys.exit(1)

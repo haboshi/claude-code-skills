@@ -1,12 +1,12 @@
 ---
 name: image-creator
-description: Google GeminiまたはOpenAI GPT Imageの画像生成モデルで画像を生成・編集。「画像を生成して」「イラストを作って」「この画像を編集して」などの指示で自動的に使用される。「ステッカーを何個か作って」「複数のアイコンを生成して分割」などステッカーシート生成・分割にも対応。GeminiとOpenAIの2つのプロバイダーから選択可能。
+description: Google Gemini、OpenAI GPT Image、またはZhipuAI GLM-Imageの画像生成モデルで画像を生成・編集。「画像を生成して」「イラストを作って」「この画像を編集して」などの指示で自動的に使用される。「ステッカーを何個か作って」「複数のアイコンを生成して分割」などステッカーシート生成・分割にも対応。Gemini（Nano Banana）とOpenAI（gpt-image-1.5）とGLM-Image（ZhipuAI）の3つのプロバイダーから選択可能。
 allowed-tools: Bash, Read, Write, AskUserQuestion
 ---
 
 # Image Creator - AI画像生成スキル
 
-Google Gemini または OpenAI GPT Image を使用して画像を生成・編集するスキル。
+Google Gemini、OpenAI GPT Image、または ZhipuAI GLM-Image を使用して画像を生成・編集するスキル。
 
 ---
 
@@ -19,8 +19,8 @@ Google Gemini または OpenAI GPT Image を使用して画像を生成・編集
 **共通（常に確認）:**
 | 項目 | 選択肢 | 説明 |
 |------|--------|------|
-| **プロバイダー** | `gemini` / `openai` | 使用するAIプロバイダー |
-| **モデル** | Gemini: `pro`/`flash`、OpenAI: `1.5`/`1`/`mini` | 詳細は下記参照 |
+| **プロバイダー** | `gemini` / `openai` / `glm-image` | 使用するAIプロバイダー |
+| **モデル** | Gemini: `pro`/`flash`、OpenAI: `1.5`/`1`/`mini`、GLM-Image: `glm-image` | 詳細は下記参照 |
 | **参照画像** | あり / なし | スタイルをコピーする元画像があるか |
 | **背景除去** | Vision API / マゼンタ除去 / OpenAI透過 / 不要 | 方法は下記参照 |
 
@@ -35,6 +35,7 @@ Google Gemini または OpenAI GPT Image を使用して画像を生成・編集
 |-------------|------|----------------|
 | **Gemini** | 日本語プロンプト、参照画像のスタイルコピー | `GEMINI_API_KEY` |
 | **OpenAI** | 高品質、ネイティブ透過背景対応、複数枚同時生成 | `OPENAI_API_KEY` |
+| **GLM-Image** | テキスト描画精度91.16%、日本語・中国語プロンプト、低コスト | `ZAI_API_KEY` |
 
 ### モデル比較
 
@@ -50,6 +51,11 @@ Google Gemini または OpenAI GPT Image を使用して画像を生成・編集
 | GPT Image 1.5 | `gpt-image-1.5` | 最新・最高品質（推奨） |
 | GPT Image 1 | `gpt-image-1` | 標準モデル |
 | GPT Image Mini | `gpt-image-1-mini` | 軽量・高速・低コスト |
+
+**GLM-Image (ZhipuAI):**
+| モデル | ID | 特徴 |
+|-------|-----|------|
+| GLM-Image | `glm-image` | 16Bパラメータ、テキスト描画精度91.16%、$0.015/枚 |
 
 ### 背景除去方法の選び方
 
@@ -68,6 +74,9 @@ Google Gemini または OpenAI GPT Image を使用して画像を生成・編集
 | シンプルなイラスト | Gemini | flash | マゼンタ除去 |
 | 高品質イラスト | OpenAI | 1.5 | 不要 or transparent |
 | プロトタイプ・テスト | OpenAI | mini | 不要 |
+| テキスト入り画像 | GLM-Image | glm-image | 不要 |
+| 日本語/中国語重視 | GLM-Image | glm-image | 不要 |
+| 低コスト大量生成 | GLM-Image | glm-image | 不要 |
 
 ---
 
@@ -77,6 +86,7 @@ Google Gemini または OpenAI GPT Image を使用して画像を生成・編集
 |-------|------|
 | `generate.py` | Gemini画像生成 |
 | `generate_openai.py` | OpenAI画像生成 |
+| `generate_zhipu.py` | GLM-Image画像生成（ZhipuAI） |
 | `remove-bg-magenta.py` | マゼンタ背景除去（1px収縮含む） |
 | `remove-bg-vision.py` | Vision API背景除去 |
 | `erode.py` | 透過画像エッジ収縮 |
@@ -87,7 +97,8 @@ Google Gemini または OpenAI GPT Image を使用して画像を生成・編集
 1. **uv**: `curl -LsSf https://astral.sh/uv/install.sh | sh` でインストール
 2. **Gemini使用時**: 環境変数 `GEMINI_API_KEY` を設定
 3. **OpenAI使用時**: 環境変数 `OPENAI_API_KEY` を設定
-4. **Vision API**: macOS 14.0 (Sonoma) 以降が必要
+4. **GLM-Image使用時**: 環境変数 `ZAI_API_KEY` を設定（https://z.ai で取得）
+5. **Vision API**: macOS 14.0 (Sonoma) 以降が必要
 
 ---
 
@@ -162,7 +173,48 @@ uv run --with openai --with pillow scripts/generate_openai.py "背景を夜空�
 
 ---
 
-## 3. remove-bg-magenta.py - マゼンタ背景除去
+## 3. generate_zhipu.py - GLM-Image画像生成（ZhipuAI）
+
+```bash
+uv run --with requests --with pillow scripts/generate_zhipu.py "プロンプト" [オプション]
+```
+
+### オプション
+
+| オプション | 説明 | デフォルト |
+|-----------|------|-----------|
+| `-o`, `--output` | 出力ファイルパス | `generated_image.png` |
+| `-s`, `--size` | 画像サイズ（推奨7種） | `1280x1280` |
+| `-q`, `--quality` | 品質 (`hd`, `standard`) | `hd` |
+
+### 推奨サイズ
+
+| サイズ | アスペクト比 |
+|--------|-------------|
+| `1280x1280` | 正方形 |
+| `1568x1056` | 横長 |
+| `1056x1568` | 縦長 |
+| `1472x1088` | 横長 |
+| `1088x1472` | 縦長 |
+| `1728x960` | ワイド |
+| `960x1728` | トール |
+
+### 例
+
+```bash
+# シンプルな生成
+uv run --with requests --with pillow scripts/generate_zhipu.py "かわいい猫のイラスト"
+
+# 横長サイズで技術図解
+uv run --with requests --with pillow scripts/generate_zhipu.py "技術文書の図解" -s 1568x1056 -o diagram.png
+
+# 高速生成（standard品質）
+uv run --with requests --with pillow scripts/generate_zhipu.py "ロゴデザイン" -q standard -o logo.png
+```
+
+---
+
+## 4. remove-bg-magenta.py - マゼンタ背景除去
 
 マゼンタ/ピンク背景を色ベースで透過にする。
 
@@ -176,7 +228,7 @@ uv run --with pillow --with numpy --with scipy scripts/remove-bg-magenta.py 入�
 
 ---
 
-## 4. remove-bg-vision.py - Vision API背景除去
+## 5. remove-bg-vision.py - Vision API背景除去
 
 macOS Vision APIで背景を自動検出して透過にする。
 
@@ -193,7 +245,7 @@ python3 scripts/remove-bg-vision.py 入力画像 [-o 出力画像]
 
 ---
 
-## 5. erode.py - エッジ収縮
+## 6. erode.py - エッジ収縮
 
 透過画像のエッジを任意のピクセル数だけ収縮する。
 
@@ -208,7 +260,7 @@ uv run --with pillow --with numpy --with scipy scripts/erode.py 入力画像 [-o
 
 ---
 
-## 6. split_transparent.py - 透過画像分割
+## 7. split_transparent.py - 透過画像分割
 
 透過PNGを個別オブジェクトに分割（ステッカーシート用）。
 
@@ -238,6 +290,16 @@ uv run --with openai --with pillow scripts/generate_openai.py "シンプルな�
 # 5枚同時に透過PNG生成
 uv run --with openai --with pillow scripts/generate_openai.py "かわいい動物のアイコン、1つの動物" -n 5 -b transparent -o animal.png
 # → animal_01.png, animal_02.png, ... が生成される
+```
+
+### GLM-Image: テキスト入り画像生成
+
+```bash
+# テキスト描画精度91.16%で文字入りの画像を生成
+uv run --with requests --with pillow scripts/generate_zhipu.py "「祝・開店」と書かれた和風バナー" -o banner.png
+
+# 高速生成（standard品質）
+uv run --with requests --with pillow scripts/generate_zhipu.py "技術ブログのヘッダー画像" -s 1728x960 -q standard -o header.png
 ```
 
 ### Gemini: 透過ステッカー生成（単純なオブジェクト）
@@ -290,6 +352,7 @@ image-creator/
 └── scripts/
     ├── generate.py            # Gemini画像生成
     ├── generate_openai.py     # OpenAI画像生成
+    ├── generate_zhipu.py      # GLM-Image画像生成（ZhipuAI）
     ├── remove-bg-magenta.py   # マゼンタ背景除去（1px収縮含む）
     ├── remove-bg-vision.py    # Vision API背景除去
     ├── remove-bg.swift        # Vision API実装（Swift）

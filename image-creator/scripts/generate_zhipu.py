@@ -16,6 +16,7 @@ Usage:
 import argparse
 import os
 import sys
+import time
 from pathlib import Path
 
 import requests
@@ -127,12 +128,16 @@ def generate_image(
         if not image_url:
             print("警告: 画像データが取得できませんでした")
             return ""
-        dl_resp = requests.get(
-            image_url,
-            headers={"User-Agent": "Mozilla/5.0"},
-            timeout=60,
-        )
-        if dl_resp.status_code != 200:
+        dl_headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"}
+        max_retries = 5
+        for attempt in range(max_retries):
+            if attempt > 0:
+                time.sleep(2)
+            dl_resp = requests.get(image_url, headers=dl_headers, timeout=60)
+            if dl_resp.status_code == 200 and len(dl_resp.content) > 1000:
+                break
+            print(f"ダウンロードリトライ ({attempt + 1}/{max_retries})...")
+        else:
             print(f"画像ダウンロードエラー ({dl_resp.status_code}): {image_url}")
             sys.exit(1)
         output_file.write_bytes(dl_resp.content)

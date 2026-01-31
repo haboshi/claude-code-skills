@@ -16,7 +16,6 @@ Usage:
 import argparse
 import os
 import sys
-import urllib.request
 from pathlib import Path
 
 import requests
@@ -99,6 +98,7 @@ def generate_image(
         "prompt": prompt,
         "size": size,
         "quality": quality,
+        "response_format": "b64_json",
     }
 
     response = requests.post(API_ENDPOINT, json=payload, headers=headers)
@@ -114,15 +114,29 @@ def generate_image(
         print("警告: 画像が生成されませんでした")
         return ""
 
-    image_url = image_list[0].get("url", "")
-    if not image_url:
-        print("警告: 画像URLが取得できませんでした")
-        return ""
-
     output_file = Path(output_path)
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
-    urllib.request.urlretrieve(image_url, output_file)
+    b64_data = image_list[0].get("b64_json", "")
+    if b64_data:
+        import base64
+
+        output_file.write_bytes(base64.b64decode(b64_data))
+    else:
+        image_url = image_list[0].get("url", "")
+        if not image_url:
+            print("警告: 画像データが取得できませんでした")
+            return ""
+        dl_resp = requests.get(
+            image_url,
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=60,
+        )
+        if dl_resp.status_code != 200:
+            print(f"画像ダウンロードエラー ({dl_resp.status_code}): {image_url}")
+            sys.exit(1)
+        output_file.write_bytes(dl_resp.content)
+
     print(f"保存完了: {output_file.absolute()}")
 
     return str(output_file.absolute())

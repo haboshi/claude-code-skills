@@ -21,8 +21,9 @@ class TestAPIKeyValidation(unittest.TestCase):
     """APIキー未設定時の振る舞い"""
 
     def test_missing_api_key_shows_setup_instructions(self):
-        """ZAI_API_KEY 未設定時にセットアップ手順を表示して終了"""
+        """GLM_API_KEY / ZAI_API_KEY 両方未設定時にセットアップ手順を表示して終了"""
         env = os.environ.copy()
+        env.pop("GLM_API_KEY", None)
         env.pop("ZAI_API_KEY", None)
         with patch.dict(os.environ, env, clear=True):
             with self.assertRaises(SystemExit) as ctx:
@@ -32,14 +33,55 @@ class TestAPIKeyValidation(unittest.TestCase):
     def test_missing_api_key_message_contains_instructions(self):
         """エラーメッセージに環境変数名とセット方法が含まれる"""
         env = os.environ.copy()
+        env.pop("GLM_API_KEY", None)
         env.pop("ZAI_API_KEY", None)
         with patch.dict(os.environ, env, clear=True):
             with patch("builtins.print") as mock_print:
                 with self.assertRaises(SystemExit):
                     generate_image("テスト")
                 output = " ".join(str(c) for c in mock_print.call_args_list)
-                self.assertIn("ZAI_API_KEY", output)
+                self.assertIn("GLM_API_KEY", output)
                 self.assertIn("export", output)
+
+
+    @patch("generate_zhipu.urllib.request.urlretrieve")
+    @patch("generate_zhipu.requests.post")
+    def test_glm_api_key_is_used(self, mock_post, mock_urlretrieve):
+        """GLM_API_KEY が優先して使用される"""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "created": 1760335349,
+            "data": [{"url": "https://example.com/image.png"}],
+        }
+        mock_post.return_value = mock_response
+
+        with patch.dict(os.environ, {"GLM_API_KEY": "glm-key", "ZAI_API_KEY": "zai-key"}):
+            generate_image("テスト", output_path="/tmp/test_zhipu.png")
+
+        headers = mock_post.call_args[1]["headers"]
+        self.assertEqual(headers["Authorization"], "Bearer glm-key")
+
+    @patch("generate_zhipu.urllib.request.urlretrieve")
+    @patch("generate_zhipu.requests.post")
+    def test_zai_api_key_fallback(self, mock_post, mock_urlretrieve):
+        """GLM_API_KEY 未設定時に ZAI_API_KEY にフォールバック"""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "created": 1760335349,
+            "data": [{"url": "https://example.com/image.png"}],
+        }
+        mock_post.return_value = mock_response
+
+        env = os.environ.copy()
+        env.pop("GLM_API_KEY", None)
+        env["ZAI_API_KEY"] = "zai-fallback"
+        with patch.dict(os.environ, env, clear=True):
+            generate_image("テスト", output_path="/tmp/test_zhipu.png")
+
+        headers = mock_post.call_args[1]["headers"]
+        self.assertEqual(headers["Authorization"], "Bearer zai-fallback")
 
 
 class TestImageGeneration(unittest.TestCase):
@@ -57,7 +99,7 @@ class TestImageGeneration(unittest.TestCase):
         }
         mock_post.return_value = mock_response
 
-        with patch.dict(os.environ, {"ZAI_API_KEY": "test-key"}):
+        with patch.dict(os.environ, {"GLM_API_KEY": "test-key"}):
             result = generate_image("かわいい猫", output_path="/tmp/test_zhipu.png")
 
         mock_urlretrieve.assert_called_once()
@@ -74,7 +116,7 @@ class TestImageGeneration(unittest.TestCase):
         }
         mock_post.return_value = mock_response
 
-        with patch.dict(os.environ, {"ZAI_API_KEY": "test-key"}):
+        with patch.dict(os.environ, {"GLM_API_KEY": "test-key"}):
             with patch("generate_zhipu.urllib.request.urlretrieve"):
                 generate_image(
                     "テスト", size="1568x1056", quality="standard"
@@ -98,7 +140,7 @@ class TestImageGeneration(unittest.TestCase):
         }
         mock_post.return_value = mock_response
 
-        with patch.dict(os.environ, {"ZAI_API_KEY": "my-secret-key"}):
+        with patch.dict(os.environ, {"GLM_API_KEY": "my-secret-key"}):
             with patch("generate_zhipu.urllib.request.urlretrieve"):
                 generate_image("テスト")
 
@@ -121,7 +163,7 @@ class TestAPIErrorHandling(unittest.TestCase):
         }
         mock_post.return_value = mock_response
 
-        with patch.dict(os.environ, {"ZAI_API_KEY": "test-key"}):
+        with patch.dict(os.environ, {"GLM_API_KEY": "test-key"}):
             with self.assertRaises(SystemExit) as ctx:
                 generate_image("テスト")
             self.assertEqual(ctx.exception.code, 1)
@@ -134,7 +176,7 @@ class TestAPIErrorHandling(unittest.TestCase):
         mock_response.json.return_value = {"created": 1760335349, "data": []}
         mock_post.return_value = mock_response
 
-        with patch.dict(os.environ, {"ZAI_API_KEY": "test-key"}):
+        with patch.dict(os.environ, {"GLM_API_KEY": "test-key"}):
             result = generate_image("テスト")
             self.assertEqual(result, "")
 

@@ -37,7 +37,7 @@ RECOMMENDED_SIZES = [
 def _print_setup_instructions():
     """APIキーのセットアップ手順を表示"""
     print("=" * 60)
-    print("エラー: 環境変数 ZAI_API_KEY が設定されていません")
+    print("エラー: 環境変数 GLM_API_KEY / ZAI_API_KEY が設定されていません")
     print("=" * 60)
     print()
     print("GLM-Image を使用するには Z.ai の API キーが必要です。")
@@ -47,13 +47,15 @@ def _print_setup_instructions():
     print("  2. アカウントを作成 / ログイン")
     print("  3. API Keys ページでキーを発行")
     print()
-    print("■ 環境変数の設定:")
+    print("■ 環境変数の設定（どちらでも可）:")
     print()
     print("  # 一時的に設定（現在のターミナルのみ）")
-    print('  export ZAI_API_KEY="your-api-key-here"')
+    print('  export GLM_API_KEY="your-api-key-here"')
     print()
     print("  # 永続的に設定（~/.zshrc または ~/.bashrc に追記）")
-    print('  echo \'export ZAI_API_KEY="your-api-key-here"\' >> ~/.zshrc')
+    print('  echo \'export GLM_API_KEY="your-api-key-here"\' >> ~/.zshrc')
+    print()
+    print("  ※ ZAI_API_KEY でも動作します（GLM_API_KEY を優先）")
     print()
     print("■ 料金: $0.015 / 枚（初回2枚無料）")
     print("■ ドキュメント: https://docs.z.ai/guides/image/glm-image")
@@ -77,7 +79,7 @@ def generate_image(
     Returns:
         保存先の絶対パス。生成失敗時は空文字列。
     """
-    api_key = os.environ.get("ZAI_API_KEY")
+    api_key = os.environ.get("GLM_API_KEY") or os.environ.get("ZAI_API_KEY")
     if not api_key:
         _print_setup_instructions()
         sys.exit(1)

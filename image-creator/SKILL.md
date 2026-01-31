@@ -35,7 +35,7 @@ Google Gemini、OpenAI GPT Image、または ZhipuAI GLM-Image を使用して�
 |-------------|------|----------------|
 | **Gemini** | 日本語プロンプト、参照画像のスタイルコピー | `GEMINI_API_KEY` |
 | **OpenAI** | 高品質、ネイティブ透過背景対応、複数枚同時生成 | `OPENAI_API_KEY` |
-| **GLM-Image** | テキスト描画精度91.16%、日本語・中国語プロンプト、低コスト | `ZAI_API_KEY` |
+| **GLM-Image** | テキスト描画精度91.16%、日本語・中国語プロンプト、低コスト | `GLM_API_KEY` or `ZAI_API_KEY` |
 
 ### モデル比較
 
@@ -97,7 +97,7 @@ Google Gemini、OpenAI GPT Image、または ZhipuAI GLM-Image を使用して�
 1. **uv**: `curl -LsSf https://astral.sh/uv/install.sh | sh` でインストール
 2. **Gemini使用時**: 環境変数 `GEMINI_API_KEY` を設定
 3. **OpenAI使用時**: 環境変数 `OPENAI_API_KEY` を設定
-4. **GLM-Image使用時**: 環境変数 `ZAI_API_KEY` を設定（https://z.ai で取得）
+4. **GLM-Image使用時**: 環境変数 `GLM_API_KEY` または `ZAI_API_KEY` を設定（https://z.ai で取得）
 5. **Vision API**: macOS 14.0 (Sonoma) 以降が必要
 
 ---

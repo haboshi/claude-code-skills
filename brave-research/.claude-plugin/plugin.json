@@ -1,0 +1,9 @@
+{
+  "name": "brave-research",
+  "version": "0.1.0",
+  "description": "Brave Search APIを活用した調査プラグイン。Web検索、ニュース検索、画像・動画検索、コンテンツ抽出、マルチステップ深掘り調査に対応。",
+  "author": {
+    "name": "haboshi",
+    "email": "haboshi@allambitious.co.jp"
+  }
+}

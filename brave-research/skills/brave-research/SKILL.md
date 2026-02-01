@@ -61,7 +61,7 @@ uv run --with requests ${CLAUDE_PLUGIN_ROOT}/scripts/search.py "クエリ" [オ�
 |-----------|------|-----------|
 | `-t`, `--type` | 検索タイプ (`web`, `news`, `images`, `videos`) | `web` |
 | `-c`, `--count` | 結果件数 (1-20) | `5` |
-| `-l`, `--lang` | 検索言語 (`ja`, `en`, 等) | なし |
+| `-l`, `--lang` | 検索言語 (`jp`, `en`, 等) ※日本語は `jp` | なし |
 | `--country` | 国コード (`JP`, `US`, 等) | なし |
 | `--freshness` | 鮮度フィルター (`pd`:24h, `pw`:1週, `pm`:1月, `py`:1年) | なし |
 | `--offset` | ページネーション開始位置 | `0` |
@@ -75,7 +75,7 @@ uv run --with requests ${CLAUDE_PLUGIN_ROOT}/scripts/search.py "クエリ" [オ�
 uv run --with requests ${CLAUDE_PLUGIN_ROOT}/scripts/search.py "Claude Code plugin development"
 
 # 日本語ニュース検索（直近1週間）
-uv run --with requests ${CLAUDE_PLUGIN_ROOT}/scripts/search.py "AI開発ツール" -t news --freshness pw -l ja
+uv run --with requests ${CLAUDE_PLUGIN_ROOT}/scripts/search.py "AI開発ツール" -t news --freshness pw -l jp
 
 # 画像検索
 uv run --with requests ${CLAUDE_PLUGIN_ROOT}/scripts/search.py "system architecture diagram" -t images -c 10

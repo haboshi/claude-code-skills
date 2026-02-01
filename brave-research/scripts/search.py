@@ -262,7 +262,7 @@ def main():
     parser.add_argument(
         "-l",
         "--lang",
-        help="検索言語 (例: ja, en)",
+        help="検索言語 (例: jp, en) ※日本語は 'jp'",
     )
     parser.add_argument(
         "--country",

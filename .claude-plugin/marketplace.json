@@ -44,7 +44,7 @@
       "name": "brave-research",
       "description": "Brave Search APIを活用した調査プラグイン。Web検索、ニュース検索、画像・動画検索、コンテンツ抽出、マルチステップ深掘り調査に対応。「調査して」「検索して」「最新情報を調べて」などで自動発動。",
       "source": "./brave-research",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "category": "research",
       "keywords": ["search", "research", "brave", "web", "news", "調査", "検索", "リサーチ"]
     }

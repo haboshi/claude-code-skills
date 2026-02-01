@@ -37,6 +37,16 @@ FRESHNESS_OPTIONS = {
     "py": "Past year",
 }
 
+# Brave Search API は ISO 639-1 と異なる言語コードを使用する場合がある
+# よく間違えるコードを自動変換
+LANG_CODE_MAP = {
+    "ja": "jp",
+    "zh": "zh-hans",
+    "zh-tw": "zh-hant",
+    "pt": "pt-pt",
+    "no": "nb",
+}
+
 
 def get_api_key() -> str:
     api_key = os.environ.get("BRAVE_API_KEY")
@@ -82,7 +92,8 @@ def build_params(args: argparse.Namespace) -> dict:
         params["offset"] = args.offset
 
     if args.lang:
-        params["search_lang"] = args.lang
+        lang = LANG_CODE_MAP.get(args.lang, args.lang)
+        params["search_lang"] = lang
 
     if args.country:
         params["country"] = args.country

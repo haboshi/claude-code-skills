@@ -41,11 +41,33 @@ FRESHNESS_OPTIONS = {
 def get_api_key() -> str:
     api_key = os.environ.get("BRAVE_API_KEY")
     if not api_key:
-        print("Error: BRAVE_API_KEY environment variable is not set.", file=sys.stderr)
-        print(
-            "Get your API key at: https://brave.com/search/api/",
-            file=sys.stderr,
-        )
+        # stdout に出力して Claude が読めるようにする
+        print("""# BRAVE_API_KEY 未設定
+
+Brave Search API を使用するには API キーが必要です。
+
+## 取得手順
+1. https://brave.com/search/api/ にアクセス
+2. 「Get Started」からアカウント作成
+3. Free AI プラン（無料・2,000件/月）を選択
+4. API キーを取得
+
+## 設定方法
+```bash
+# シェル設定ファイル（~/.zshrc 等）に追加
+export BRAVE_API_KEY="your-api-key-here"
+```
+
+## 料金プラン
+| プラン | 月額 | クエリ数/月 |
+|--------|------|------------|
+| Free AI | 無料 | 2,000 |
+| Base AI | $5/1K件 | 20,000+ |
+| Pro AI | $9/1K件 | 無制限 |
+
+## 代替手段
+API キーがなくても Claude Code 内蔵の WebSearch ツールで検索可能です。
+""")
         sys.exit(1)
     return api_key
 

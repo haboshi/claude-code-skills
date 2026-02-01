@@ -49,6 +49,19 @@ Brave Search API を活用した Web 調査スキル。単発検索から複数�
 
 ---
 
+## APIキー未設定時のフォールバック
+
+`BRAVE_API_KEY` が未設定の場合、search.py は取得手順と料金情報を含むガイダンスを出力する。この場合、以下の手順で対応する:
+
+1. search.py の出力（API キー取得手順）をユーザーに提示する
+2. **代替手段として Claude Code 内蔵の `WebSearch` ツールを使用して検索を実行する**
+3. WebSearch の結果を brave-research と同じフォーマット（タイトル、URL、スニペット）で整理して提示する
+4. コンテンツ抽出が必要な場合は `WebFetch` ツールで代替する
+
+WebSearch/WebFetch は API キー不要で即座に使用可能。ただし Brave Search API と比較して検索演算子（`site:`, `filetype:` 等）や鮮度フィルター、画像・動画検索には対応していない点をユーザーに伝える。
+
+---
+
 ## 1. search.py - Brave Search API 検索
 
 ```bash

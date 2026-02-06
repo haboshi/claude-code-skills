@@ -24,6 +24,9 @@ env/
 .Trashes
 Thumbs.db
 
+# Node.js
+node_modules/
+
 # Output
 *.pdf
 output/

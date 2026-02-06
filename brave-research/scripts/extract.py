@@ -121,7 +121,22 @@ def fetch_url(url: str) -> str:
 
         response.raise_for_status()
         response.encoding = response.apparent_encoding or "utf-8"
-        return response.text
+
+        # レスポンスサイズ上限（メモリ枯渇防止）
+        max_text_size = 10 * 1024 * 1024  # 10MB
+        content_length = response.headers.get("content-length")
+        if content_length:
+            try:
+                if int(content_length) > max_text_size:
+                    print(f"Error: Response too large ({content_length} bytes, limit {max_text_size})", file=sys.stderr)
+                    sys.exit(1)
+            except (ValueError, TypeError):
+                pass
+        text = response.text
+        if len(text.encode("utf-8", errors="replace")) > max_text_size:
+            print(f"Error: Response body exceeds {max_text_size} bytes limit", file=sys.stderr)
+            sys.exit(1)
+        return text
     except requests.exceptions.HTTPError as e:
         status = e.response.status_code if e.response is not None else "unknown"
         print(f"Error: HTTP {status} fetching {url}", file=sys.stderr)

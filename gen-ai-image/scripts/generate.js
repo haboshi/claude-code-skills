@@ -13,7 +13,6 @@ import { writeFileSync, mkdirSync, existsSync, renameSync, unlinkSync } from "fs
 import { dirname, resolve, extname } from "path";
 import { fileURLToPath } from "url";
 import { parseArgs } from "util";
-import { tmpdir } from "os";
 import { randomBytes } from "crypto";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -273,6 +272,9 @@ export function validateImageUrl(url) {
     }
     return;
   }
+
+  // ドメイン名の場合はスキーム・BLOCKED_HOSTS検証のみで通過
+  // DNS Rebinding対策はCLIツールの性質上リスク受容（ネットワークレベルで対応すべき）
 
   // IPv4アドレスチェック
   for (const pattern of PRIVATE_IP_RANGES) {

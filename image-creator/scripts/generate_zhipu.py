@@ -111,6 +111,7 @@ def _safe_download_cdn(url: str, dest: Path, max_retries: int = 8) -> None:
                 stream=True, allow_redirects=False
             )
             if dl_resp.is_redirect or dl_resp.status_code in (301, 302, 303, 307, 308):
+                dl_resp.close()
                 raw_location = dl_resp.headers.get("location", "")
                 redirect_url = urljoin(current_url, raw_location)
                 if not _validate_cdn_url(redirect_url):
@@ -137,6 +138,7 @@ def _safe_download_cdn(url: str, dest: Path, max_retries: int = 8) -> None:
         # content-length がない場合はとりあえずチャンクで確認
         if dl_resp.status_code == 200 and not content_length:
             break
+        dl_resp.close()  # 条件不一致時のソケットリーク防止
     else:
         status = dl_resp.status_code if dl_resp else "N/A"
         raise ValueError(f"画像ダウンロードエラー ({status}): {url}")

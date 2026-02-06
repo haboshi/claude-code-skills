@@ -276,7 +276,10 @@ def download_reference_image(url: str, dest: Path) -> Path:
 
     response.raise_for_status()
 
-    content_length = int(response.headers.get("content-length", 0))
+    try:
+        content_length = int(response.headers.get("content-length", 0))
+    except (ValueError, TypeError):
+        content_length = 0
     if content_length > MAX_DOWNLOAD_SIZE:
         raise ValueError(f"参照画像が大きすぎます: {content_length} bytes (上限: {MAX_DOWNLOAD_SIZE})")
 

@@ -99,7 +99,11 @@ def _safe_download_url(url: str, save_path) -> None:
     response = requests.get(url, timeout=30, stream=True, allow_redirects=False)
 
     # リダイレクトは拒否（API返却URLは直接アクセス可能であるべき）
+    # 設計判断: OpenAI APIはSAS付き直接URLを返すためリダイレクト不要。
+    # 他プラグイン（generate_rich.py, generate_zhipu.py）はCDNリダイレクトに対応するため
+    # リダイレクト先を検証してから追跡する方式。用途に応じた使い分け。
     if response.is_redirect or response.status_code in (301, 302, 303, 307, 308):
+        response.close()  # stream=True のソケットリーク防止
         raise ValueError(f"リダイレクトは許可されていません: {url}")
 
     response.raise_for_status()

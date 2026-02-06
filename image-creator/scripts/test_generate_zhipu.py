@@ -44,9 +44,9 @@ class TestAPIKeyValidation(unittest.TestCase):
                 self.assertIn("export", output)
 
 
-    @patch("generate_zhipu.urllib.request.urlretrieve")
+    @patch("generate_zhipu._safe_download_cdn")
     @patch("generate_zhipu.requests.post")
-    def test_glm_api_key_is_used(self, mock_post, mock_urlretrieve):
+    def test_glm_api_key_is_used(self, mock_post, mock_download):
         """GLM_API_KEY が優先して使用される"""
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -62,9 +62,9 @@ class TestAPIKeyValidation(unittest.TestCase):
         headers = mock_post.call_args[1]["headers"]
         self.assertEqual(headers["Authorization"], "Bearer glm-key")
 
-    @patch("generate_zhipu.urllib.request.urlretrieve")
+    @patch("generate_zhipu._safe_download_cdn")
     @patch("generate_zhipu.requests.post")
-    def test_zai_api_key_fallback(self, mock_post, mock_urlretrieve):
+    def test_zai_api_key_fallback(self, mock_post, mock_download):
         """GLM_API_KEY 未設定時に ZAI_API_KEY にフォールバック"""
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -87,9 +87,9 @@ class TestAPIKeyValidation(unittest.TestCase):
 class TestImageGeneration(unittest.TestCase):
     """画像生成の正常系"""
 
-    @patch("generate_zhipu.urllib.request.urlretrieve")
+    @patch("generate_zhipu._safe_download_cdn")
     @patch("generate_zhipu.requests.post")
-    def test_successful_generation_saves_file(self, mock_post, mock_urlretrieve):
+    def test_successful_generation_saves_file(self, mock_post, mock_download):
         """正常にAPIレスポンスから画像をダウンロード・保存"""
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -102,7 +102,7 @@ class TestImageGeneration(unittest.TestCase):
         with patch.dict(os.environ, {"GLM_API_KEY": "test-key"}):
             result = generate_image("かわいい猫", output_path="/tmp/test_zhipu.png")
 
-        mock_urlretrieve.assert_called_once()
+        mock_download.assert_called_once()
         self.assertIn("test_zhipu.png", result)
 
     @patch("generate_zhipu.requests.post")
@@ -117,7 +117,7 @@ class TestImageGeneration(unittest.TestCase):
         mock_post.return_value = mock_response
 
         with patch.dict(os.environ, {"GLM_API_KEY": "test-key"}):
-            with patch("generate_zhipu.urllib.request.urlretrieve"):
+            with patch("generate_zhipu._safe_download_cdn"):
                 generate_image(
                     "テスト", size="1568x1056", quality="standard"
                 )
@@ -141,7 +141,7 @@ class TestImageGeneration(unittest.TestCase):
         mock_post.return_value = mock_response
 
         with patch.dict(os.environ, {"GLM_API_KEY": "my-secret-key"}):
-            with patch("generate_zhipu.urllib.request.urlretrieve"):
+            with patch("generate_zhipu._safe_download_cdn"):
                 generate_image("テスト")
 
         call_kwargs = mock_post.call_args

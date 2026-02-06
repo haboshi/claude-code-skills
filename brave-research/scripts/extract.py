@@ -10,10 +10,11 @@ readability-lxml を使用して記事本文を自動抽出する。
 """
 
 import argparse
+import ipaddress
 import re
 import sys
 from html import unescape
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import requests
 
@@ -27,7 +28,49 @@ except ImportError:
     )
     sys.exit(1)
 
-BLOCKED_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "169.254.169.254", "[::1]"}
+# SSRF保護: 8進数/10進数IPアドレス表記のバイパス検出パターン
+_OCTAL_IP_PATTERN = re.compile(r"^0\d+\.")
+_DECIMAL_IP_PATTERN = re.compile(r"^\d{4,}$")
+_SHARED_ADDRESS_SPACE = ipaddress.IPv4Network("100.64.0.0/10")
+_MAX_REDIRECTS = 5
+
+
+def _is_dangerous_ip(addr: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """IPアドレスがプライベート/ループバック/リンクローカル/予約済みかチェック"""
+    if isinstance(addr, ipaddress.IPv6Address):
+        if addr.ipv4_mapped:
+            if _is_dangerous_ip(addr.ipv4_mapped):
+                return True
+        if addr.sixtofour:
+            if _is_dangerous_ip(addr.sixtofour):
+                return True
+        if addr.teredo:
+            for teredo_addr in addr.teredo:
+                if _is_dangerous_ip(teredo_addr):
+                    return True
+    if isinstance(addr, ipaddress.IPv4Address) and addr in _SHARED_ADDRESS_SPACE:
+        return True
+    return (
+        addr.is_private or addr.is_loopback or addr.is_link_local
+        or addr.is_reserved or addr.is_multicast or addr.is_unspecified
+    )
+
+
+def _is_safe_host(hostname: str) -> bool:
+    """ホスト名がSSRF的に安全かチェック（Trueなら安全）"""
+    if not hostname:
+        return False
+    if hostname == "localhost":
+        return False
+    if _OCTAL_IP_PATTERN.match(hostname) or _DECIMAL_IP_PATTERN.match(hostname):
+        return False
+    try:
+        addr = ipaddress.ip_address(hostname)
+        if _is_dangerous_ip(addr):
+            return False
+    except ValueError:
+        pass
+    return True
 
 
 def validate_url(url: str) -> None:
@@ -35,8 +78,9 @@ def validate_url(url: str) -> None:
     if parsed.scheme not in ("http", "https"):
         print(f"Error: Unsupported URL scheme '{parsed.scheme}'", file=sys.stderr)
         sys.exit(1)
-    if parsed.hostname and parsed.hostname in BLOCKED_HOSTS:
-        print(f"Error: Access to {parsed.hostname} is blocked", file=sys.stderr)
+    hostname = parsed.hostname or ""
+    if not _is_safe_host(hostname):
+        print(f"Error: Access to {hostname} is blocked", file=sys.stderr)
         sys.exit(1)
 
 
@@ -52,7 +96,29 @@ def fetch_url(url: str) -> str:
     }
 
     try:
-        response = requests.get(url, headers=headers, timeout=15, allow_redirects=True)
+        current_url = url
+        for _ in range(_MAX_REDIRECTS):
+            response = requests.get(
+                current_url, headers=headers, timeout=15, allow_redirects=False
+            )
+            if response.is_redirect or response.status_code in (301, 302, 303, 307, 308):
+                raw_location = response.headers.get("location", "")
+                redirect_url = urljoin(current_url, raw_location)
+                redirect_parsed = urlparse(redirect_url)
+                if redirect_parsed.scheme not in ("http", "https"):
+                    print(f"Error: Unsafe redirect scheme '{redirect_parsed.scheme}'", file=sys.stderr)
+                    sys.exit(1)
+                redirect_host = redirect_parsed.hostname or ""
+                if not _is_safe_host(redirect_host):
+                    print(f"Error: Redirect to blocked host {redirect_host}", file=sys.stderr)
+                    sys.exit(1)
+                current_url = redirect_url
+                continue
+            break
+        else:
+            print(f"Error: Too many redirects for {url}", file=sys.stderr)
+            sys.exit(1)
+
         response.raise_for_status()
         response.encoding = response.apparent_encoding or "utf-8"
         return response.text

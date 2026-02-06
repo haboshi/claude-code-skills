@@ -14,14 +14,148 @@ Usage:
 """
 
 import argparse
+import ipaddress
 import os
+import re
 import sys
+import tempfile
 import time
 from pathlib import Path
+from urllib.parse import urljoin, urlparse
 
 import requests
 
 API_ENDPOINT = "https://api.z.ai/api/paas/v4/images/generations"
+
+MAX_DOWNLOAD_SIZE = 20 * 1024 * 1024  # 20MB
+_MAX_REDIRECTS = 5
+_MIN_VALID_IMAGE_SIZE = 1000  # CDNエラーページ（通常数百バイト）を除外する閾値
+
+# SSRF保護: 8進数/10進数IPアドレス表記のバイパス検出パターン
+_OCTAL_IP_PATTERN = re.compile(r"^0\d+\.")
+_DECIMAL_IP_PATTERN = re.compile(r"^\d{4,}$")
+_SHARED_ADDRESS_SPACE = ipaddress.IPv4Network("100.64.0.0/10")
+
+
+def _is_dangerous_ip(addr: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """IPアドレスがプライベート/ループバック/リンクローカル/予約済みかチェック"""
+    if isinstance(addr, ipaddress.IPv6Address):
+        if addr.ipv4_mapped:
+            if _is_dangerous_ip(addr.ipv4_mapped):
+                return True
+        if addr.sixtofour:
+            if _is_dangerous_ip(addr.sixtofour):
+                return True
+        if addr.teredo:
+            for teredo_addr in addr.teredo:
+                if _is_dangerous_ip(teredo_addr):
+                    return True
+    if isinstance(addr, ipaddress.IPv4Address) and addr in _SHARED_ADDRESS_SPACE:
+        return True
+    return (
+        addr.is_private or addr.is_loopback or addr.is_link_local
+        or addr.is_reserved or addr.is_multicast or addr.is_unspecified
+    )
+
+
+def _validate_cdn_url(url: str) -> bool:
+    """CDN URLの安全性を検証する（SSRF保護）"""
+    if not url or not url.startswith("https://"):
+        return False
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname or ""
+    except Exception:
+        return False
+    if not hostname:
+        return False
+    if hostname == "localhost":
+        return False
+    if _OCTAL_IP_PATTERN.match(hostname) or _DECIMAL_IP_PATTERN.match(hostname):
+        return False
+    try:
+        addr = ipaddress.ip_address(hostname)
+        if _is_dangerous_ip(addr):
+            return False
+    except ValueError:
+        pass
+    return True
+
+
+def _safe_download_cdn(url: str, dest: Path, max_retries: int = 8) -> None:
+    """CDN URLから安全に画像をダウンロードする（SSRF保護+リトライ付き）
+
+    - HTTPSスキームのみ許可
+    - プライベート/ループバックIP拒否
+    - リダイレクト先もURL検証
+    - タイムアウト設定
+    - サイズ上限チェック
+    - アトミック書き込み（tempfile + rename）
+    """
+    if not _validate_cdn_url(url):
+        raise ValueError(f"安全でないURLです（HTTPSのみ・プライベートIP禁止）: {url}")
+
+    dl_headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"}
+
+    dl_resp = None
+    for attempt in range(max_retries):
+        if attempt > 0:
+            wait = min(2 * attempt, 10)
+            print(f"CDN配信待機 {wait}秒... ({attempt + 1}/{max_retries})")
+            time.sleep(wait)
+
+        current_url = url
+        for _ in range(_MAX_REDIRECTS):
+            dl_resp = requests.get(
+                current_url, headers=dl_headers, timeout=60,
+                stream=True, allow_redirects=False
+            )
+            if dl_resp.is_redirect or dl_resp.status_code in (301, 302, 303, 307, 308):
+                raw_location = dl_resp.headers.get("location", "")
+                redirect_url = urljoin(current_url, raw_location)
+                if not _validate_cdn_url(redirect_url):
+                    raise ValueError(f"リダイレクト先が安全でないURLです: {redirect_url}")
+                current_url = redirect_url
+                continue
+            break
+        else:
+            raise ValueError(f"リダイレクト回数が上限({_MAX_REDIRECTS})を超えました")
+
+        dl_resp.raise_for_status()
+
+        # サイズ事前チェック（Content-Lengthヘッダー）
+        content_length = dl_resp.headers.get("content-length")
+        try:
+            content_length_int = int(content_length) if content_length else 0
+        except (ValueError, TypeError):
+            content_length_int = 0
+        if content_length_int > MAX_DOWNLOAD_SIZE:
+            raise ValueError(f"ファイルサイズが上限を超えています: {content_length} bytes")
+
+        if dl_resp.status_code == 200 and content_length_int > _MIN_VALID_IMAGE_SIZE:
+            break
+        # content-length がない場合はとりあえずチャンクで確認
+        if dl_resp.status_code == 200 and not content_length:
+            break
+    else:
+        status = dl_resp.status_code if dl_resp else "N/A"
+        raise ValueError(f"画像ダウンロードエラー ({status}): {url}")
+
+    # アトミック書き込み
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=dest.parent, suffix=dest.suffix)
+    try:
+        downloaded = 0
+        with os.fdopen(tmp_fd, "wb") as f:
+            for chunk in dl_resp.iter_content(chunk_size=8192):
+                downloaded += len(chunk)
+                if downloaded > MAX_DOWNLOAD_SIZE:
+                    raise ValueError(f"ダウンロードが上限を超えました: {MAX_DOWNLOAD_SIZE} bytes")
+                f.write(chunk)
+        Path(tmp_path).rename(dest)
+    except Exception:
+        Path(tmp_path).unlink(missing_ok=True)
+        raise
 
 RECOMMENDED_SIZES = [
     "1280x1280",
@@ -128,20 +262,7 @@ def generate_image(
         if not image_url:
             print("警告: 画像データが取得できませんでした")
             return ""
-        dl_headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"}
-        max_retries = 8
-        for attempt in range(max_retries):
-            if attempt > 0:
-                wait = min(2 * attempt, 10)
-                print(f"CDN配信待機 {wait}秒... ({attempt + 1}/{max_retries})")
-                time.sleep(wait)
-            dl_resp = requests.get(image_url, headers=dl_headers, timeout=60)
-            if dl_resp.status_code == 200 and len(dl_resp.content) > 1000:
-                break
-        else:
-            print(f"画像ダウンロードエラー ({dl_resp.status_code}): {image_url}")
-            sys.exit(1)
-        output_file.write_bytes(dl_resp.content)
+        _safe_download_cdn(image_url, output_file)
 
     print(f"保存完了: {output_file.absolute()}")
 

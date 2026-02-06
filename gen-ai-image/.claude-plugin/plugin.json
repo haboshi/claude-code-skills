@@ -1,0 +1,9 @@
+{
+  "name": "gen-ai-image",
+  "version": "1.0.0",
+  "description": "fal.ai GPT Image 1.5によるAI画像生成。シンプルモード（CLI直接）と詳細モード（対話的パラメータ選択）に対応。外部APIキー必要。",
+  "author": {
+    "name": "haboshi",
+    "email": "haboshi@allambitious.co.jp"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "gen-ai-image",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@fal-ai/client": "^1.0.0",
+    "dotenv": "^16.0.0"
+  }
+}

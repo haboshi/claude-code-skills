@@ -1,0 +1,9 @@
+{
+  "name": "svg-diagram",
+  "version": "1.0.0",
+  "description": "LLMでカスタムデザインのSVG図解を生成。Mermaidでは表現できない自由配置の説明画像・インフォグラフィック向け。",
+  "author": {
+    "name": "haboshi",
+    "email": "haboshi@allambitious.co.jp"
+  }
+}

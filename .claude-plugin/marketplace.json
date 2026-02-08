@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Claude Code用スキルコレクション",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "homepage": "https://github.com/haboshi/claude-code-skills"
   },
   "plugins": [
@@ -33,20 +33,74 @@
     {
       "name": "task-planner",
       "description": "実装計画とタスク分解のプラグイン。コードベース探索→要件明確化→計画策定→タスク分解→検証。タスク規模に応じて自動的に深度を調整。",
-      "author": {
-        "name": "haboshi",
-        "email": "haboshi@allambitious.co.jp"
-      },
       "source": "./task-planner",
-      "category": "planning"
+      "version": "1.0.0",
+      "category": "planning",
+      "keywords": ["planning", "task", "decompose", "implementation", "計画", "タスク分解"]
     },
     {
       "name": "brave-research",
       "description": "Brave Search APIを活用した調査プラグイン。Web検索、ニュース検索、画像・動画検索、コンテンツ抽出、マルチステップ深掘り調査に対応。「調査して」「検索して」「最新情報を調べて」などで自動発動。",
       "source": "./brave-research",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "category": "research",
       "keywords": ["search", "research", "brave", "web", "news", "調査", "検索", "リサーチ"]
+    },
+    {
+      "name": "svg-header-image",
+      "description": "テンプレートベースのSVGヘッダー画像生成。タイトル・サブタイトルから美しいヘッダー画像を作成。外部API不要。「ヘッダー画像作って」「タイトル画像を作って」「アイキャッチを生成」で発動。",
+      "source": "./svg-header-image",
+      "version": "1.0.0",
+      "category": "image-generation",
+      "keywords": ["svg", "header", "banner", "ogp", "thumbnail", "ヘッダー", "バナー"]
+    },
+    {
+      "name": "svg-to-webp",
+      "description": "SVG画像をWebP/PNG形式に変換。単一ファイル・ディレクトリ一括変換対応。sharpベースの高品質変換。「SVGをWebPに変換」「画像を軽量化」「サムネイルを最適化」で発動。",
+      "source": "./svg-to-webp",
+      "version": "1.0.0",
+      "category": "image-conversion",
+      "keywords": ["svg", "webp", "png", "convert", "sharp", "画像変換"]
+    },
+    {
+      "name": "mermaid-to-webp",
+      "description": "Mermaid記法のダイアグラムをWebP/PNG画像に変換。フローチャート、シーケンス図、ER図、ガントチャート等に対応。「Mermaidで図を作って画像にして」「フローチャートを画像化」「ダイアグラムをWebPに」で発動。",
+      "source": "./mermaid-to-webp",
+      "version": "1.0.0",
+      "category": "image-conversion",
+      "keywords": ["mermaid", "diagram", "webp", "png", "flowchart", "sequence", "ダイアグラム"]
+    },
+    {
+      "name": "gen-ai-image",
+      "description": "fal.ai GPT Image 1.5で画像生成。シンプルモード（即生成）と詳細モード（パラメータガイド付き）を搭載。「AI画像を生成」「GPTで画像」で発動。",
+      "source": "./gen-ai-image",
+      "version": "1.0.0",
+      "category": "image-generation",
+      "keywords": ["ai", "image", "fal", "gpt-image", "generate", "AI画像"]
+    },
+    {
+      "name": "svg-diagram",
+      "description": "LLMでカスタムデザインのSVG図解を生成。Mermaidでは表現できない自由配置の図解・インフォグラフィック向け。「図解を作って」「アーキテクチャ図」「インフォグラフィック」で発動。",
+      "source": "./svg-diagram",
+      "version": "1.0.0",
+      "category": "image-generation",
+      "keywords": ["svg", "diagram", "infographic", "architecture", "図解", "インフォグラフィック"]
+    },
+    {
+      "name": "tts",
+      "description": "テキスト音声変換（TTS）。COEIROINKベースのバッチ音声生成・WAV結合に対応。プロバイダ抽象化によりVOICEVOX等にも拡張可能。「読み上げて」「音声にして」「テキストをTTSで」で発動。",
+      "source": "./tts",
+      "version": "1.0.0",
+      "category": "audio",
+      "keywords": ["tts", "voice", "audio", "coeiroink", "voicevox", "音声", "読み上げ"]
+    },
+    {
+      "name": "tts-dict",
+      "description": "TTS発音辞書管理。英単語のカタカナ読み登録・適用・確認。LLM自動読み取得にも対応。「辞書登録して」「英単語の読みを登録」「発音確認」で発動。",
+      "source": "./tts-dict",
+      "version": "1.0.0",
+      "category": "audio",
+      "keywords": ["tts", "dictionary", "pronunciation", "katakana", "辞書", "発音"]
     }
   ]
 }

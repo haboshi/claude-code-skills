@@ -1,0 +1,9 @@
+{
+  "name": "svg-header-image",
+  "version": "1.0.0",
+  "description": "テンプレートベースのSVGヘッダー画像生成。タイトル・サブタイトルからプロフェッショナルなヘッダー画像を作成。外部API不要。",
+  "author": {
+    "name": "haboshi",
+    "email": "haboshi@allambitious.co.jp"
+  }
+}

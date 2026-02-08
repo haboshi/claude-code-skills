@@ -1,0 +1,186 @@
+{
+  "patterns": {
+    "thumbnail": {
+      "description": "YouTubeサムネイルやブログヘッダー向けの目を引く画像",
+      "modes": {
+        "anime-wow": {
+          "description": "アニメ風・驚き表現のサムネイル（CTR最大化）",
+          "template": "【全体設定】\nYouTubeサムネイル画像。アスペクト比16:9。超エネルギッシュで高品質な日本製アニメイラストレーションスタイル。視聴者の目を引くクリックベイト風の派手な構図。彩度が高く、ポップアート要素を取り入れた賑やかな画面作り。\n\n【レイアウト・構図】\n画面を左右に60:40で分割。左側（画面の60%）にテキスト要素を大きく配置し、右側（画面の40%）にメインキャラクターを大きく配置する。Rule of thirdsに従い、重要要素を交点に配置。右下隅は空けておく（YouTubeタイムスタンプ領域）。\n\n【テキスト要素】\n画面左側に、極太でインパクトのあるフォントを使って以下のテキストを縦に積み上げるように配置。テキスト内容：「{{title}}」。テキストはグラデーション（黄色→オレンジ、または蛍光ピンク→紫）で、強烈な立体感・4px以上の黒縁取り・ドロップシャドウで装飾。フォントサイズは画面の1/4を占めるほど大きく。{{#subtitle}}サブタイトル：「{{subtitle}}」を少し小さめに配置。{{/subtitle}}\n\n【メインキャラクター】\n画面右側に大きく配置。{{#character}}{{character}}{{/character}}{{^character}}親しみやすいアニメスタイルのキャラクター{{/character}}。キラキラした瞳でカメラ目線、『驚き顔』で口を大きく開けた表情（CTR+30%効果）。ポーズは両手を頬に当てたり、驚いて後ろにのけぞるような躍動感のあるポーズ。{{#characterStyle}}衣装と髪型：{{characterStyle}}。{{/characterStyle}}キャラクターは画面右端から少しはみ出すくらい大きく描く。\n\n【背景と小道具】\n{{#background}}背景：{{background}}。{{/background}}{{^background}}タイトルのテーマを抽象的に表現した、賑やかで奥行きのある背景。{{/background}}集中線、ハーフトーンドット、キラキラエフェクト、ビックリマーク、稲妻エフェクトを多用し、視線を中央に集める。{{#objects}}キャラクターの周囲に配置するオブジェクト：{{objects}}。{{/objects}}{{^objects}}キャラクターの周囲には、タイトルに関連する象徴的なアイテム、アイコン、紙吹雪、漫符などが多数浮遊。{{/objects}}\n\n【ライティングと雰囲気】\nフラットなアニメ塗りだが、リッチな質感。cinematic lighting、rim lightingで輪郭を際立たせる。全体的に明るくポジティブな光。{{#colorTheme}}カラーパレット：{{colorTheme}}。{{/colorTheme}}{{^colorTheme}}高コントラストで鮮やかなカラーパレット（黄色・オレンジ系推奨）。{{/colorTheme}}",
+          "default_aspect": "16:9",
+          "optionalParams": ["character", "characterStyle", "background", "objects", "colorTheme", "subtitle"]
+        },
+        "anime-impact": {
+          "description": "アニメ風・インパクト重視のサムネイル",
+          "template": "【全体設定】\nYouTubeサムネイル画像。アスペクト比16:9。超エネルギッシュで高品質な日本製アニメイラストレーションスタイル。視聴者の目を引くクリックベイト風の派手な構図。高コントラストで劇的な雰囲気。\n\n【レイアウト・構図】\n画面中央にテキストを大きく配置し、キャラクターは画面の片側（左または右）から力強く登場する構図。Rule of thirdsに従い、重要要素を交点に配置。右下隅は空けておく。\n\n【テキスト要素】\n画面中央〜上部に、極太でインパクトのあるフォントを使って配置。テキスト内容：「{{title}}」。テキストは赤・黄色・オレンジなど暖色系のグラデーションで、強烈な立体感・太い縁取り・ドロップシャドウで装飾。炎や爆発エフェクトがテキストから放射。{{#subtitle}}サブタイトル：「{{subtitle}}」{{/subtitle}}\n\n【メインキャラクター】\n{{#character}}{{character}}{{/character}}{{^character}}力強いアニメスタイルのキャラクター{{/character}}。キラキラした瞳でカメラ目線、『ドヤ顔』または『自信満々の笑顔』。ポーズはタイトルを指差す、腕を組む、またはパワフルに拳を握るような躍動感のあるポーズ。{{#characterStyle}}衣装と髪型：{{characterStyle}}。{{/characterStyle}}\n\n【背景と小道具】\n{{#background}}背景：{{background}}。{{/background}}{{^background}}タイトルのテーマを抽象的に表現した、ダイナミックな背景。{{/background}}強烈な集中線、爆発エフェクト、炎のような効果、ハーフトーンドットを多用。{{#objects}}オブジェクト：{{objects}}。{{/objects}}{{^objects}}衝撃波、矢印、漫符などが画面を埋め尽くす。{{/objects}}\n\n【ライティングと雰囲気】\nフラットなアニメ塗りだが、リッチな質感。コントラスト強めの劇的なcinematic lighting。バックライトでキャラクターの輪郭を強調。{{#colorTheme}}カラーパレット：{{colorTheme}}。{{/colorTheme}}{{^colorTheme}}暖色系（赤・オレンジ・黄色）を基調とした力強いカラーパレット。{{/colorTheme}}",
+          "default_aspect": "16:9",
+          "optionalParams": ["character", "characterStyle", "background", "objects", "colorTheme", "subtitle"]
+        },
+        "anime-pop": {
+          "description": "アニメ風・ポップで明るいサムネイル",
+          "template": "【全体設定】\nYouTubeサムネイル画像。アスペクト比16:9。超キュートで高品質な日本製アニメイラストレーションスタイル。楽しくてポジティブな雰囲気。パステルカラーとネオンカラーを組み合わせたポップな画面作り。\n\n【レイアウト・構図】\n画面を左右に60:40で分割。左側にテキスト要素を楽しく配置し、右側にメインキャラクターを大きく配置。Rule of thirdsに従い、重要要素を交点に配置。右下隅は空けておく。\n\n【テキスト要素】\n画面左側に、丸みのあるポップなフォントを使って配置。テキスト内容：「{{title}}」。テキストはカラフルなレインボーグラデーションや蛍光ピンク・イエロー・シアンで、ポップな装飾（星・ハート・キラキラ付き）。{{#subtitle}}サブタイトル：「{{subtitle}}」{{/subtitle}}\n\n【メインキャラクター】\n画面右側に大きく配置。{{#character}}{{character}}{{/character}}{{^character}}キュートなアニメスタイルのキャラクター{{/character}}。キラキラした瞳でカメラ目線、『最高の笑顔』でピースサインやウィンク。ポーズは両手を広げる、ジャンプする、ハートを作るなど楽しさ全開の躍動感のあるポーズ。{{#characterStyle}}衣装と髪型：{{characterStyle}}。{{/characterStyle}}キャラクターは画面右端から少しはみ出すくらい大きく描く。\n\n【背景と小道具】\n{{#background}}背景：{{background}}。{{/background}}{{^background}}パステルカラーのグラデーション背景。{{/background}}パステルカラーの集中線、ハート、星、音符、虹、キラキラエフェクトを多用。{{#objects}}オブジェクト：{{objects}}。{{/objects}}{{^objects}}紙吹雪、風船、花びら、漫符などが多数浮遊。{{/objects}}\n\n【ライティングと雰囲気】\nフラットなアニメ塗りだが、リッチな質感。全体的に明るくハッピーな光。soft ambient light。{{#colorTheme}}カラーパレット：{{colorTheme}}。{{/colorTheme}}{{^colorTheme}}パステル調やネオンカラーを基調としたポップなカラーパレット。{{/colorTheme}}",
+          "default_aspect": "16:9",
+          "optionalParams": ["character", "characterStyle", "background", "objects", "colorTheme", "subtitle"]
+        },
+        "anime-bright": {
+          "description": "アニメ風・明るく鮮やかなサムネイル（技術系推奨）",
+          "template": "【全体設定】\nYouTubeサムネイル画像。アスペクト比16:9。洗練された高品質な日本製アニメイラストレーションスタイル。清潔感があり、プロフェッショナルな雰囲気。明るく鮮やかな色彩。\n\n【レイアウト・構図】\n画面を左右にバランスよく分割。テキスト要素とキャラクターが調和する構図。Rule of thirdsに従い、重要要素を交点に配置。右下隅は空けておく。\n\n【テキスト要素】\n画面の目立つ位置に、クリーンで読みやすいフォントを使って配置。テキスト内容：「{{title}}」。テキストはゴールド・シルバー・白のグラデーションで、輝くような光沢感・立体感・光のエフェクト付き。{{#subtitle}}サブタイトル：「{{subtitle}}」{{/subtitle}}\n\n【メインキャラクター】\n{{#character}}{{character}}{{/character}}{{^character}}知的で親しみやすいアニメスタイルのキャラクター{{/character}}。キラキラした瞳でカメラ目線、『希望に満ちた笑顔』または『自信に溢れた表情』。ポーズは空に手を伸ばす、ガッツポーズ、または前向きで躍動感のあるポーズ。{{#characterStyle}}衣装と髪型：{{characterStyle}}。{{/characterStyle}}\n\n【背景と小道具】\n{{#background}}背景：{{background}}。{{/background}}{{^background}}グラデーション背景（白→淡いブルー、または白→淡いパープル）。{{/background}}光の放射線、レンズフレア、ゴールドのキラキラエフェクト、上昇する光の粒子を多用。{{#objects}}オブジェクト：{{objects}}。{{/objects}}{{^objects}}テーマに関連する象徴的なアイテム、星、羽根などが浮遊。{{/objects}}\n\n【ライティングと雰囲気】\nフラットなアニメ塗りだが、リッチな質感。後ろから差し込むような神々しいバックライト。golden hour lighting。{{#colorTheme}}カラーパレット：{{colorTheme}}。{{/colorTheme}}{{^colorTheme}}ゴールド・白・淡いブルーを基調とした輝かしいカラーパレット。{{/colorTheme}}",
+          "default_aspect": "16:9",
+          "optionalParams": ["character", "characterStyle", "background", "objects", "colorTheme", "subtitle"]
+        },
+        "formal-default": {
+          "description": "フォーマル・ビジネス向けサムネイル",
+          "template": "【全体設定】\nプロフェッショナルなサムネイル画像。アスペクト比16:9。洗練されたモダンなデザイン。信頼感と権威性を感じさせるビジネス向けの雰囲気。\n\n【レイアウト・構図】\nクリーンで整理された構図。テキストは左側または中央に大きく配置。{{#character}}キャラクターは控えめに配置。{{/character}}Rule of thirdsに従い、重要要素を交点に配置。右下隅は空けておく。\n\n【テキスト要素】\n画面の目立つ位置に、高級感のあるサンセリフまたはセリフフォントを使って配置。テキスト内容：「{{title}}」。テキストはネイビー、白、ゴールドのいずれかで、洗練された立体感・subtle shadow付き。{{#subtitle}}サブタイトル：「{{subtitle}}」をエレガントに配置。{{/subtitle}}\n\n{{#character}}【メインキャラクター】\n{{character}}。プロフェッショナルで自信に満ちた表情。ビジネスカジュアルまたはフォーマルな服装。{{#characterStyle}}スタイル：{{characterStyle}}。{{/characterStyle}}{{/character}}\n\n【背景とデザイン要素】\n{{#background}}背景：{{background}}。{{/background}}{{^background}}subtle gradients（ネイビー→ダークブルー、またはグレー→白）。{{/background}}幾何学的なパターンや抽象的な形状を控えめに配置。{{#objects}}デザイン要素：{{objects}}。{{/objects}}{{^objects}}ミニマルなアイコン、細い線、subtle textures。{{/objects}}\n\n【ライティングと雰囲気】\nプロフェッショナルなスタジオライティング。soft diffused light。{{#colorTheme}}カラーパレット：{{colorTheme}}。{{/colorTheme}}{{^colorTheme}}ネイビー・白・ゴールドアクセントを基調としたコーポレートカラーパレット。{{/colorTheme}}",
+          "default_aspect": "16:9",
+          "optionalParams": ["character", "characterStyle", "background", "objects", "colorTheme", "subtitle"]
+        },
+        "real-default": {
+          "description": "リアル写真風サムネイル",
+          "template": "【全体設定】\nフォトリアリスティックなサムネイル画像。アスペクト比16:9。プロフェッショナルな写真撮影のような高品質なレンダリング。\n\n【レイアウト・構図】\ncinematic composition。Rule of thirdsに従った構図。被写体は画面の1/3に配置し、残りに背景の奥行きを活かす。右下隅は空けておく。\n\n【テキスト要素】\n画面の目立つ位置（上部または左側）に、クリーンで読みやすいフォントを使って配置。テキスト内容：「{{title}}」。テキストは白または明るい色で、subtle shadow付きで背景から浮き上がるように。{{#subtitle}}サブタイトル：「{{subtitle}}」{{/subtitle}}\n\n{{#subject}}【被写体】\n{{subject}}。自然なライティングでリアルに描写。{{/subject}}{{#character}}【人物】\n{{character}}。自然な表情とポーズ。85mm portrait lens風の描写。{{#characterStyle}}スタイル：{{characterStyle}}。{{/characterStyle}}{{/character}}\n\n【背景と環境】\n{{#background}}背景：{{background}}。{{/background}}{{^background}}テーマに合った自然な環境。bokeh effect（背景ぼかし）で被写体を際立たせる。{{/background}}{{#scene}}シーン：{{scene}}。{{/scene}}\n\n【ライティングと雰囲気】\n{{#colorTheme}}カラーパレット：{{colorTheme}}。{{/colorTheme}}{{^colorTheme}}自然光またはcinematic lighting。golden hourまたはblue hourの雰囲気。リアルで温かみのある色彩。{{/colorTheme}}",
+          "default_aspect": "16:9",
+          "optionalParams": ["character", "characterStyle", "subject", "scene", "background", "colorTheme", "subtitle"]
+        }
+      }
+    },
+    "illustration": {
+      "description": "説明図やインフォグラフィック向けの画像",
+      "modes": {
+        "comparison": {
+          "description": "比較・対比を表現する説明画像",
+          "template": "【全体設定】\n比較・対比を視覚化したインフォグラフィック画像。明確で理解しやすいレイアウト。プロフェッショナルなデザイン品質。\n\n【レイアウト・構図】\n画面を左右に50:50でsplit-screen分割。中央に明確な分割線（グラデーションまたは対比色）。{{#title}}タイトル「{{title}}」を上部中央に配置。{{/title}}\n\n【比較内容】\n{{content}}\n\n{{#left}}【左側】\n{{left}}を視覚的に表現。暖色系（オレンジ・赤系）のカラースキーム。関連するアイコンとラベル。{{/left}}\n\n{{#right}}【右側】\n{{right}}を視覚的に表現。寒色系（青・緑系）のカラースキーム。関連するアイコンとラベル。{{/right}}\n\n【デザイン要素】\nFlat 2.0 vector illustrationスタイル。各項目にシンプルで認識しやすいアイコン。矢印や線で比較ポイントを示す。コントラストの高い色で対比を強調。\n\n【テキスト要素】\nすべてのラベルとテキストは日本語で、読みやすいサンセリフフォント。重要なポイントは太字で強調。\n\n【カラーパレット】\n{{#colorTheme}}{{colorTheme}}{{/colorTheme}}{{^colorTheme}}左側は暖色系、右側は寒色系。背景は白またはlight gray。{{/colorTheme}}",
+          "default_aspect": "16:9",
+          "optionalParams": ["title", "left", "right", "colorTheme"]
+        },
+        "graphrec": {
+          "description": "図解・グラフィックレコーディング風の説明画像",
+          "template": "【全体設定】\nあなたは熟練した『グラフィックレコーダー』です。以下の内容を、手描きのイラスト・アイコン・手書き文字を組み合わせた『グラフィックレコーディング』スタイルで一枚の画像にまとめてください。\n\n【内容】\n{{content}}\n\n{{#title}}【タイトル】\n「{{title}}」を画面上部中央に、太いマーカーで手書き風に大きく配置。{{/title}}\n\n【媒体・質感】\n大きな模造紙またはホワイトボードに描かれたアナログな質感。紙の繊維やマーカーのかすれを表現。\n\n【タッチ・スタイル】\nプロのファシリテーターが使う水性マーカーや色鉛筆による温かみのある手描きスタイル。完璧な直線ではなく人間味のある揺らぎを持たせる。\n\n【テキスト要素】\nタイトル・見出し・本文すべて手書きの日本語で描画。活字フォントは使用しない。重要キーワードは太字マーカーで大きく、補足は細ペンで小さく。\n\n【色彩】\n基本は黒とグレーの線画。強調色として温かみのある黄色・落ち着いた青・アクセントの赤など2〜3色に絞る。{{#colorTheme}}カラーパレット：{{colorTheme}}。{{/colorTheme}}\n\n【構成・レイアウト】\n中心テーマを真ん中に配置し、主要トピック（3〜5点）を周囲に展開。矢印や枠線で視線を論理的に誘導。{{#points}}キーポイント：{{points}}{{/points}}\n\n【メタファー・アイコン】\n各トピックを象徴する親しみやすいアイコン（成長＝芽、課題＝壁、アイデア＝電球、人＝棒人間、など）を使用。手描きの吹き出し、枠線、強調マークを効果的に配置。",
+          "default_aspect": "16:9",
+          "optionalParams": ["title", "points", "colorTheme"]
+        },
+        "process": {
+          "description": "プロセス・フロー図の説明画像",
+          "template": "【全体設定】\nプロセス・フロー図を視覚化したインフォグラフィック画像。ステップバイステップで理解しやすいレイアウト。\n\n【内容】\n{{content}}\n\n{{#title}}【タイトル】\n「{{title}}」を画面上部に大きく配置。{{/title}}\n\n【レイアウト・構図】\nS-Curveパターンまたは水平タイムラインで、画面左から右（または上から下）へ視線を誘導。各ステップを明確に番号付け。\n\n【デザインスタイル】\nFlat 2.0 vector illustrationスタイル。各ステップに親しみやすいイラストとアイコン。ステップ間を矢印やdotted linesで接続。\n\n{{#steps}}【ステップ】\n{{steps}}{{/steps}}\n\n【テキスト要素】\nすべてのラベルとテキストは日本語で、読みやすいサンセリフフォント。各ステップに短い説明文。\n\n【カラーパレット】\n{{#colorTheme}}{{colorTheme}}{{/colorTheme}}{{^colorTheme}}明るい原色（青・オレンジ・緑）を基調。背景は白。進行に応じてカラーグラデーション。{{/colorTheme}}",
+          "default_aspect": "16:9",
+          "optionalParams": ["title", "steps", "colorTheme"]
+        },
+        "custom": {
+          "description": "カスタムプロンプトによる自由形式の説明画像",
+          "template": "【内容】\n{{content}}\n\n【スタイル指示】\n高品質なイラスト画像として作成。手描き風の温かみのあるタッチで、親しみやすく見やすいデザイン。テキストは日本語で、読みやすいサイズで配置。\n\n{{#title}}【タイトル】\n「{{title}}」を目立つ位置に配置。{{/title}}\n\n{{#colorTheme}}【カラーパレット】\n{{colorTheme}}{{/colorTheme}}",
+          "default_aspect": "1:1",
+          "optionalParams": ["title", "colorTheme"]
+        }
+      }
+    }
+  },
+  "aspect_ratios": {
+    "16:9": "横長（サムネイル・ヘッダー向け）",
+    "1:1": "正方形（SNSアイコン・投稿向け）",
+    "9:16": "縦長（ストーリー・リール向け）",
+    "4:3": "やや横長（プレゼン向け）",
+    "3:4": "やや縦長",
+    "21:9": "ウルトラワイド（バナー向け）"
+  },
+  "models": {
+    "pro": {
+      "id": "gemini-3-pro-image-preview",
+      "description": "高品質、複雑な指示に対応"
+    },
+    "flash": {
+      "id": "gemini-2.5-flash-image",
+      "description": "高速、コスト効率"
+    }
+  },
+  "defaults": {
+    "pattern": "thumbnail",
+    "mode": "anime-wow",
+    "aspect": "16:9",
+    "model": "pro",
+    "mode_by_pattern": {
+      "thumbnail": "anime-wow",
+      "illustration": "graphrec"
+    }
+  },
+  "character_presets": {
+    "default": {
+      "description": "汎用キャラクター（未指定時）",
+      "prompt": "親しみやすいアニメスタイルのキャラクター。明るい表情で、視聴者に好感を持たれるデザイン"
+    },
+    "idol": {
+      "description": "アイドル風キャラクター",
+      "prompt": "キュートな日本のアイドル風女の子。キラキラした大きな瞳、カラフルなヘアアクセサリー、ステージ衣装風の華やかな服装。エネルギッシュで明るい表情"
+    },
+    "vtuber": {
+      "description": "VTuber風キャラクター",
+      "prompt": "バーチャルYouTuber風のキャラクター。鮮やかなアニメデザイン、ユニークな髪色（ピンク・ブルー・パープルのグラデーション）、表情豊かな顔立ち、配信者らしい親しみやすさ"
+    },
+    "business": {
+      "description": "ビジネス・フォーマル風キャラクター",
+      "prompt": "プロフェッショナルなビジネスパーソン。フォーマルな服装（スーツまたはビジネスカジュアル）、自信に満ちた表情、清潔感のある外見"
+    },
+    "tech": {
+      "description": "テック・エンジニア風キャラクター",
+      "prompt": "テック系のキャラクター。モダンなカジュアルスタイル、メガネ（オプション）、コードやテクノロジー要素に囲まれた雰囲気、知的で親しみやすい表情"
+    },
+    "teacher": {
+      "description": "講師・解説者風キャラクター",
+      "prompt": "親しみやすい講師・先生風のキャラクター。温かみのある表情、説明のジェスチャー、教育的な雰囲気、信頼感を与えるデザイン"
+    },
+    "mascot": {
+      "description": "マスコット風キャラクター",
+      "prompt": "デフォルメされた可愛いマスコットキャラクター。大きな頭と小さな体、丸みのあるデザイン、シンプルで親しみやすい表情、ブランドキャラクターのような存在感"
+    },
+    "cool": {
+      "description": "クール系キャラクター",
+      "prompt": "クールでスタイリッシュなアニメキャラクター。鋭い目つき、自信に満ちた佇まい、ダークカラーの洗練された服装、ミステリアスな雰囲気"
+    }
+  },
+  "optionalParams_schema": {
+    "character": {
+      "type": "string",
+      "description": "キャラクターの詳細説明。character_presetを使う場合は自動設定される"
+    },
+    "characterStyle": {
+      "type": "string",
+      "description": "キャラクターの衣装・髪型（例: '白衣の研究者風、ポニーテール'）"
+    },
+    "background": {
+      "type": "string",
+      "description": "背景の具体的な説明（例: 'サイバー空間、青いグリッド'）"
+    },
+    "objects": {
+      "type": "string",
+      "description": "画面に配置するオブジェクト（例: 'PC、スマホ、チャット画面'）"
+    },
+    "colorTheme": {
+      "type": "string",
+      "description": "色彩テーマ（例: '青と紫のネオン、サイバーパンク調'）"
+    },
+    "subtitle": {
+      "type": "string",
+      "description": "サブタイトルテキスト"
+    },
+    "subject": {
+      "type": "string",
+      "description": "写真風の場合の被写体（例: '高級時計のクローズアップ'）"
+    },
+    "scene": {
+      "type": "string",
+      "description": "シーン・場所の設定（例: '東京の夜景、ネオン街'）"
+    },
+    "left": {
+      "type": "string",
+      "description": "比較図の左側の内容"
+    },
+    "right": {
+      "type": "string",
+      "description": "比較図の右側の内容"
+    },
+    "points": {
+      "type": "string",
+      "description": "キーポイントのリスト"
+    },
+    "steps": {
+      "type": "string",
+      "description": "プロセスのステップリスト"
+    }
+  }
+}

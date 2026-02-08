@@ -1,0 +1,9 @@
+{
+  "name": "image-creator",
+  "version": "1.1.4",
+  "description": "Google Gemini、OpenAI GPT Image、またはZhipuAI GLM-Imageの画像生成モデルで画像を生成・編集。3プロバイダーから選択可能。",
+  "author": {
+    "name": "haboshi",
+    "email": "haboshi@allambitious.co.jp"
+  }
+}

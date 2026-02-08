@@ -36,3 +36,6 @@ output/
 
 # Claude Code local settings
 .claude/
+
+# Serena IDE
+.serena/

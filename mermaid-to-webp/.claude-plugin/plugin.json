@@ -1,0 +1,9 @@
+{
+  "name": "mermaid-to-webp",
+  "version": "1.0.0",
+  "description": "Mermaid記法のダイアグラムをWebP/PNG画像に変換。フローチャート、シーケンス図、ER図等に対応。mermaid-cli + sharp使用。",
+  "author": {
+    "name": "haboshi",
+    "email": "haboshi@allambitious.co.jp"
+  }
+}

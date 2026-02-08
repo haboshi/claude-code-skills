@@ -1,0 +1,9 @@
+{
+  "name": "svg-to-webp",
+  "version": "1.0.0",
+  "description": "SVG画像をWebP/PNG形式に変換。単一ファイル・ディレクトリ一括変換に対応。sharpベースの高品質変換。",
+  "author": {
+    "name": "haboshi",
+    "email": "haboshi@allambitious.co.jp"
+  }
+}

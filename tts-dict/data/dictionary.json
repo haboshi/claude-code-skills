@@ -1,0 +1,26 @@
+[
+  {
+    "word": "Claude",
+    "yomi": "クロード",
+    "accent": 1,
+    "numMoras": 4
+  },
+  {
+    "word": "GitHub",
+    "yomi": "ギットハブ",
+    "accent": 1,
+    "numMoras": 4
+  },
+  {
+    "word": "Playwright",
+    "yomi": "プレイライト",
+    "accent": 1,
+    "numMoras": 6
+  },
+  {
+    "word": "TypeScript",
+    "yomi": "タイプスクリプト",
+    "accent": 1,
+    "numMoras": 8
+  }
+]

@@ -1,0 +1,9 @@
+{
+  "name": "tts-dict",
+  "version": "1.0.0",
+  "description": "TTS発音辞書管理。英単語のカタカナ読み登録・適用・確認。LLM自動読み取得にも対応。COEIROINKの辞書APIを利用。",
+  "author": {
+    "name": "haboshi",
+    "email": "haboshi@allambitious.co.jp"
+  }
+}

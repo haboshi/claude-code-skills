@@ -1,0 +1,9 @@
+{
+  "name": "tts",
+  "version": "2.0.0",
+  "description": "テキスト音声変換（TTS）。OpenAI gpt-4o-mini-tts / COEIROINK / VOICEVOX対応のマルチプロバイダ音声生成。クラウドTTSによる高品質日本語音声、13種ボイス、スタイル指示に対応。",
+  "author": {
+    "name": "haboshi",
+    "email": "haboshi@allambitious.co.jp"
+  }
+}

@@ -168,6 +168,18 @@ blockquote {
     color: #555;
 }
 
+/* 画像スタイル - 正方形領域を最大とする */
+img {
+    max-width: 100%;
+    max-height: 17cm;
+    width: auto;
+    height: auto;
+    display: block;
+    margin: 1em auto;
+    page-break-inside: avoid;
+    object-fit: contain;
+}
+
 /* 目次スタイル */
 .toc {
     background-color: #f9f9f9;

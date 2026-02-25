@@ -1,0 +1,9 @@
+{
+  "name": "skill-creator-pro",
+  "version": "1.0.0",
+  "description": "Professional-grade skill creation with 5 design patterns, security scanning, sanitization, and 3-stage QA. Create, test, and distribute high-quality skills.",
+  "author": {
+    "name": "haboshi",
+    "email": "haboshi@allambitious.co.jp"
+  }
+}

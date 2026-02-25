@@ -109,7 +109,8 @@
       "strict": false,
       "version": "1.0.0",
       "category": "developer-tools",
-      "keywords": ["skill", "creator", "design-pattern", "security", "qa", "スキル作成", "スキル改善"]
+      "keywords": ["skill", "creator", "design-pattern", "security", "qa", "スキル作成", "スキル改善"],
+      "skills": ["./"]
     }
   ]
 }

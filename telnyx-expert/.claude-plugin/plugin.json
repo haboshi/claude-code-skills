@@ -1,0 +1,9 @@
+{
+  "name": "telnyx-expert",
+  "version": "1.0.0",
+  "description": "Telnyx実装エキスパート。Voice API、Call Control、TeXML、SIP Trunking、AI連携の実装ガイドを提供。Node.js SDK中心。最新ドキュメントをリアルタイム取得。",
+  "author": {
+    "name": "haboshi",
+    "email": "haboshi@allambitious.co.jp"
+  }
+}

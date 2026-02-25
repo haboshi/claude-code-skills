@@ -101,6 +101,15 @@
       "version": "1.0.0",
       "category": "audio",
       "keywords": ["tts", "dictionary", "pronunciation", "katakana", "辞書", "発音"]
+    },
+    {
+      "name": "skill-creator-pro",
+      "description": "Professional-grade skill creation with 5 design patterns, security scanning, sanitization, and 3-stage quality assurance. This skill should be used when users want to create a new skill, update an existing skill, improve skill quality, or learn best practices for skill design.",
+      "source": "./skill-creator-pro",
+      "strict": false,
+      "version": "1.0.0",
+      "category": "developer-tools",
+      "keywords": ["skill", "creator", "design-pattern", "security", "qa", "スキル作成", "スキル改善"]
     }
   ]
 }

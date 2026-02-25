@@ -211,11 +211,11 @@ Step 0〜1 でツールが決まった後、追加で詳細を確認する場合
 
 ### モデル比較
 
-**Gemini:**
-| モデル | ID | 特徴 |
-|-------|-----|------|
-| Flash | `gemini-2.5-flash-image` | 高速、コスト効率 |
-| Pro | `gemini-3-pro-image-preview` | 高品質、複雑な指示に対応 |
+**Gemini (Nano Banana):**
+| モデル | ID | ブランド名 | 特徴 |
+|-------|-----|-----------|------|
+| Flash | `gemini-2.5-flash-image` | Nano Banana | 高速、コスト効率（GA） |
+| Pro | `gemini-3-pro-image-preview` | Nano Banana Pro | 高品質、複雑な指示・テキスト描画に強い（Preview） |
 
 **OpenAI:**
 | モデル | ID | 特徴 |

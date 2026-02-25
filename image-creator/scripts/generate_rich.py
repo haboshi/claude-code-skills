@@ -482,7 +482,7 @@ def main():
         "--model", "-m",
         default="pro",
         choices=["pro", "flash"],
-        help="モデル: pro=高品質, flash=高速（デフォルト: pro）",
+        help="モデル: pro=Nano Banana Pro(高品質), flash=Nano Banana(高速)（デフォルト: pro）",
     )
     parser.add_argument(
         "--ref-image",

@@ -25,7 +25,7 @@
       "description": "Google Gemini、OpenAI GPT Image、またはZhipuAI GLM-Imageの画像生成モデルで画像を生成・編集。「画像を生成して」「イラストを作って」「この画像を編集して」などの指示で自動的に使用される。ステッカーシート生成・分割にも対応。3プロバイダーから選択可能。",
       "source": "./image-creator",
       "strict": false,
-      "version": "1.1.4",
+      "version": "1.1.5",
       "category": "image-generation",
       "keywords": ["image", "ai", "gemini", "openai", "zhipuai", "glm-image", "generate", "画像生成", "イラスト"],
       "skills": ["./"]

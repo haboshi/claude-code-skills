@@ -40,6 +40,7 @@ def generate_image(
 ) -> str:
     """Gemini APIを使用して画像を生成"""
     from google import genai
+    from google.genai import types
 
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
@@ -60,7 +61,7 @@ def generate_image(
 
     model_ids = {
         "flash": "gemini-2.5-flash-image",
-        "pro": "gemini-3-pro-image-preview"
+        "pro": "gemini-3-pro-image-preview",
     }
     model_id = model_ids.get(model_type, model_ids["pro"])
 
@@ -81,6 +82,9 @@ def generate_image(
     response = client.models.generate_content(
         model=model_id,
         contents=contents,
+        config=types.GenerateContentConfig(
+            response_modalities=["TEXT", "IMAGE"],
+        ),
     )
 
     output_file = Path(output_path)
@@ -114,7 +118,7 @@ def main():
     parser.add_argument("prompt", help="画像生成プロンプト")
     parser.add_argument("-o", "--output", default="generated_image.png", help="出力ファイルパス")
     parser.add_argument("-a", "--aspect-ratio", default="1:1", choices=["1:1", "16:9", "9:16", "4:3", "3:4"], help="アスペクト比")
-    parser.add_argument("-m", "--model", default="pro", choices=["flash", "pro"], help="モデル: flash=高速, pro=高品質")
+    parser.add_argument("-m", "--model", default="pro", choices=["flash", "pro"], help="モデル: flash=Nano Banana(高速), pro=Nano Banana Pro(高品質・テキスト描画に強い)")
     parser.add_argument("--magenta-bg", action="store_true", help="マゼンタ背景で生成")
     parser.add_argument("-r", "--reference", default=None, help="参照画像のパス")
 

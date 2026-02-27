@@ -113,16 +113,6 @@
       "skills": ["./"]
     },
     {
-      "name": "telnyx-expert",
-      "description": "Telnyx実装エキスパート。Voice API（Call Control、TeXML、SIP Trunking）、AI連携（Inference API、Voice AI Agents）、Messaging（SMS/MMS）のNode.js実装を支援。最新ドキュメントをリアルタイム取得し、コミュニティ知見とベストプラクティスに基づくガイドを提供。",
-      "source": "./telnyx-expert",
-      "strict": false,
-      "version": "1.0.0",
-      "category": "cloud-communications",
-      "keywords": ["telnyx", "voice", "call-control", "texml", "sip", "sms", "telephony", "webhook", "クラウド電話", "音声API"],
-      "skills": ["./"]
-    },
-    {
       "name": "line-sticker-creator",
       "description": "LINEスタンプセットを作成。AI画像生成でキャラクター一貫性を保った静止画・アニメーションスタンプを生成し、LINE Creators Market仕様に準拠したバリデーション・リサイズ・パック整理まで対応。「LINEスタンプを作って」「LINEスタンプ」「スタンプセットを作成」「LINEのスタンプ」「LINE sticker」で発動。image-creatorスキルと連携。",
       "source": "./line-sticker-creator",

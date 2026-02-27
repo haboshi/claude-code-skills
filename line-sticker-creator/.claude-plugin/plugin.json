@@ -1,0 +1,9 @@
+{
+  "name": "line-sticker-creator",
+  "version": "2.0.0",
+  "description": "LINEスタンプセット作成スキル。AI画像生成でキャラクター一貫性を保った静止画・アニメーションスタンプを生成し、テーマ・トーン選択、テキストオーバーレイ、サマリー画像生成、LINE仕様バリデーション・リサイズ・パック整理・ZIP作成まで対応。",
+  "author": {
+    "name": "haboshi",
+    "email": "haboshi@allambitious.co.jp"
+  }
+}

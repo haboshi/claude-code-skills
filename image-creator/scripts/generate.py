@@ -90,6 +90,7 @@ def generate_image(
     aspect_ratio: str = "1:1",
     model_type: str = "pro",
     magenta_bg: bool = False,
+    green_bg: bool = False,
     reference_image: str = None,
     no_fallback: bool = False,
 ) -> str:
@@ -102,7 +103,14 @@ def generate_image(
         print("エラー: 環境変数 GEMINI_API_KEY が設定されていません")
         sys.exit(1)
 
-    if magenta_bg:
+    if green_bg:
+        bg_instruction = (
+            "BACKGROUND: solid flat uniform bright green (#00FF00) color only. "
+            "NO borders, NO outlines, NO frames, NO shadows, NO gradients. "
+            "Subject has natural colors, floating directly on pure green background."
+        )
+        final_prompt = f"{prompt}. {bg_instruction}"
+    elif magenta_bg:
         bg_instruction = (
             "BACKGROUND: solid flat uniform magenta pink (#FF00FF) color only. "
             "NO borders, NO outlines, NO frames, NO shadows, NO gradients. "
@@ -129,7 +137,9 @@ def generate_image(
 
     print(f"モデル: {model_id}")
     print(f"プロンプト: {final_prompt[:100]}...")
-    if magenta_bg:
+    if green_bg:
+        print("オプション: グリーン背景")
+    elif magenta_bg:
         print("オプション: マゼンタ背景")
     if reference_image:
         print("オプション: 参照画像あり")
@@ -241,7 +251,8 @@ def main():
     parser.add_argument("-o", "--output", default="generated_image.png", help="出力ファイルパス")
     parser.add_argument("-a", "--aspect-ratio", default="1:1", choices=["1:1", "16:9", "9:16", "4:3", "3:4", "1:4", "4:1"], help="アスペクト比")
     parser.add_argument("-m", "--model", default="nb2", choices=["flash", "nb2", "pro"], help="モデル: nb2=Nano Banana 2(推奨), flash=Nano Banana(高速), pro=Nano Banana Pro(最高品質)")
-    parser.add_argument("--magenta-bg", action="store_true", help="マゼンタ背景で生成")
+    parser.add_argument("--magenta-bg", action="store_true", help="マゼンタ背景で生成（ピンク/赤系テキストと競合注意）")
+    parser.add_argument("--green-bg", action="store_true", help="グリーン背景で生成（ピンク/赤系テキストに推奨）")
     parser.add_argument("-r", "--reference", default=None, help="参照画像のパス")
     parser.add_argument("--no-fallback", action="store_true", help="Proモデル失敗時にFlashへのフォールバックを無効化")
 
@@ -253,6 +264,7 @@ def main():
         aspect_ratio=args.aspect_ratio,
         model_type=args.model,
         magenta_bg=args.magenta_bg,
+        green_bg=args.green_bg,
         reference_image=args.reference,
         no_fallback=args.no_fallback,
     )

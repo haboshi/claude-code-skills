@@ -353,9 +353,9 @@ def generate_image(
         model=model_id,
         contents=contents,
         config=types.GenerateContentConfig(
-            response_modalities=["image", "text"],
-            imageConfig=types.ImageConfig(
-                aspectRatio=aspect_ratio,
+            response_modalities=["TEXT", "IMAGE"],
+            image_config=types.ImageConfig(
+                aspect_ratio=aspect_ratio,
             ),
         ),
     )

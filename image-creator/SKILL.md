@@ -214,8 +214,9 @@ Step 0〜1 でツールが決まった後、追加で詳細を確認する場合
 **Gemini (Nano Banana):**
 | モデル | ID | ブランド名 | 特徴 |
 |-------|-----|-----------|------|
-| Flash | `gemini-2.5-flash-image` | Nano Banana | 高速、コスト効率（GA） |
-| Pro | `gemini-3-pro-image-preview` | Nano Banana Pro | 高品質、複雑な指示・テキスト描画に強い（Preview） |
+| NB2 | `gemini-3.1-flash-image-preview` | Nano Banana 2 | **推奨** Pro品質+Flash速度、参照画像10枚、thinking制御（Preview） |
+| Flash | `gemini-2.5-flash-image` | Nano Banana | 高速、コスト効率、最安定（GA） |
+| Pro | `gemini-3-pro-image-preview` | Nano Banana Pro | 最高品質、キャラクター一貫性（Preview） |
 
 **OpenAI:**
 | モデル | ID | 特徴 |
@@ -241,10 +242,11 @@ Step 0〜1 でツールが決まった後、追加で詳細を確認する場合
 
 | ケース | プロバイダー | モデル | 背景除去 |
 |--------|-------------|--------|----------|
+| 汎用・高品質画像生成 | Gemini | nb2 | 不要 or Vision API |
 | 透過アイコン・ステッカー | OpenAI | 1.5 | `--background transparent` |
-| 参照画像のスタイルコピー | Gemini | pro | Vision API |
+| 参照画像のスタイルコピー | Gemini | nb2 / pro | Vision API |
 | シンプルなイラスト | Gemini | flash | マゼンタ除去 |
-| 高品質イラスト | OpenAI | 1.5 | 不要 or transparent |
+| 高品質イラスト | Gemini / OpenAI | nb2 / 1.5 | 不要 or transparent |
 | プロトタイプ・テスト | OpenAI | mini | 不要 |
 | テキスト入り画像 | GLM-Image | glm-image | 不要 |
 | 日本語/中国語重視 | GLM-Image | glm-image | 不要 |
@@ -286,10 +288,19 @@ uv run --with google-genai --with pillow scripts/generate.py "プロンプト" [
 | オプション | 説明 | デフォルト |
 |-----------|------|-----------|
 | `-o`, `--output` | 出力ファイルパス | `generated_image.png` |
-| `-a`, `--aspect-ratio` | アスペクト比 (`1:1`, `16:9`, `9:16`, `4:3`, `3:4`) | `1:1` |
-| `-m`, `--model` | モデル (`flash`, `pro`) | `pro` |
+| `-a`, `--aspect-ratio` | アスペクト比 (`1:1`, `16:9`, `9:16`, `4:3`, `3:4`, `1:4`, `4:1`) | `1:1` |
+| `-m`, `--model` | モデル (`nb2`, `flash`, `pro`) | `nb2` |
 | `--magenta-bg` | マゼンタ背景で生成 | なし |
 | `-r`, `--reference` | 参照画像のパス | なし |
+| `--no-fallback` | Pro失敗時のFlashフォールバックを無効化 | なし |
+
+### 耐障害性
+
+- **リトライ**: 503/429/408エラー時、最大2回の指数バックオフリトライ（10秒→20秒）。504は即座にフォールバック
+- **フォールバックチェーン**: Pro→NB2→Flash、NB2→Flash の自動フォールバック（`--no-fallback`で無効化可能）
+- **モデル別タイムアウト**: NB2/Pro=300秒、Flash=600秒
+
+> **Note**: NB2 (`gemini-3.1-flash-image-preview`) と Pro (`gemini-3-pro-image-preview`) はPreview段階のモデルであり、サーバー過負荷による503/504エラーが発生することがあります。フォールバックチェーンにより、上位モデルが応答しない場合は自動的に下位モデルで生成されます。最高の安定性が必要な場合はFlashモデル（GA）を直接指定してください。
 
 ### 例
 

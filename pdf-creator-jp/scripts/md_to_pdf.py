@@ -506,6 +506,13 @@ def markdown_to_pdf(
     # Read markdown content
     md_content = md_path.read_text(encoding='utf-8')
 
+    # チェックボックス前処理（Markdown変換前に処理）
+    # 1. チェックボックス行の前に空行がない場合を修正（リストとして認識させる）
+    md_content = re.sub(r'([^\n])\n(- \[[ x]\])', r'\1\n\n\2', md_content)
+    # 2. チェックボックス記号を Unicode に変換
+    md_content = re.sub(r'^- \[x\] ', '- ☑ ', md_content, flags=re.MULTILINE)
+    md_content = re.sub(r'^- \[ \] ', '- ☐ ', md_content, flags=re.MULTILINE)
+
     # Convert to HTML
     html_content = markdown.markdown(
         md_content,

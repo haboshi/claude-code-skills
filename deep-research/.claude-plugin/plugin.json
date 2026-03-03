@@ -1,0 +1,9 @@
+{
+  "name": "deep-research",
+  "version": "3.0.0",
+  "description": "マルチエージェント Deep Research スキル v3。5種の情報ドメイン別エージェント（Technical/Market/User/Academic/Policy）をReAct 3ラウンドで並列調査。WebSearch-native設計。重複排除・引用検証付き。",
+  "author": {
+    "name": "haboshi",
+    "email": "haboshi@allambitious.co.jp"
+  }
+}

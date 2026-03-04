@@ -1,7 +1,7 @@
 {
   "name": "deep-research",
-  "version": "4.1.0",
-  "description": "マルチエージェント Deep Research スキル v4.1。6種の情報ドメイン別エージェント（Technical/Market/User/Academic/Policy/Creative）をReAct適応型ラウンドで並列調査。4種ENRICHプリフェッチ（Seed Search/Context7/URL/Market）、Creative Synthesis、Gap Analysis付き。",
+  "version": "4.2.0",
+  "description": "マルチエージェント Deep Research スキル v4.2。テスト実行フィードバック反映: 空値条件付き注入、トークン→文字統一、GAP ANALYSIS評価テンプレート、サマリー要素明記、数値不整合解消ルール追加。",
   "author": {
     "name": "haboshi",
     "email": "haboshi@allambitious.co.jp"

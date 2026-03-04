@@ -4,7 +4,7 @@ description: This skill should be used when the user asks to "深く調べて", 
 allowed-tools: Agent, Bash, Read, Write, WebSearch, AskUserQuestion, mcp__fetch__fetch, mcp__plugin_context7_context7__resolve-library-id, mcp__plugin_context7_context7__query-docs
 ---
 
-# Deep Research v4 - マルチエージェント調査スキル
+# Deep Research v4.1 - マルチエージェント調査スキル
 
 トピックをサブテーマに分解し、**情報ドメイン別の専門エージェント**で並列調査、統合レポートを生成する。
 
@@ -71,7 +71,7 @@ Phase 1: PLAN（計画 → ユーザー承認）
   ├─ Step 1.1: トピック分解とエージェント選択
   └─ Step 1.2: 計画提示と承認
   │
-Phase 1.5: ENRICH（フォアグラウンド・プリフェッチ、最大3分）
+Phase 1.5: ENRICH（フォアグラウンド・プリフェッチ）
   ├─ Step 1.5.1: Seed Search ENRICH（常時: WebSearch 2-3回で基礎情報収集）
   ├─ Step 1.5.2: Context7 ENRICH（条件付き: Technical Agent + OSS/FW時のみ）
   ├─ Step 1.5.3: URL ENRICH（条件付き: ユーザーが参考URL提供時のみ）
@@ -166,14 +166,14 @@ WebSearch: "{ユーザーのトピック} overview" で検索
 
 バックグラウンドエージェント起動前に、オーケストレーター（フォアグラウンド）で情報をプリフェッチし、各エージェントのプロンプトに注入する。
 **目的**: バックグラウンドエージェントでは mcp__fetch__fetch が権限制約で利用不可のため、フォアグラウンドで高密度な初期コンテキストを収集してエージェントの調査品質を底上げする。
-**Wall-clock 制約**: Phase 1.5 全体で**最大3分**。超過時は未完了ステップをスキップし、完了分のみで注入。
+**実行制約**: Phase 1.5 全体で WebSearch は**最大6回**、mcp__fetch__fetch は**最大3回**まで。制約内で優先度の高い ENRICH ステップから実行する。
 
 #### Step 1.5.1: Seed Search ENRICH（常時実行）
 
-**タイムボックス**: 30-60秒 | **目的**: 全エージェント共通の基礎コンテキスト提供
+**WebSearch: 2-3回** | **目的**: 全エージェント共通の基礎コンテキスト提供
 
 1. トピックの主要キーワードで WebSearch を **2-3回** 実行
-   - `"{トピック} overview 2025"` または `"{トピック} 概要 最新動向"`
+   - `"{トピック} overview {現在の年}"` または `"{トピック} 概要 最新動向"`（`{現在の年}` は実行時の西暦年で置換）
    - `"{トピック} market size OR 市場規模 OR adoption rate"`（ビジネス系）
    - `"{トピック} {最重要サブトピック} latest"`（任意、重点領域に合わせて）
 2. 上位3-5件のタイトル+スニペットを集約し `seed_context` に格納
@@ -181,7 +181,7 @@ WebSearch: "{ユーザーのトピック} overview" で検索
 
 #### Step 1.5.2: Context7 ENRICH（条件付き: Technical Agent + OSS/FW時のみ）
 
-**タイムボックス**: 30-60秒
+**MCP呼出: 2回**（resolve-library-id + query-docs）
 
 1. `mcp__plugin_context7_context7__resolve-library-id` でライブラリIDを解決
 2. `mcp__plugin_context7_context7__query-docs` で関連ドキュメントを取得
@@ -192,7 +192,7 @@ WebSearch: "{ユーザーのトピック} overview" で検索
 
 #### Step 1.5.3: URL ENRICH（条件付き: ユーザーが参考URL提供時のみ）
 
-**タイムボックス**: 30-60秒（URL数 x 15秒目安）
+**mcp__fetch__fetch: 最大3回**（URL数上限）
 
 1. ユーザーのリクエストからURLを抽出（**最大3件**）
 2. 各URLに対して `mcp__fetch__fetch` でページ全文を取得（max_length: 5000）
@@ -204,10 +204,10 @@ WebSearch: "{ユーザーのトピック} overview" で検索
 
 #### Step 1.5.4: Market ENRICH（条件付き: Market Agent選択時のみ）
 
-**タイムボックス**: 30-60秒
+**WebSearch: 1-2回 + mcp__fetch__fetch: 最大2回**
 
 1. WebSearch で市場レポートURLを特定
-   - `"{トピック} market size report 2025 site:statista.com OR site:mordorintelligence.com"`
+   - `"{トピック} market size report {現在の年} site:statista.com OR site:mordorintelligence.com"`
    - `"{トピック} 市場規模 レポート site:yano.co.jp OR site:fuji-keizai.co.jp"`
 2. 上位2件のURLに対して `mcp__fetch__fetch` で取得（max_length: 5000）
 3. 市場規模・成長率・主要プレイヤーのデータポイントを抽出
@@ -217,14 +217,15 @@ WebSearch: "{ユーザーのトピック} overview" で検索
 
 #### Step 1.5.5: 各エージェントプロンプトへの注入
 
-| 注入セクション | 最大トークン | 注入先 |
+| 注入セクション | 最大目安 | 注入先 |
 |---|---|---|
-| `## 基礎コンテキスト（事前取得済み）` | 1500 | 全エージェント |
-| `## 公式ドキュメント（事前取得済み）` | 2000 | Technical Agent のみ |
-| `## 参考資料（ユーザー提供URL）` | 1000 x URL数 | 関連エージェント |
-| `## 市場データ（事前取得済み）` | 1500 | Market Agent のみ |
+| `## 基礎コンテキスト（事前取得済み）` | 約1,000文字 | 全エージェント |
+| `## 公式ドキュメント（事前取得済み）` | 約1,500文字 | Technical Agent のみ |
+| `## 参考資料（ユーザー提供URL）` | 約700文字 x URL数 | 関連エージェント |
+| `## 市場データ（事前取得済み）` | 約1,000文字 | Market Agent のみ |
 
-**合計トークン上限**: 全注入の合計が **7000トークン** を超えないこと。超過時は情報密度の低いセクションから要約を圧縮。
+**合計上限**: 全注入の合計が **約5,000文字** を超えないこと。超過時は情報密度の低いセクションから要約を圧縮。
+**空値の扱い**: プレースホルダーが空文字の場合、セクションヘッダーごと省略する（ヘッダーだけを残さない）。
 
 **注入時の共通指示**:
 ```
@@ -391,11 +392,11 @@ mkdir -p /tmp/deep-research/{topic_slug}
 
 ## サブエージェント プロンプトテンプレート
 
-各エージェントは **ReAct 適応型ラウンド（2〜5回）** で調査する。WebSearch + MCP Fetch で情報を取得する設計。
+各エージェントは **ReAct 適応型ラウンド（2〜5回）** で調査する。WebSearch で情報を取得する設計（MCP Fetch は Phase 1.5 でオーケストレーターが事前取得）。
 
 ### 共通ヘッダー
 
-全テンプレートの冒頭に以下を挿入する（`{共通ヘッダー}` で参照）:
+全テンプレートの冒頭に以下を挿入する（`{共通ヘッダー}` で参照）。展開後、各プレースホルダー変数（`{seed_context_or_empty}` 等）を実際の値または空文字で置換する:
 
 ```
 ## 調査方法: ReAct 適応型ラウンド（2〜5回）
@@ -427,19 +428,19 @@ mkdir -p /tmp/deep-research/{topic_slug}
 ## 基礎コンテキスト（事前取得済み）
 {seed_context_or_empty}
 
+## 参考資料（ユーザー提供URL）
+{url_context_or_empty}
+
 ## 情報取得ツール
 
 ### WebSearch（主要ツール）
 - 同じ情報を異なるクエリで検索し、クロスバリデーションする
 - 日本語クエリと英語クエリの両方を使用する
+- URL の詳細情報が必要な場合は `site:{ドメイン} {キーワード}` で検索する
 
-### MCP Fetch（補完ツール）
-重要な URL を発見した場合、mcp__fetch__fetch ツールでページ全文を取得できる。
-- **高価値なページのみ**に使用: 公式ドキュメント、技術仕様、導入事例、IR資料
-- max_length: 5000（デフォルト）。長い文書は start_index で分割読み
-- 全 URL に使わない。WebSearch スニペットで十分な情報は fetch 不要
-- **1ラウンドあたり最大2回**まで（コンテキスト節約）
-- mcp__fetch__fetch が利用できない場合は WebSearch スニペットのみで調査を続行
+### 注意
+- mcp__fetch__fetch はバックグラウンドエージェントでは権限制約により利用不可
+- 重要な URL の情報は Phase 1.5 でオーケストレーターが事前取得し、上記セクションに注入済み
 
 ## 出力ルール
 - ファイルパス: {出力ファイルパス}
@@ -482,7 +483,7 @@ mkdir -p /tmp/deep-research/{topic_slug}
 ### Round 2（深掘り）— Round 1 の発見に基づき調整
 - "{specific_tech} benchmark performance" / "{specific_tech} design decisions tradeoffs"
 - 実装パターン・アンチパターン・設定チューニング・内部アーキテクチャ・マイグレーションを意識的に探す
-- 重要な公式ドキュメントや技術ブログの URL を発見した場合は mcp__fetch__fetch で全文を取得
+- 重要な公式ドキュメントや技術ブログは `site:{ドメイン} {キーワード}` で詳細を検索
 
 ### Round 3（検証・補完）
 - "{topic} limitations problems" / "{specific_claim} evidence data"
@@ -532,7 +533,7 @@ mkdir -p /tmp/deep-research/{topic_slug}
 
 ### Round 2（深掘り）— Round 1 で特定した主要プレイヤーについて
 - "{company} revenue ARR funding" / "{company} vs {competitor}" / "{industry} pricing business model"
-- 重要なIR資料・プレスリリースの URL を発見した場合は mcp__fetch__fetch で全文を取得
+- 重要なIR資料・プレスリリースは `site:{企業ドメイン} {キーワード}` で詳細を検索
 
 ### Round 3（検証・補完）
 - "{industry} challenges risks barriers" / "{market_size_claim} source verification"
@@ -576,7 +577,7 @@ mkdir -p /tmp/deep-research/{topic_slug}
 
 ### Round 2（深掘り）— Round 1 で特定した調査・統計について
 - "{specific_survey} methodology sample size" / "{topic} case study enterprise" / "{topic} productivity impact"
-- 導入事例・レビュー記事の URL を発見した場合は mcp__fetch__fetch で全文を取得
+- 導入事例・レビュー記事は `site:{ドメイン} {キーワード}` で詳細を検索
 
 ### Round 3（検証・補完）
 - "{topic} criticism negative experience" / "{productivity_claim} counter evidence"
@@ -625,7 +626,7 @@ mkdir -p /tmp/deep-research/{topic_slug}
 - "{specific_method} evaluation results"
 - "{paper_title} citations follow-up"
 - "{topic} benchmark dataset"
-論文のアブストラクトや概要ページの URL を発見した場合は mcp__fetch__fetch で全文を取得すること。
+論文のアブストラクトは `site:arxiv.org {論文タイトル}` や `site:semanticscholar.org {著者名}` で詳細を検索。
 
 ### Round 3（検証・補完）
 - "{topic} limitations open problems"
@@ -691,7 +692,7 @@ mkdir -p /tmp/deep-research/{topic_slug}
 - "{specific_regulation} compliance checklist"
 - "{topic} legal risk liability"
 - "{topic} government policy announcement"
-規制文書・ガイドラインの URL を発見した場合は mcp__fetch__fetch で全文を取得すること。
+規制文書・ガイドラインは `site:{官公庁ドメイン} {キーワード}` で詳細を検索。
 
 ### Round 3（検証・補完）
 - "{topic} enforcement action penalty"
@@ -757,7 +758,7 @@ mkdir -p /tmp/deep-research/{topic_slug}
 - "{対象分野} disruption innovation case study"
 - "{対象分野} 異業種参入 成功事例"
 - "biomimicry OR cross-industry innovation {対象分野}"
-イノベーション事例・ケーススタディの URL を発見した場合は mcp__fetch__fetch で全文を取得すること。
+イノベーション事例・ケーススタディは `site:{メディアドメイン} {キーワード}` で詳細を検索。
 
 ### Round 3（逆説・反主流の視点）
 - "{業界の常識} contrarian view"
@@ -801,7 +802,7 @@ mkdir -p /tmp/deep-research/{topic_slug}
 | 全エージェント失敗 | ユーザーに報告し、トピック修正を提案 |
 | 出力ファイルが空 | 該当サブトピックをスキップし明記 |
 | WebSearch 結果が不十分 | 適応型ラウンドの追加ラウンドでクエリを変形して再試行 |
-| mcp__fetch__fetch 利用不可 | WebSearch スニペットのみで調査を続行（v3 互換動作） |
+| mcp__fetch__fetch 利用不可（Phase 1.5） | WebSearch スニペットのみでENRICHを続行 |
 | ペイウォール論文 | アブストラクトのみで要約。「全文未確認」と明記 |
 | WebSearch 拒否 | 下記フォールバックモードに切り替え |
 | Context7 ライブラリID解決失敗 | Phase 1.5 をスキップし、WebSearch のみで調査続行 |
@@ -812,7 +813,7 @@ mkdir -p /tmp/deep-research/{topic_slug}
 | URL ENRICH の全URL取得失敗 | URL ENRICH をスキップ。調査続行 |
 | Market ENRICH のレポートURL特定失敗 | Market ENRICH をスキップ。エージェントが自力で検索 |
 | Market ENRICH の mcp__fetch__fetch 失敗 | WebSearch スニペットのみで注入 |
-| Phase 1.5 全体が3分超過 | 未完了の ENRICH ステップをスキップし、完了分のみで注入 |
+| Phase 1.5 の呼出回数上限に到達 | 未完了の ENRICH ステップをスキップし、完了分のみで注入 |
 
 ### フォールバックモード（パーミッション問題時）
 
@@ -852,7 +853,7 @@ Phase 0 で WebSearch が拒否された場合:
 - [ ] ユーザー提供URLが取得され、関連エージェントに注入されている（URL提供時）
 - [ ] 市場データが取得され、Market Agent に注入されている（Market Agent選択時）
 - [ ] 事前取得情報がエージェントの出力で活用されている（概要の繰り返しではなく深掘りに使われている）
-- [ ] Phase 1.5の実行時間が3分以内に収まっている
+- [ ] Phase 1.5 の WebSearch/mcp__fetch__fetch 呼出回数が上限以内に収まっている
 
 ### 創造的分析（Creative モード時）
 - [ ] アナロジーが最低2つの異業種から抽出されている
@@ -882,6 +883,6 @@ Phase 0 で WebSearch が拒否された場合:
 | 自己評価で常に Round 5 まで実行 | 過剰調査 | Round 2 完了時の評価基準に従う |
 | シングルパス検索 | 表層情報のみで深度不足 | 適応型ラウンドで段階的に深掘り |
 | ENRICH結果をそのまま最終レポートに転記 | プリフェッチは出発点であり成果物ではない | エージェントが深掘り・検証した上で活用 |
-| 全ENRICHステップを常に実行 | 不要なステップで3分を浪費 | 条件判定に従い該当ステップのみ実行 |
+| 全ENRICHステップを常に実行 | 不要なステップで呼出回数を浪費 | 条件判定に従い該当ステップのみ実行 |
 | ENRICH取得情報を7,000トークン超注入 | サブエージェントのコンテキスト圧迫 | 要約・抜粋で7,000トークン以内に収める |
 | mcp__fetch__fetchをサブエージェント内で使用 | バックグラウンド権限制約で失敗する | Phase 1.5でフォアグラウンド取得し注入 |

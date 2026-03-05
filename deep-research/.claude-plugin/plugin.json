@@ -1,7 +1,7 @@
 {
   "name": "deep-research",
-  "version": "4.3.0",
-  "description": "マルチエージェント Deep Research スキル v4.3。エージェント出力をWriteツール明示指定、ファイル未保存時のリカバリフロー追加、不確実性マーカー保持ルール、ENRICH注入検証ステップ追加。",
+  "version": "4.4.0",
+  "description": "マルチエージェント Deep Research スキル v4.4。引用検証サンプリング化、WebSearch回数ガイダンス、レポート行数目安追加。",
   "author": {
     "name": "haboshi",
     "email": "haboshi@allambitious.co.jp"

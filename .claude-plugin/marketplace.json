@@ -113,6 +113,16 @@
       "skills": ["./"]
     },
     {
+      "name": "deep-research",
+      "description": "マルチエージェント Deep Research。トピックを情報ドメイン別に分解し、3-5体の専門エージェント（Technical/Market/User/Academic/Policy/Creative）で並列調査、統合レポートを生成。「深く調べて」「徹底調査」「市場調査して」「技術調査」「比較分析」で発動。",
+      "source": "./deep-research",
+      "strict": false,
+      "version": "4.4.0",
+      "category": "research",
+      "keywords": ["research", "deep-research", "multi-agent", "analysis", "調査", "リサーチ", "市場調査", "技術調査"],
+      "skills": ["./"]
+    },
+    {
       "name": "line-sticker-creator",
       "description": "LINEスタンプセットを作成。AI画像生成でキャラクター一貫性を保った静止画・アニメーションスタンプを生成し、LINE Creators Market仕様に準拠したバリデーション・リサイズ・パック整理まで対応。「LINEスタンプを作って」「LINEスタンプ」「スタンプセットを作成」「LINEのスタンプ」「LINE sticker」で発動。image-creatorスキルと連携。",
       "source": "./line-sticker-creator",

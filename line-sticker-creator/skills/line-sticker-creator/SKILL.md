@@ -9,7 +9,20 @@ allowed-tools: Bash, Read, Write, AskUserQuestion
 AI画像生成を活用してLINEスタンプセットを作成するスキル。
 image-creator スキルのスクリプト群と連携し、LINE Creators Market 仕様に準拠したスタンプパックを生成する。
 
-前提: `image-creator` スキルが同一リポジトリ内にインストールされていること。
+前提: `image-creator` プラグインがインストールされていること。
+
+### image-creator スクリプトパスの検出
+
+実行開始時に以下で image-creator のスクリプトディレクトリを特定する:
+
+```bash
+# image-creator スクリプトの検出（マーケットプレイス → ローカルの順に探索）
+IC_SCRIPTS=$(find ~/.claude/plugins/cache -path "*/image-creator/*/scripts/generate.py" 2>/dev/null | head -1 | xargs dirname 2>/dev/null)
+[ -z "$IC_SCRIPTS" ] && IC_SCRIPTS="../image-creator/scripts"
+echo "image-creator scripts: $IC_SCRIPTS"
+```
+
+以降のコマンドでは `$IC_SCRIPTS` を使用する。
 
 ## ワークフロー概要
 
@@ -389,12 +402,12 @@ ls output/line-stickers/raw/
 ```bash
 # 基本生成（マゼンタ背景で生成→後で背景除去）
 uv run --with google-genai --with pillow \
-  ../image-creator/scripts/generate.py "[プロンプト]" \
+  $IC_SCRIPTS/generate.py "[プロンプト]" \
   --magenta-bg -o output/line-stickers/raw/01.png
 
 # 参照画像あり
 uv run --with google-genai --with pillow \
-  ../image-creator/scripts/generate.py "[プロンプト]" \
+  $IC_SCRIPTS/generate.py "[プロンプト]" \
   --magenta-bg -r reference.png -o output/line-stickers/raw/01.png
 ```
 
@@ -403,7 +416,7 @@ uv run --with google-genai --with pillow \
 ```bash
 # ネイティブ透過背景（背景除去不要）
 uv run --with openai --with pillow \
-  ../image-creator/scripts/generate_openai.py "[プロンプト]" \
+  $IC_SCRIPTS/generate_openai.py "[プロンプト]" \
   -b transparent -s 1024x1024 -o output/line-stickers/raw/01.png
 ```
 
@@ -411,7 +424,7 @@ uv run --with openai --with pillow \
 
 ```bash
 uv run --with httpx --with pillow \
-  ../image-creator/scripts/generate_zhipu.py "[プロンプト]" \
+  $IC_SCRIPTS/generate_zhipu.py "[プロンプト]" \
   -s 1024x1024 -o output/line-stickers/raw/01.png
 ```
 
@@ -492,7 +505,7 @@ uv run --with pillow scripts/create_summary.py \
 ```bash
 # マゼンタ背景除去
 uv run --with pillow \
-  ../image-creator/scripts/remove-bg-magenta.py \
+  $IC_SCRIPTS/remove-bg-magenta.py \
   output/line-stickers/raw/01.png \
   -o output/line-stickers/nobg/01.png
 ```
@@ -501,7 +514,7 @@ uv run --with pillow \
 
 ```bash
 uv run --with pillow --with pyobjc-framework-Vision \
-  ../image-creator/scripts/remove-bg-vision.py \
+  $IC_SCRIPTS/remove-bg-vision.py \
   output/line-stickers/raw/01.png \
   -o output/line-stickers/nobg/01.png
 ```

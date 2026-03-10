@@ -1,7 +1,7 @@
 {
   "name": "deep-research",
-  "version": "4.4.0",
-  "description": "マルチエージェント Deep Research スキル v4.4。引用検証サンプリング化、WebSearch回数ガイダンス、レポート行数目安追加。",
+  "version": "5.0.0",
+  "description": "マルチエージェント Deep Research スキル v5.0。2モード(compare-lite/deep-full)、3-Tierモデル戦略(haiku検索→sonnet統合)、明示的停止条件、比較マトリクス出力対応。",
   "author": {
     "name": "haboshi",
     "email": "haboshi@allambitious.co.jp"

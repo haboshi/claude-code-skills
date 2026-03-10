@@ -122,12 +122,12 @@
     },
     {
       "name": "deep-research",
-      "description": "マルチエージェント Deep Research。トピックを情報ドメイン別に分解し、3-5体の専門エージェント（Technical/Market/User/Academic/Policy/Creative）で並列調査、統合レポートを生成。「深く調べて」「徹底調査」「市場調査して」「技術調査」「比較分析」で発動。",
+      "description": "マルチエージェント Deep Research v5.0。compare-lite（比較5-8分）とdeep-full（徹底10-20分）の2モード。3-Tierモデル戦略（haiku検索→sonnet統合）で速度・コスト大幅改善。比較マトリクス出力・明示的停止条件対応。「深く調べて」「徹底調査」「比較して」「vs」「どっちがいい」「市場調査」「技術調査」で発動。",
       "source": "./deep-research",
       "strict": false,
-      "version": "4.4.0",
+      "version": "5.0.0",
       "category": "research",
-      "keywords": ["research", "deep-research", "multi-agent", "analysis", "調査", "リサーチ", "市場調査", "技術調査"],
+      "keywords": ["research", "deep-research", "multi-agent", "analysis", "compare", "調査", "リサーチ", "比較", "市場調査", "技術調査"],
       "skills": ["skills/deep-research"]
     },
     {

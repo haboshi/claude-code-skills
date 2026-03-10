@@ -111,10 +111,10 @@
     },
     {
       "name": "deep-research",
-      "description": "マルチエージェント Deep Research v5.0。compare-lite（比較5-8分）とdeep-full（徹底10-20分）の2モード。3-Tierモデル戦略（haiku検索→sonnet統合）で速度・コスト大幅改善。比較マトリクス出力・明示的停止条件対応。「深く調べて」「徹底調査」「比較して」「vs」「どっちがいい」「市場調査」「技術調査」で発動。",
+      "description": "マルチエージェント Deep Research v5.1。compare-lite（比較5-8分）とdeep-full（徹底10-20分）の2モード。柔軟モデルポリシー（GLM-5検索→GPT-5.4統合、ユーザー指定で上書き可）。比較マトリクス出力・明示的停止条件対応。「深く調べて」「徹底調査」「比較して」「vs」「どっちがいい」「市場調査」「技術調査」で発動。",
       "source": "./deep-research",
       "strict": false,
-      "version": "5.0.0",
+      "version": "5.1.0",
       "category": "research",
       "keywords": ["research", "deep-research", "multi-agent", "analysis", "compare", "調査", "リサーチ", "比較", "市場調査", "技術調査"]
     },

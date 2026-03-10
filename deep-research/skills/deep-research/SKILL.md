@@ -9,9 +9,11 @@ allowed-tools: Agent, Bash, Read, Write, WebSearch, AskUserQuestion, mcp__fetch_
 ## 設計思想
 
 > **掘るのは安いモデル、磨くのは強いモデル。深さよりもまず終わること。**
+> **Claude 系はデフォルト常用せず、タスクに最適なモデルをポリシーで選択する。**
 
-- 検索エージェント（Phase 2）: `haiku` — 高速・低コストで情報収集
-- 統合（Phase 3）: オーケストレーター（sonnet 相当）— 高品質な分析・統合
+- 検索エージェント（Phase 2）: 軽量モデル（デフォルト: GLM-5）— 高速・低コストで情報収集
+- 統合（Phase 3）: 主力モデル（デフォルト: GPT-5.4）— 高品質な分析・統合
+- 高品質統合: Opus — ユーザー明示指定時のみ
 - 2つのモード: **compare-lite**（速く鋭く）と **deep-full**（必要時だけ重く）
 
 ---
@@ -60,7 +62,7 @@ allowed-tools: Agent, Bash, Read, Write, WebSearch, AskUserQuestion, mcp__fetch_
 |------|-----|
 | 目標時間 | 5〜8分 |
 | エージェント数 | 2〜3体 |
-| エージェントモデル | `haiku` |
+| エージェントモデル | **Search モデル**（モデルポリシー参照） |
 | ラウンド数 | **2ラウンド（固定）** |
 | WebSearch/エージェント | 最大6回 |
 | WebSearch 合計予算 | 最大18回 |
@@ -74,7 +76,7 @@ allowed-tools: Agent, Bash, Read, Write, WebSearch, AskUserQuestion, mcp__fetch_
 |------|-----|
 | 目標時間 | 10〜20分 |
 | エージェント数 | 3〜5体 |
-| エージェントモデル | `haiku` |
+| エージェントモデル | **Search モデル**（モデルポリシー参照） |
 | ラウンド数 | **最大3ラウンド（適応型）** |
 | WebSearch/エージェント | 最大10回 |
 | WebSearch 合計予算 | 最大40回 |
@@ -84,16 +86,53 @@ allowed-tools: Agent, Bash, Read, Write, WebSearch, AskUserQuestion, mcp__fetch_
 
 ---
 
-## モデル戦略（3-Tier）
+## モデルポリシー（Flexible Model Selection）
 
-| Tier | モデル | 用途 | コスト感 |
-|------|--------|------|----------|
-| **Tier 1** | `haiku` | 検索エージェント（情報収集） | 低 |
-| **Tier 2** | オーケストレーター | 統合・最終レポート生成（デフォルト） | 中 |
-| **Tier 3** | `opus` | ユーザー指定時の高品質統合 | 高 |
+### 設計原則
 
-**デフォルト**: Tier 1 で検索 → Tier 2 で統合。ほぼ全ケースでこれが最適。
-**プレミアム**: ユーザーが「最高品質で」「プレミアムで」と指定した場合、検索を `sonnet`、統合を `opus` エージェントに昇格。
+> **固定モデルではなく、ポリシーで選択する。Claude 系はデフォルト常用せず、タスク特性・ユーザー指定に応じて最適モデルを選択。**
+
+### ロール定義
+
+| ロール | 目的 | デフォルト推奨 |
+|--------|------|----------------|
+| **Search** | 情報収集・WebSearch 実行（Phase 2 エージェント） | GLM-5（軽量・低コスト） |
+| **Synthesis** | 統合・最終レポート生成（Phase 3） | GPT-5.4（高品質推論） |
+| **Premium** | 最高品質の統合・分析 | Opus（明示指定時のみ） |
+
+### モード別デフォルト
+
+| モード | Search モデル | Synthesis モデル |
+|--------|---------------|-----------------|
+| **compare-lite** | GLM-5 | GPT-5.4 |
+| **deep-full** | GLM-5 | GPT-5.4 |
+| **premium** | GPT-5.4 | Opus |
+
+### ユーザー指定による上書き
+
+| ユーザーの指示 | Search | Synthesis | 意図 |
+|--------------|--------|-----------|------|
+| （指定なし） | GLM-5 | GPT-5.4 | コスト最適のデフォルト |
+| "安く" / "コスト重視" | GLM-5 | GLM-5 | 全工程を最安モデルで |
+| "速く" / "急いで" | GLM-5 | GLM-5 | 速度最優先 |
+| "高品質で" / "プレミアム" | GPT-5.4 | Opus | 品質最優先 |
+| "Opus で" | sonnet | opus | Opus 指定 |
+| "GLM で" | GLM-5 | GLM-5 | GLM 固定 |
+| "GPT で" / "GPT-5.4 で" | GPT-5.4 | GPT-5.4 | GPT 固定 |
+| "Claude で" | haiku | sonnet | Claude 系指定 |
+
+### Claude Code 実行時のマッピング
+
+Agent ツールの `model` パラメータは `haiku` / `sonnet` / `opus` のみ対応。
+ポリシーモデルを以下のようにマッピングする:
+
+| ポリシーモデル | Agent `model` | 備考 |
+|--------------|--------------|------|
+| GLM-5 | `haiku` | 最軽量・最安 |
+| GPT-5.4 | `sonnet` | バランス型 |
+| Opus | `opus` | 最高品質 |
+
+**将来拡張**: 外部モデル API（Codex MCP 等）が利用可能であれば、Agent ツール以外の経路で直接 GLM-5 / GPT-5.4 を呼び出すことも可能。その場合はマッピングを経由せずポリシーモデルを直接使用する。
 
 ---
 
@@ -159,7 +198,7 @@ Phase 0: PREFLIGHT（1 WebSearch: 権限確認 + seed 取得）
   │
 Phase 1: PLAN + MODE（compare-lite 判定 → ユーザー承認）
   │
-Phase 2: SEARCH（2-3 haiku agents, 1 round, 並列）
+Phase 2: SEARCH（2-3 Search agents, 2 rounds, 並列）
   │
 Phase 3: SYNTHESIZE（比較マトリクス → 結論 → 次アクション）
 ```
@@ -173,7 +212,7 @@ Phase 1: PLAN + MODE（deep-full 判定 → ユーザー承認）
   │
 Phase 1.5: ENRICH（Seed Search + 条件付き Context7/URL/Market）
   │
-Phase 2: SEARCH（3-5 haiku agents, max 3 rounds, 並列）
+Phase 2: SEARCH（3-5 Search agents, max 3 rounds, 並列）
   │
 Phase 2.5: GAP ANALYSIS（条件付き: 重大ギャップ時のみ max 1体追加）
   │
@@ -214,7 +253,8 @@ WebSearch: "{ユーザーのトピック} overview" で検索
 質問: 以下の調査計画で進めてよいですか？
 
   モード: {compare-lite / deep-full}
-  モデル: 検索=haiku, 統合=orchestrator
+  モデル: 検索={Search モデル}, 統合={Synthesis モデル}
+  （例: 検索=GLM-5, 統合=GPT-5.4）
 
   1. [{対象/サブトピック}] → {Agent種別}
      - Q1: ...  Q2: ...
@@ -294,7 +334,7 @@ mkdir -p /tmp/deep-research/{topic_slug}
 |-----------|-----|
 | `subagent_type` | `"general-purpose"` |
 | `mode` | `"bypassPermissions"` |
-| `model` | `"haiku"`（プレミアム時: `"sonnet"`） |
+| `model` | Search モデルの Claude Code マッピング値（デフォルト: `"haiku"`, premium: `"sonnet"`, Opus指定: `"sonnet"`) |
 | `run_in_background` | `true` |
 | `prompt` | エージェント種別 × モードに応じたテンプレートから構築 |
 | `description` | `"Research: {サブトピック名}"` (5語以内) |
@@ -330,7 +370,7 @@ mkdir -p /tmp/deep-research/{topic_slug}
 | 重点領域の情報量 | 十分 / 不足 |
 
 **追加調査の判定**:
-- 「欠落」または「重大」が1つ以上 → 追加エージェント（最大1体、haiku）起動
+- 「欠落」または「重大」が1つ以上 → 追加エージェント（最大1体、Search モデル）起動
 - 全て「充足」→ Phase 3 へ直行
 
 ### Phase 3: SYNTHESIZE（統合）
@@ -893,7 +933,7 @@ Phase 0 で WebSearch 拒否時:
 | Anti-Pattern | 正しいアプローチ |
 |-------------|----------------|
 | 比較タスクに deep-full を使用 | compare-lite で速く完了 |
-| 全エージェントを sonnet で起動 | **haiku で検索、統合時のみ高品質モデル** |
+| 全エージェントを高コストモデルで起動 | **Search モデル（GLM-5相当）で検索、Synthesis のみ主力モデル** |
 | Round 4-5 まで実行 | **Round 3 で絶対停止** |
 | compare-lite で Round 3 実行 | **2ラウンドで停止** |
 | compare-lite で ENRICH 実行 | PREFLIGHT 結果を seed に流用 |
@@ -901,6 +941,7 @@ Phase 0 で WebSearch 拒否時:
 | 単一トピックに5エージェント | 比較なら対象数分、調査なら3-5分割 |
 | 全エージェントに同じクエリ | 重複排除セクションで範囲を通知 |
 | ENRICH 結果を最終レポートに転記 | エージェントの深掘り結果を使用 |
-| プレミアムモードを常用 | Tier 1 + Tier 2 で十分 |
+| プレミアムモードを常用 | GLM-5 + GPT-5.4 で十分 |
+| Claude 系をデフォルト使用 | ポリシーに従い GLM-5 / GPT-5.4 を優先 |
 | 全リサーチに Creative Agent 投入 | 企画・アイデア系のみ |
 | 引用検証で全URL確認 | 3-5件サンプリング |

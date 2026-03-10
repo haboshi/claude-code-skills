@@ -1,0 +1,144 @@
+{
+  "name": "haboshi-skills",
+  "owner": {
+    "name": "haboshi",
+    "email": "haboshi@allambitious.co.jp"
+  },
+  "metadata": {
+    "description": "Claude Code用スキルコレクション",
+    "version": "0.5.0",
+    "homepage": "https://github.com/haboshi/claude-code-skills"
+  },
+  "plugins": [
+    {
+      "name": "pdf-creator-jp",
+      "description": "MarkdownファイルをPDFに変換（日本語フォント対応）。weasyprintを使用し、ヒラギノ/游書体で美しい日本語ドキュメントを生成。「PDFに変換」「PDF生成」「レポートをPDFで」「ドキュメントを印刷用に」「資料をPDF化」「マークダウンをPDFに」などのリクエストで使用される。",
+      "source": "./pdf-creator-jp",
+      "strict": false,
+      "version": "1.0.0",
+      "category": "document-generation",
+      "keywords": ["pdf", "markdown", "japanese", "document", "weasyprint", "日本語"],
+      "skills": ["skills/pdf-creator-jp"]
+    },
+    {
+      "name": "image-creator",
+      "description": "Google Gemini、OpenAI GPT Image、またはZhipuAI GLM-Imageの画像生成モデルで画像を生成・編集。「画像を生成して」「イラストを作って」「この画像を編集して」などの指示で自動的に使用される。ステッカーシート生成・分割にも対応。3プロバイダーから選択可能。",
+      "source": "./image-creator",
+      "strict": false,
+      "version": "1.3.0",
+      "category": "image-generation",
+      "keywords": ["image", "ai", "gemini", "openai", "zhipuai", "glm-image", "nano-banana-2", "generate", "画像生成", "イラスト"],
+      "skills": ["skills/image-creator"]
+    },
+    {
+      "name": "task-planner",
+      "description": "実装計画とタスク分解のプラグイン。コードベース探索→要件明確化→計画策定→タスク分解→検証。タスク規模に応じて自動的に深度を調整。",
+      "source": "./task-planner",
+      "version": "1.0.0",
+      "category": "planning",
+      "keywords": ["planning", "task", "decompose", "implementation", "計画", "タスク分解"]
+    },
+    {
+      "name": "brave-research",
+      "description": "Brave Search APIを活用した調査プラグイン。Web検索、ニュース検索、画像・動画検索、コンテンツ抽出、マルチステップ深掘り調査に対応。「調査して」「検索して」「最新情報を調べて」などで自動発動。",
+      "source": "./brave-research",
+      "version": "0.1.3",
+      "category": "research",
+      "keywords": ["search", "research", "brave", "web", "news", "調査", "検索", "リサーチ"],
+      "skills": ["skills/brave-research"]
+    },
+    {
+      "name": "svg-header-image",
+      "description": "テンプレートベースのSVGヘッダー画像生成。タイトル・サブタイトルから美しいヘッダー画像を作成。外部API不要。「ヘッダー画像作って」「タイトル画像を作って」「アイキャッチを生成」で発動。",
+      "source": "./svg-header-image",
+      "version": "1.0.0",
+      "category": "image-generation",
+      "keywords": ["svg", "header", "banner", "ogp", "thumbnail", "ヘッダー", "バナー"],
+      "skills": ["skills/svg-header-image"]
+    },
+    {
+      "name": "svg-to-webp",
+      "description": "SVG画像をWebP/PNG形式に変換。単一ファイル・ディレクトリ一括変換対応。sharpベースの高品質変換。「SVGをWebPに変換」「画像を軽量化」「サムネイルを最適化」で発動。",
+      "source": "./svg-to-webp",
+      "version": "1.0.0",
+      "category": "image-conversion",
+      "keywords": ["svg", "webp", "png", "convert", "sharp", "画像変換"],
+      "skills": ["skills/svg-to-webp"]
+    },
+    {
+      "name": "mermaid-to-webp",
+      "description": "Mermaid記法のダイアグラムをWebP/PNG画像に変換。フローチャート、シーケンス図、ER図、ガントチャート等に対応。「Mermaidで図を作って画像にして」「フローチャートを画像化」「ダイアグラムをWebPに」で発動。",
+      "source": "./mermaid-to-webp",
+      "version": "1.0.0",
+      "category": "image-conversion",
+      "keywords": ["mermaid", "diagram", "webp", "png", "flowchart", "sequence", "ダイアグラム"],
+      "skills": ["skills/mermaid-to-webp"]
+    },
+    {
+      "name": "gen-ai-image",
+      "description": "fal.ai GPT Image 1.5で画像生成。シンプルモード（即生成）と詳細モード（パラメータガイド付き）を搭載。「AI画像を生成」「GPTで画像」で発動。",
+      "source": "./gen-ai-image",
+      "version": "1.0.0",
+      "category": "image-generation",
+      "keywords": ["ai", "image", "fal", "gpt-image", "generate", "AI画像"],
+      "skills": ["skills/gen-ai-image"]
+    },
+    {
+      "name": "svg-diagram",
+      "description": "LLMでカスタムデザインのSVG図解を生成。Mermaidでは表現できない自由配置の図解・インフォグラフィック向け。「図解を作って」「アーキテクチャ図」「インフォグラフィック」で発動。",
+      "source": "./svg-diagram",
+      "version": "1.0.0",
+      "category": "image-generation",
+      "keywords": ["svg", "diagram", "infographic", "architecture", "図解", "インフォグラフィック"],
+      "skills": ["skills/svg-diagram"]
+    },
+    {
+      "name": "tts",
+      "description": "テキスト音声変換（TTS）。COEIROINKベースのバッチ音声生成・WAV結合に対応。プロバイダ抽象化によりVOICEVOX等にも拡張可能。「読み上げて」「音声にして」「テキストをTTSで」で発動。",
+      "source": "./tts",
+      "version": "2.0.0",
+      "category": "audio",
+      "keywords": ["tts", "voice", "audio", "coeiroink", "voicevox", "音声", "読み上げ"],
+      "skills": ["skills/tts"]
+    },
+    {
+      "name": "tts-dict",
+      "description": "TTS発音辞書管理。英単語のカタカナ読み登録・適用・確認。LLM自動読み取得にも対応。「辞書登録して」「英単語の読みを登録」「発音確認」で発動。",
+      "source": "./tts-dict",
+      "version": "1.0.0",
+      "category": "audio",
+      "keywords": ["tts", "dictionary", "pronunciation", "katakana", "辞書", "発音"],
+      "skills": ["skills/tts-dict"]
+    },
+    {
+      "name": "skill-creator-pro",
+      "description": "Professional-grade skill creation with 5 design patterns, security scanning, sanitization, and 3-stage quality assurance. This skill should be used when users want to create a new skill, update an existing skill, improve skill quality, or learn best practices for skill design.",
+      "source": "./skill-creator-pro",
+      "strict": false,
+      "version": "1.0.1",
+      "category": "developer-tools",
+      "keywords": ["skill", "creator", "design-pattern", "security", "qa", "スキル作成", "スキル改善"],
+      "skills": ["skills/skill-creator-pro"]
+    },
+    {
+      "name": "deep-research",
+      "description": "マルチエージェント Deep Research v5.0。compare-lite（比較5-8分）とdeep-full（徹底10-20分）の2モード。3-Tierモデル戦略（haiku検索→sonnet統合）で速度・コスト大幅改善。比較マトリクス出力・明示的停止条件対応。「深く調べて」「徹底調査」「比較して」「vs」「どっちがいい」「市場調査」「技術調査」で発動。",
+      "source": "./deep-research",
+      "strict": false,
+      "version": "5.0.0",
+      "category": "research",
+      "keywords": ["research", "deep-research", "multi-agent", "analysis", "compare", "調査", "リサーチ", "比較", "市場調査", "技術調査"],
+      "skills": ["skills/deep-research"]
+    },
+    {
+      "name": "line-sticker-creator",
+      "description": "LINEスタンプセットを作成。AI画像生成でキャラクター一貫性を保った静止画・アニメーションスタンプを生成し、LINE Creators Market仕様に準拠したバリデーション・リサイズ・パック整理まで対応。「LINEスタンプを作って」「LINEスタンプ」「スタンプセットを作成」「LINEのスタンプ」「LINE sticker」で発動。image-creatorスキルと連携。",
+      "source": "./line-sticker-creator",
+      "strict": false,
+      "version": "2.0.0",
+      "category": "image-generation",
+      "keywords": ["LINE", "sticker", "stamp", "スタンプ", "ステッカー", "LINEスタンプ", "animated", "APNG"],
+      "skills": ["skills/line-sticker-creator"]
+    }
+  ]
+}

@@ -27,16 +27,16 @@ import re
 import sys
 from pathlib import Path
 
-import markdown
-from weasyprint import CSS, HTML
-
-# 環境変数の自動設定（macOS Homebrew対応）
+# 環境変数の自動設定（macOS Homebrew対応）— weasyprint import前に実行必須
 if sys.platform == "darwin":
     homebrew_lib = "/opt/homebrew/lib"
     if os.path.exists(homebrew_lib):
         current_dyld = os.environ.get("DYLD_LIBRARY_PATH", "")
         if homebrew_lib not in current_dyld:
             os.environ["DYLD_LIBRARY_PATH"] = f"{homebrew_lib}:{current_dyld}"
+
+import markdown
+from weasyprint import CSS, HTML
 
 
 # =============================================================================

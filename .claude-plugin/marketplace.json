@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Claude Code用スキルコレクション",
-    "version": "0.5.0",
+    "version": "0.5.1",
     "homepage": "https://github.com/haboshi/claude-code-skills"
   },
   "plugins": [
@@ -17,8 +17,14 @@
       "strict": false,
       "version": "1.0.1",
       "category": "document-generation",
-      "keywords": ["pdf", "markdown", "japanese", "document", "weasyprint", "日本語"],
-      "skills": ["skills/pdf-creator-jp"]
+      "keywords": [
+        "pdf",
+        "markdown",
+        "japanese",
+        "document",
+        "weasyprint",
+        "日本語"
+      ]
     },
     {
       "name": "image-creator",
@@ -27,8 +33,18 @@
       "strict": false,
       "version": "1.3.0",
       "category": "image-generation",
-      "keywords": ["image", "ai", "gemini", "openai", "zhipuai", "glm-image", "nano-banana-2", "generate", "画像生成", "イラスト"],
-      "skills": ["skills/image-creator"]
+      "keywords": [
+        "image",
+        "ai",
+        "gemini",
+        "openai",
+        "zhipuai",
+        "glm-image",
+        "nano-banana-2",
+        "generate",
+        "画像生成",
+        "イラスト"
+      ]
     },
     {
       "name": "task-planner",
@@ -36,7 +52,14 @@
       "source": "./task-planner",
       "version": "1.0.0",
       "category": "planning",
-      "keywords": ["planning", "task", "decompose", "implementation", "計画", "タスク分解"]
+      "keywords": [
+        "planning",
+        "task",
+        "decompose",
+        "implementation",
+        "計画",
+        "タスク分解"
+      ]
     },
     {
       "name": "brave-research",
@@ -44,8 +67,16 @@
       "source": "./brave-research",
       "version": "0.1.3",
       "category": "research",
-      "keywords": ["search", "research", "brave", "web", "news", "調査", "検索", "リサーチ"],
-      "skills": ["skills/brave-research"]
+      "keywords": [
+        "search",
+        "research",
+        "brave",
+        "web",
+        "news",
+        "調査",
+        "検索",
+        "リサーチ"
+      ]
     },
     {
       "name": "svg-header-image",
@@ -53,8 +84,15 @@
       "source": "./svg-header-image",
       "version": "1.0.0",
       "category": "image-generation",
-      "keywords": ["svg", "header", "banner", "ogp", "thumbnail", "ヘッダー", "バナー"],
-      "skills": ["skills/svg-header-image"]
+      "keywords": [
+        "svg",
+        "header",
+        "banner",
+        "ogp",
+        "thumbnail",
+        "ヘッダー",
+        "バナー"
+      ]
     },
     {
       "name": "svg-to-webp",
@@ -62,8 +100,14 @@
       "source": "./svg-to-webp",
       "version": "1.0.0",
       "category": "image-conversion",
-      "keywords": ["svg", "webp", "png", "convert", "sharp", "画像変換"],
-      "skills": ["skills/svg-to-webp"]
+      "keywords": [
+        "svg",
+        "webp",
+        "png",
+        "convert",
+        "sharp",
+        "画像変換"
+      ]
     },
     {
       "name": "mermaid-to-webp",
@@ -71,8 +115,15 @@
       "source": "./mermaid-to-webp",
       "version": "1.0.0",
       "category": "image-conversion",
-      "keywords": ["mermaid", "diagram", "webp", "png", "flowchart", "sequence", "ダイアグラム"],
-      "skills": ["skills/mermaid-to-webp"]
+      "keywords": [
+        "mermaid",
+        "diagram",
+        "webp",
+        "png",
+        "flowchart",
+        "sequence",
+        "ダイアグラム"
+      ]
     },
     {
       "name": "gen-ai-image",
@@ -80,8 +131,14 @@
       "source": "./gen-ai-image",
       "version": "1.0.0",
       "category": "image-generation",
-      "keywords": ["ai", "image", "fal", "gpt-image", "generate", "AI画像"],
-      "skills": ["skills/gen-ai-image"]
+      "keywords": [
+        "ai",
+        "image",
+        "fal",
+        "gpt-image",
+        "generate",
+        "AI画像"
+      ]
     },
     {
       "name": "svg-diagram",
@@ -89,8 +146,14 @@
       "source": "./svg-diagram",
       "version": "1.0.0",
       "category": "image-generation",
-      "keywords": ["svg", "diagram", "infographic", "architecture", "図解", "インフォグラフィック"],
-      "skills": ["skills/svg-diagram"]
+      "keywords": [
+        "svg",
+        "diagram",
+        "infographic",
+        "architecture",
+        "図解",
+        "インフォグラフィック"
+      ]
     },
     {
       "name": "tts",
@@ -98,8 +161,15 @@
       "source": "./tts",
       "version": "2.0.0",
       "category": "audio",
-      "keywords": ["tts", "voice", "audio", "coeiroink", "voicevox", "音声", "読み上げ"],
-      "skills": ["skills/tts"]
+      "keywords": [
+        "tts",
+        "voice",
+        "audio",
+        "coeiroink",
+        "voicevox",
+        "音声",
+        "読み上げ"
+      ]
     },
     {
       "name": "tts-dict",
@@ -107,8 +177,14 @@
       "source": "./tts-dict",
       "version": "1.0.0",
       "category": "audio",
-      "keywords": ["tts", "dictionary", "pronunciation", "katakana", "辞書", "発音"],
-      "skills": ["skills/tts-dict"]
+      "keywords": [
+        "tts",
+        "dictionary",
+        "pronunciation",
+        "katakana",
+        "辞書",
+        "発音"
+      ]
     },
     {
       "name": "skill-creator-pro",
@@ -117,8 +193,15 @@
       "strict": false,
       "version": "1.0.1",
       "category": "developer-tools",
-      "keywords": ["skill", "creator", "design-pattern", "security", "qa", "スキル作成", "スキル改善"],
-      "skills": ["skills/skill-creator-pro"]
+      "keywords": [
+        "skill",
+        "creator",
+        "design-pattern",
+        "security",
+        "qa",
+        "スキル作成",
+        "スキル改善"
+      ]
     },
     {
       "name": "deep-research",
@@ -127,8 +210,18 @@
       "strict": false,
       "version": "5.1.0",
       "category": "research",
-      "keywords": ["research", "deep-research", "multi-agent", "analysis", "compare", "調査", "リサーチ", "比較", "市場調査", "技術調査"],
-      "skills": ["skills/deep-research"]
+      "keywords": [
+        "research",
+        "deep-research",
+        "multi-agent",
+        "analysis",
+        "compare",
+        "調査",
+        "リサーチ",
+        "比較",
+        "市場調査",
+        "技術調査"
+      ]
     },
     {
       "name": "line-sticker-creator",
@@ -137,8 +230,16 @@
       "strict": false,
       "version": "2.0.0",
       "category": "image-generation",
-      "keywords": ["LINE", "sticker", "stamp", "スタンプ", "ステッカー", "LINEスタンプ", "animated", "APNG"],
-      "skills": ["skills/line-sticker-creator"]
+      "keywords": [
+        "LINE",
+        "sticker",
+        "stamp",
+        "スタンプ",
+        "ステッカー",
+        "LINEスタンプ",
+        "animated",
+        "APNG"
+      ]
     }
   ]
 }

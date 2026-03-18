@@ -89,14 +89,14 @@ li {
     margin: 0.4em 0;
 }
 
-/* 表スタイル */
+/* 表スタイル - 長いテーブルは改ページを許可しヘッダーを繰り返す */
 table {
     border-collapse: collapse;
     width: 100%;
     margin: 1em 0;
     font-size: 10pt;
     table-layout: auto;
-    page-break-inside: avoid;
+    /* page-break-inside: avoid は設定しない — 長テーブルの改ページを許可 */
 }
 
 th, td {
@@ -120,6 +120,11 @@ thead {
 
 tr {
     page-break-inside: avoid;
+}
+
+/* テーブル直前の見出しとテーブルを分離させない */
+h2 + table, h3 + table, h4 + table {
+    page-break-before: avoid;
 }
 
 hr {
@@ -168,16 +173,38 @@ blockquote {
     color: #555;
 }
 
-/* 画像スタイル - 正方形領域を最大とする */
+/* 画像スタイル - A4印刷領域の約半分を上限とし、はみ出しを防止 */
 img {
     max-width: 100%;
-    max-height: 17cm;
+    max-height: 14cm;
     width: auto;
     height: auto;
     display: block;
     margin: 1em auto;
-    page-break-inside: avoid;
     object-fit: contain;
+}
+
+/* figure要素: 見出しと画像の分離を防止 */
+figure {
+    margin: 1em 0;
+    page-break-inside: avoid;
+    text-align: center;
+}
+
+figure img {
+    margin: 0 auto;
+}
+
+figure figcaption {
+    font-size: 9pt;
+    color: #666;
+    margin-top: 0.5em;
+    font-family: 'Hiragino Kaku Gothic ProN', sans-serif;
+}
+
+/* 見出し直後の図は分離させない */
+h2 + figure, h3 + figure, h4 + figure {
+    page-break-before: avoid;
 }
 
 /* 目次スタイル */
@@ -402,6 +429,39 @@ NO_PAGE_NUMBERS_STYLE = """
 
 
 # =============================================================================
+# HTML後処理
+# =============================================================================
+
+def wrap_images_in_figure(html_content: str) -> str:
+    """
+    <p><img ...></p> パターンを <figure><img ...></figure> に変換する。
+
+    Markdown変換後の画像は <p> タグで囲まれるが、figure要素にすることで
+    page-break-inside: avoid が効き、見出しとの分離を防げる。
+
+    Args:
+        html_content: 変換済みのHTML
+
+    Returns:
+        figure要素でラップされたHTML
+    """
+    # <p> の中に img だけが含まれるパターンを figure に変換
+    # alt テキストがあれば figcaption にする
+    def replace_img_paragraph(match):
+        img_tag = match.group(1)
+        alt_match = re.search(r'alt="([^"]*)"', img_tag)
+        alt_text = alt_match.group(1) if alt_match else ""
+
+        if alt_text:
+            return f'<figure>{img_tag}<figcaption>{alt_text}</figcaption></figure>'
+        return f'<figure>{img_tag}</figure>'
+
+    # <p> 内に img のみ（前後の空白は許容）を検出
+    pattern = re.compile(r'<p>\s*(<img[^>]+>)\s*</p>', re.IGNORECASE)
+    return pattern.sub(replace_img_paragraph, html_content)
+
+
+# =============================================================================
 # 目次生成
 # =============================================================================
 
@@ -521,6 +581,9 @@ def markdown_to_pdf(
 
     # 見出しにIDを追加
     html_content = add_heading_ids(html_content)
+
+    # 画像を figure 要素でラップ（改ページ制御改善）
+    html_content = wrap_images_in_figure(html_content)
 
     # 目次を生成
     toc_html = ""

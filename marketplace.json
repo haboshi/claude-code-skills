@@ -15,7 +15,7 @@
       "description": "MarkdownファイルをPDFに変換（日本語フォント対応）。weasyprintを使用し、ヒラギノ/游書体で美しい日本語ドキュメントを生成。「PDFに変換」「PDF生成」「レポートをPDFで」「ドキュメントを印刷用に」「資料をPDF化」「マークダウンをPDFに」などのリクエストで使用される。",
       "source": "./pdf-creator-jp",
       "strict": false,
-      "version": "1.0.1",
+      "version": "1.1.0",
       "category": "document-generation",
       "keywords": [
         "pdf",

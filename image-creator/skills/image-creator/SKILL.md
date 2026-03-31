@@ -208,6 +208,7 @@ Step 0〜1 でツールが決まった後、追加で詳細を確認する場合
 | **Gemini** | 日本語プロンプト、参照画像のスタイルコピー | `GEMINI_API_KEY` |
 | **OpenAI** | 高品質、ネイティブ透過背景対応、複数枚同時生成 | `OPENAI_API_KEY` |
 | **GLM-Image** | テキスト描画精度91.16%、日本語・中国語プロンプト、低コスト | `GLM_API_KEY` or `ZAI_API_KEY` |
+| **fal.ai** | Geminiフォールバック、GPT Image 1.5 | `FAL_AI_API_KEY` |
 
 ### モデル比較
 
@@ -292,15 +293,16 @@ uv run --with google-genai --with pillow scripts/generate.py "プロンプト" [
 | `-m`, `--model` | モデル (`nb2`, `flash`, `pro`) | `nb2` |
 | `--magenta-bg` | マゼンタ背景で生成 | なし |
 | `-r`, `--reference` | 参照画像のパス | なし |
-| `--no-fallback` | Pro失敗時のFlashフォールバックを無効化 | なし |
+| `--no-fallback` | フォールバックを無効化 | なし |
 
 ### 耐障害性
 
 - **リトライ**: 503/429/408エラー時、最大2回の指数バックオフリトライ（10秒→20秒）。504は即座にフォールバック
-- **フォールバックチェーン**: Pro→NB2→Flash、NB2→Flash の自動フォールバック（`--no-fallback`で無効化可能）
-- **モデル別タイムアウト**: NB2/Pro=300秒、Flash=600秒
+- **フォールバックチェーン**: Pro→NB2→fal.ai→Flash、NB2→fal.ai→Flash の自動フォールバック（`--no-fallback`で無効化可能）
+- **fal.aiフォールバック**: `FAL_AI_API_KEY` 環境変数が設定されている場合、Gemini Pro/NB2 障害時にfal.ai（GPT Image 1.5）へ自動フォールバック。未設定時はスキップしてFlashへ
+- **モデル別タイムアウト**: NB2/Pro=300秒、Flash=600秒、fal.ai=120秒
 
-> **Note**: NB2 (`gemini-3.1-flash-image-preview`) と Pro (`gemini-3-pro-image-preview`) はPreview段階のモデルであり、サーバー過負荷による503/504エラーが発生することがあります。フォールバックチェーンにより、上位モデルが応答しない場合は自動的に下位モデルで生成されます。最高の安定性が必要な場合はFlashモデル（GA）を直接指定してください。
+> **Note**: NB2 (`gemini-3.1-flash-image-preview`) と Pro (`gemini-3-pro-image-preview`) はPreview段階のモデルであり、サーバー過負荷による503/504エラーが発生することがあります。フォールバックチェーンにより、上位モデルが応答しない場合はfal.ai→Flashの順に自動フォールバックされます。最高の安定性が必要な場合はFlashモデル（GA）を直接指定してください。
 
 ### 例
 

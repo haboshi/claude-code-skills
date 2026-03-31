@@ -252,6 +252,68 @@ class TestGenerateImage(unittest.TestCase):
                 self.assertEqual(headers["Authorization"], "Key fallback-key")
 
 
+class TestQueuePolling(unittest.TestCase):
+    """非同期キューポーリング"""
+
+    @patch("generate_fal.time.sleep")
+    @patch("generate_fal._safe_download")
+    @patch("generate_fal.requests.get")
+    @patch("generate_fal.requests.post")
+    def test_queue_polling_success(self, mock_post, mock_get, mock_download, mock_sleep):
+        """キュー投入→ポーリング→結果取得の正常系"""
+        # POST: キュー投入
+        submit_resp = MagicMock()
+        submit_resp.status_code = 200
+        submit_resp.json.return_value = {
+            "status": "IN_QUEUE",
+            "status_url": "https://queue.fal.run/status/123",
+            "response_url": "https://queue.fal.run/response/123",
+        }
+        mock_post.return_value = submit_resp
+
+        # GET: ポーリング(IN_PROGRESS → COMPLETED) + 結果取得
+        poll_resp = MagicMock()
+        poll_resp.json.return_value = {"status": "IN_PROGRESS"}
+        completed_resp = MagicMock()
+        completed_resp.json.return_value = {"status": "COMPLETED"}
+        result_resp = MagicMock()
+        result_resp.json.return_value = {
+            "images": [{"url": "https://fal.media/files/result.png"}]
+        }
+        mock_get.side_effect = [poll_resp, completed_resp, result_resp]
+
+        with patch.dict(os.environ, {"FAL_AI_API_KEY": "test-key"}):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                output = Path(tmpdir) / "result.png"
+                result = generate_image("猫", output_path=str(output))
+                self.assertEqual(result, str(output.absolute()))
+                mock_download.assert_called_once()
+                self.assertEqual(mock_get.call_count, 3)  # 2 polls + 1 result
+
+    @patch("generate_fal.time.sleep")
+    @patch("generate_fal.requests.get")
+    @patch("generate_fal.requests.post")
+    def test_queue_polling_failed(self, mock_post, mock_get, mock_sleep):
+        """キュージョブ失敗時: 空文字列を返す"""
+        submit_resp = MagicMock()
+        submit_resp.status_code = 200
+        submit_resp.json.return_value = {
+            "status": "IN_QUEUE",
+            "status_url": "https://queue.fal.run/status/123",
+            "response_url": "https://queue.fal.run/response/123",
+        }
+        mock_post.return_value = submit_resp
+
+        failed_resp = MagicMock()
+        failed_resp.json.return_value = {"status": "FAILED", "error": "GPU error"}
+        mock_get.return_value = failed_resp
+
+        with patch.dict(os.environ, {"FAL_AI_API_KEY": "test-key"}):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                result = generate_image("猫", output_path=f"{tmpdir}/out.png")
+                self.assertEqual(result, "")
+
+
 class TestSizeValidation(unittest.TestCase):
     """サイズバリデーション"""
 

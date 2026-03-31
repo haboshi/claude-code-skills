@@ -15,6 +15,7 @@ import os
 import re
 import sys
 import tempfile
+import time
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
@@ -26,6 +27,8 @@ VALID_SIZES = ["1024x1024", "1536x1024", "1024x1536"]
 
 MAX_DOWNLOAD_SIZE = 20 * 1024 * 1024  # 20MB
 _MAX_REDIRECTS = 5
+_QUEUE_POLL_INTERVAL = 3  # 秒
+_QUEUE_MAX_POLLS = 40  # 最大120秒待機
 
 _OCTAL_IP_PATTERN = re.compile(r"^0\d+\.")
 _DECIMAL_IP_PATTERN = re.compile(r"^\d{4,}$")
@@ -196,9 +199,10 @@ def generate_image(
         "quality": quality,
     }
 
+    # 1. ジョブ投入（非同期キュー）
     try:
         response = requests.post(
-            API_ENDPOINT, json=payload, headers=headers, timeout=120,
+            API_ENDPOINT, json=payload, headers=headers, timeout=30,
         )
     except requests.RequestException as e:
         print(f"APIリクエストエラー: {type(e).__name__}: {str(e)[:200]}")
@@ -212,8 +216,52 @@ def generate_image(
         print(f"APIエラー ({response.status_code}): {detail}")
         return ""
 
-    data = response.json()
-    images = data.get("images", [])
+    queue_data = response.json()
+
+    # 同期レスポンス（images が直接含まれる場合）
+    if "images" in queue_data:
+        images = queue_data["images"]
+    else:
+        # 2. キューポーリング
+        status_url = queue_data.get("status_url", "")
+        response_url = queue_data.get("response_url", "")
+        if not status_url or not response_url:
+            print("警告: キューレスポンスにstatus_url/response_urlがありません")
+            return ""
+
+        for poll in range(_QUEUE_MAX_POLLS):
+            time.sleep(_QUEUE_POLL_INTERVAL)
+            try:
+                status_resp = requests.get(
+                    status_url, headers=headers, timeout=30,
+                )
+                status_data = status_resp.json()
+            except requests.RequestException as e:
+                print(f"ポーリングエラー: {type(e).__name__}")
+                continue
+
+            queue_status = status_data.get("status", "")
+            if queue_status == "COMPLETED":
+                break
+            if queue_status in ("FAILED", "CANCELLED"):
+                print(f"生成失敗: {status_data.get('error', 'unknown')}")
+                return ""
+        else:
+            print("タイムアウト: キュー待機が上限を超えました")
+            return ""
+
+        # 3. 結果取得
+        try:
+            result_resp = requests.get(
+                response_url, headers=headers, timeout=30,
+            )
+            result_data = result_resp.json()
+        except requests.RequestException as e:
+            print(f"結果取得エラー: {type(e).__name__}")
+            return ""
+
+        images = result_data.get("images", [])
+
     if not images:
         print("警告: 画像が生成されませんでした")
         return ""

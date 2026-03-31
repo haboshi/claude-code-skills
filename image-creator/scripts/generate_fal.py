@@ -75,3 +75,55 @@ def _validate_url(url: str) -> bool:
     except ValueError:
         pass
     return True
+
+
+def _safe_download(url: str, dest: Path) -> None:
+    """URLから安全に画像をダウンロードする（SSRF保護+アトミック書き込み）"""
+    if not _validate_url(url):
+        raise ValueError(f"安全でないURLです（HTTPSのみ・プライベートIP禁止）: {url}")
+
+    headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"}
+
+    current_url = url
+    resp = None
+    for _ in range(_MAX_REDIRECTS):
+        resp = requests.get(
+            current_url, headers=headers, timeout=60,
+            stream=True, allow_redirects=False,
+        )
+        if resp.is_redirect or resp.status_code in (301, 302, 303, 307, 308):
+            resp.close()
+            raw_location = resp.headers.get("location", "")
+            redirect_url = urljoin(current_url, raw_location)
+            if not _validate_url(redirect_url):
+                raise ValueError(f"リダイレクト先が安全でないURLです: {redirect_url}")
+            current_url = redirect_url
+            continue
+        break
+    else:
+        raise ValueError(f"リダイレクト回数が上限({_MAX_REDIRECTS})を超えました")
+
+    resp.raise_for_status()
+
+    content_length = resp.headers.get("content-length")
+    try:
+        content_length_int = int(content_length) if content_length else 0
+    except (ValueError, TypeError):
+        content_length_int = 0
+    if content_length_int > MAX_DOWNLOAD_SIZE:
+        raise ValueError(f"ファイルサイズが上限を超えています: {content_length} bytes")
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=dest.parent, suffix=dest.suffix)
+    try:
+        downloaded = 0
+        with os.fdopen(tmp_fd, "wb") as f:
+            for chunk in resp.iter_content(chunk_size=8192):
+                downloaded += len(chunk)
+                if downloaded > MAX_DOWNLOAD_SIZE:
+                    raise ValueError(f"ダウンロードが上限を超えました: {MAX_DOWNLOAD_SIZE} bytes")
+                f.write(chunk)
+        Path(tmp_path).rename(dest)
+    except Exception:
+        Path(tmp_path).unlink(missing_ok=True)
+        raise

@@ -194,16 +194,53 @@ def generate_image(
                 print(f"サーバー容量超過 ({status}): {type(e).__name__}")
             break
 
-    # フォールバックチェーン: Pro→NB2→Flash, NB2→Flash
+    # フォールバックチェーン: Pro→NB2→fal→Flash, NB2→fal→Flash
     if last_error is not None and not no_fallback:
         status = _get_status_code(last_error)
         if status in FALLBACK_CODES:
             fallback_chain = {
-                "pro": ["nb2", "flash"],
-                "nb2": ["flash"],
+                "pro": ["nb2", "fal", "flash"],
+                "nb2": ["fal", "flash"],
             }
             chain = fallback_chain.get(model_type, [])
             for fb_key in chain:
+                # fal.ai フォールバック: subprocess で generate_fal.py を呼び出す
+                if fb_key == "fal":
+                    fal_api_key = os.environ.get("FAL_AI_API_KEY") or os.environ.get("FAL_KEY")
+                    if not fal_api_key:
+                        print("\nFAL_AI_API_KEY 未設定。fal.ai をスキップ...")
+                        continue
+                    import subprocess
+                    aspect_to_fal_size = {
+                        "1:1":  "1024x1024",
+                        "16:9": "1536x1024",
+                        "9:16": "1024x1536",
+                        "4:3":  "1536x1024",
+                        "3:4":  "1024x1536",
+                        "1:4":  "1024x1536",
+                        "4:1":  "1536x1024",
+                    }
+                    fal_size = aspect_to_fal_size.get(aspect_ratio, "1536x1024")
+                    script_dir = Path(__file__).parent
+                    print(f"\n{model_id} が応答しません。fal.ai にフォールバック...")
+                    try:
+                        result = subprocess.run(
+                            [sys.executable, str(script_dir / "generate_fal.py"),
+                             prompt, "-o", str(output_file), "-s", fal_size, "-q", "low"],
+                            capture_output=True, text=True, timeout=120,
+                        )
+                        if result.returncode == 0 and output_file.exists():
+                            print(f"保存完了 (fal.ai): {output_file.absolute()}")
+                            return str(output_file.absolute())
+                        if result.stderr:
+                            print(f"fal.ai エラー: {result.stderr[:200]}")
+                    except subprocess.TimeoutExpired:
+                        print("fal.ai タイムアウト（120秒）")
+                    except Exception as fal_err:
+                        print(f"fal.ai 呼び出しエラー: {type(fal_err).__name__}")
+                    continue
+
+                # Gemini モデル間フォールバック（既存ロジック）
                 fb_id = model_ids[fb_key]
                 fb_timeout = MODEL_TIMEOUT_MS.get(fb_key, MODEL_TIMEOUT_MS["flash"])
                 print(f"\n{model_id} が応答しません。{fb_id} にフォールバック...")

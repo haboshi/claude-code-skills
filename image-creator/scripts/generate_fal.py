@@ -127,3 +127,155 @@ def _safe_download(url: str, dest: Path) -> None:
     except Exception:
         Path(tmp_path).unlink(missing_ok=True)
         raise
+
+
+def _print_setup_instructions():
+    """APIキーのセットアップ手順を表示"""
+    print("=" * 60)
+    print("エラー: 環境変数 FAL_AI_API_KEY が設定されていません")
+    print("=" * 60)
+    print()
+    print("fal.ai を使用するには API キーが必要です。")
+    print()
+    print("■ APIキーの取得方法:")
+    print("  1. https://fal.ai/dashboard/keys にアクセス")
+    print("  2. アカウントを作成 / ログイン")
+    print("  3. API Keys ページでキーを発行")
+    print()
+    print("■ 環境変数の設定:")
+    print()
+    print("  # 一時的に設定（現在のターミナルのみ）")
+    print('  export FAL_AI_API_KEY="your-api-key-here"')
+    print()
+    print("  # 永続的に設定（~/.zshrc.local に追記）")
+    print('  echo \'export FAL_AI_API_KEY="your-api-key-here"\' >> ~/.zshrc.local')
+    print()
+    print("  ※ FAL_KEY でも動作します（FAL_AI_API_KEY を優先）")
+    print("=" * 60)
+
+
+def generate_image(
+    prompt: str,
+    output_path: str = "generated_image.png",
+    size: str = "1536x1024",
+    quality: str = "low",
+) -> str:
+    """fal.ai GPT Image 1.5 APIを使用して画像を生成
+
+    Args:
+        prompt: 画像生成プロンプト
+        output_path: 出力ファイルパス
+        size: 画像サイズ（1024x1024, 1536x1024, 1024x1536）
+        quality: 品質（low, medium, high）
+
+    Returns:
+        保存先の絶対パス。生成失敗時は空文字列。
+    """
+    api_key = os.environ.get("FAL_AI_API_KEY") or os.environ.get("FAL_KEY")
+    if not api_key:
+        _print_setup_instructions()
+        sys.exit(1)
+
+    if size not in VALID_SIZES:
+        print(f"警告: 無効なサイズ '{size}'。1536x1024 を使用します。")
+        size = "1536x1024"
+
+    print(f"モデル: fal-ai/gpt-image-1.5")
+    print(f"プロンプト: {prompt[:100]}...")
+    print(f"サイズ: {size}, 品質: {quality}")
+    print("生成中...")
+
+    headers = {
+        "Authorization": f"Key {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    payload = {
+        "prompt": prompt,
+        "image_size": size,
+        "quality": quality,
+    }
+
+    try:
+        response = requests.post(
+            API_ENDPOINT, json=payload, headers=headers, timeout=120,
+        )
+    except requests.RequestException as e:
+        print(f"APIリクエストエラー: {type(e).__name__}: {str(e)[:200]}")
+        return ""
+
+    if response.status_code != 200:
+        try:
+            detail = response.json().get("detail", response.text[:200])
+        except Exception:
+            detail = response.text[:200]
+        print(f"APIエラー ({response.status_code}): {detail}")
+        return ""
+
+    data = response.json()
+    images = data.get("images", [])
+    if not images:
+        print("警告: 画像が生成されませんでした")
+        return ""
+
+    image_url = images[0].get("url", "")
+    if not image_url:
+        print("警告: 画像URLが取得できませんでした")
+        return ""
+
+    output_file = Path(output_path)
+    try:
+        _safe_download(image_url, output_file)
+    except (ValueError, requests.RequestException) as e:
+        print(f"ダウンロードエラー: {e}")
+        return ""
+
+    print(f"保存完了: {output_file.absolute()}")
+    return str(output_file.absolute())
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="fal.ai GPT Image 1.5 画像生成",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+例:
+  uv run --with requests generate_fal.py "かわいい猫のイラスト"
+  uv run --with requests generate_fal.py "夕焼けの風景" -s 1536x1024 -o sunset.png
+  uv run --with requests generate_fal.py "アイコン" -q high -o icon.png
+
+サイズ:
+  1024x1024 (正方形)、1536x1024 (横長)、1024x1536 (縦長)
+
+品質:
+  low     高速、参考画像向け
+  medium  バランス型
+  high    最高品質、日本語テキスト向け
+        """,
+    )
+    parser.add_argument("prompt", help="画像生成プロンプト")
+    parser.add_argument(
+        "-o", "--output", default="generated_image.png", help="出力ファイルパス"
+    )
+    parser.add_argument(
+        "-s", "--size", default="1536x1024",
+        choices=VALID_SIZES, help="画像サイズ",
+    )
+    parser.add_argument(
+        "-q", "--quality", default="low",
+        choices=["low", "medium", "high"],
+        help="品質（low=高速, medium=バランス, high=最高品質）",
+    )
+
+    args = parser.parse_args()
+
+    generate_image(
+        prompt=args.prompt,
+        output_path=args.output,
+        size=args.size,
+        quality=args.quality,
+    )
+
+
+if __name__ == "__main__":
+    main()

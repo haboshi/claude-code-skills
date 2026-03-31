@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from generate_fal import _is_dangerous_ip, _validate_url
+from generate_fal import _is_dangerous_ip, _validate_url, generate_image, VALID_SIZES
 
 
 class TestSSRFProtection(unittest.TestCase):
@@ -141,6 +141,124 @@ class TestSafeDownload(unittest.TestCase):
             from generate_fal import _safe_download
             with self.assertRaises(ValueError):
                 _safe_download("https://fal.media/files/test.png", dest)
+
+
+class TestAPIKeyValidation(unittest.TestCase):
+    """APIキー未設定時の振る舞い"""
+
+    def test_missing_api_key_exits(self):
+        env = os.environ.copy()
+        env.pop("FAL_AI_API_KEY", None)
+        env.pop("FAL_KEY", None)
+        with patch.dict(os.environ, env, clear=True):
+            with self.assertRaises(SystemExit) as ctx:
+                generate_image("テスト")
+            self.assertEqual(ctx.exception.code, 1)
+
+    def test_missing_api_key_message(self):
+        env = os.environ.copy()
+        env.pop("FAL_AI_API_KEY", None)
+        env.pop("FAL_KEY", None)
+        with patch.dict(os.environ, env, clear=True):
+            with patch("builtins.print") as mock_print:
+                with self.assertRaises(SystemExit):
+                    generate_image("テスト")
+                output = " ".join(str(c) for c in mock_print.call_args_list)
+                self.assertIn("FAL_AI_API_KEY", output)
+
+
+class TestGenerateImage(unittest.TestCase):
+    """画像生成のAPI呼び出し"""
+
+    @patch("generate_fal._safe_download")
+    @patch("generate_fal.requests.post")
+    def test_success_with_url_response(self, mock_post, mock_download):
+        """正常系: URL レスポンスから画像をダウンロード"""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "images": [{"url": "https://fal.media/files/output.png"}]
+        }
+        mock_post.return_value = mock_resp
+
+        with patch.dict(os.environ, {"FAL_AI_API_KEY": "test-key"}):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                output = Path(tmpdir) / "result.png"
+                result = generate_image("猫", output_path=str(output))
+                self.assertEqual(result, str(output.absolute()))
+                mock_download.assert_called_once()
+
+    @patch("generate_fal.requests.post")
+    def test_api_error_returns_empty(self, mock_post):
+        """APIエラー時: 空文字列を返す"""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 500
+        mock_resp.json.return_value = {"detail": "Internal error"}
+        mock_post.return_value = mock_resp
+
+        with patch.dict(os.environ, {"FAL_AI_API_KEY": "test-key"}):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                result = generate_image("猫", output_path=f"{tmpdir}/out.png")
+                self.assertEqual(result, "")
+
+    @patch("generate_fal.requests.post")
+    def test_empty_images_returns_empty(self, mock_post):
+        """画像なしレスポンス: 空文字列を返す"""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"images": []}
+        mock_post.return_value = mock_resp
+
+        with patch.dict(os.environ, {"FAL_AI_API_KEY": "test-key"}):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                result = generate_image("猫", output_path=f"{tmpdir}/out.png")
+                self.assertEqual(result, "")
+
+    @patch("generate_fal._safe_download")
+    @patch("generate_fal.requests.post")
+    def test_size_passed_to_api(self, mock_post, mock_download):
+        """サイズパラメータがAPIに渡される"""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "images": [{"url": "https://fal.media/files/out.png"}]
+        }
+        mock_post.return_value = mock_resp
+
+        with patch.dict(os.environ, {"FAL_AI_API_KEY": "test-key"}):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                generate_image("猫", output_path=f"{tmpdir}/out.png", size="1024x1024")
+                payload = mock_post.call_args[1]["json"]
+                self.assertEqual(payload["image_size"], "1024x1024")
+
+    @patch("generate_fal._safe_download")
+    @patch("generate_fal.requests.post")
+    def test_fal_key_fallback(self, mock_post, mock_download):
+        """FAL_AI_API_KEY 未設定時に FAL_KEY にフォールバック"""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "images": [{"url": "https://fal.media/files/out.png"}]
+        }
+        mock_post.return_value = mock_resp
+
+        env = os.environ.copy()
+        env.pop("FAL_AI_API_KEY", None)
+        env["FAL_KEY"] = "fallback-key"
+        with patch.dict(os.environ, env, clear=True):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                generate_image("猫", output_path=f"{tmpdir}/out.png")
+                headers = mock_post.call_args[1]["headers"]
+                self.assertEqual(headers["Authorization"], "Key fallback-key")
+
+
+class TestSizeValidation(unittest.TestCase):
+    """サイズバリデーション"""
+
+    def test_valid_sizes(self):
+        self.assertIn("1024x1024", VALID_SIZES)
+        self.assertIn("1536x1024", VALID_SIZES)
+        self.assertIn("1024x1536", VALID_SIZES)
 
 
 if __name__ == "__main__":

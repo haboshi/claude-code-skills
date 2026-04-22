@@ -194,16 +194,59 @@ def generate_image(
                 print(f"サーバー容量超過 ({status}): {type(e).__name__}")
             break
 
-    # フォールバックチェーン: Pro→NB2→fal→Flash, NB2→fal→Flash
+    # フォールバックチェーン: Pro→OpenAI→NB2→fal→Flash, NB2→OpenAI→fal→Flash
+    # OpenAI gpt-image-2 は第1優先（高品質・別プロバイダで障害分離）
+    # 参照画像指定時は OpenAI スキップ（edit API はインターフェース差異あり）
     if last_error is not None and not no_fallback:
         status = _get_status_code(last_error)
         if status in FALLBACK_CODES:
             fallback_chain = {
-                "pro": ["nb2", "fal", "flash"],
-                "nb2": ["fal", "flash"],
+                "pro": ["openai", "nb2", "fal", "flash"],
+                "nb2": ["openai", "fal", "flash"],
             }
             chain = fallback_chain.get(model_type, [])
             for fb_key in chain:
+                # OpenAI gpt-image-2 フォールバック: subprocess で generate_openai.py を呼び出す
+                if fb_key == "openai":
+                    openai_api_key = os.environ.get("OPENAI_API_KEY")
+                    if not openai_api_key:
+                        print("\nOPENAI_API_KEY 未設定。OpenAI をスキップ...")
+                        continue
+                    if reference_image:
+                        # 参照画像対応はAPI差異が大きいため、OpenAIスキップ
+                        print("\n参照画像指定のため OpenAI をスキップ...")
+                        continue
+                    import subprocess
+                    aspect_to_openai_size = {
+                        "1:1":  "1024x1024",
+                        "16:9": "1536x1024",
+                        "9:16": "1024x1536",
+                        "4:3":  "1536x1024",
+                        "3:4":  "1024x1536",
+                        "1:4":  "1024x1536",
+                        "4:1":  "1536x1024",
+                    }
+                    openai_size = aspect_to_openai_size.get(aspect_ratio, "1024x1024")
+                    script_dir = Path(__file__).parent
+                    print(f"\n{model_id} が応答しません。OpenAI gpt-image-2 にフォールバック...")
+                    try:
+                        result = subprocess.run(
+                            [sys.executable, str(script_dir / "generate_openai.py"),
+                             prompt, "-o", str(output_file), "-s", openai_size,
+                             "-m", "gpt-image-2", "-q", "low"],
+                            capture_output=True, text=True, timeout=180,
+                        )
+                        if result.returncode == 0 and output_file.exists():
+                            print(f"保存完了 (OpenAI gpt-image-2): {output_file.absolute()}")
+                            return str(output_file.absolute())
+                        if result.stderr:
+                            print(f"OpenAI エラー: {result.stderr[:200]}")
+                    except subprocess.TimeoutExpired:
+                        print("OpenAI タイムアウト（180秒）")
+                    except Exception as oa_err:
+                        print(f"OpenAI 呼び出しエラー: {type(oa_err).__name__}")
+                    continue
+
                 # fal.ai フォールバック: subprocess で generate_fal.py を呼び出す
                 if fb_key == "fal":
                     fal_api_key = os.environ.get("FAL_AI_API_KEY") or os.environ.get("FAL_KEY")

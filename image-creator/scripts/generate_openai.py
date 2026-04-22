@@ -2,7 +2,8 @@
 """
 OpenAI GPT Image 画像生成スクリプト
 
-OpenAI の gpt-image-1 / gpt-image-1.5 モデルを使用して画像を生成・編集します。
+OpenAI の gpt-image-2 / gpt-image-1.5 / gpt-image-1 モデルを使用して画像を生成・編集します。
+gpt-image-2 は透過背景未対応のため、background=transparent 指定時は自動的に gpt-image-1.5 にフォールバックします。
 
 Copyright (c) 2026 haboshi
 Licensed under the MIT License. See LICENSE file in the project root.
@@ -126,11 +127,15 @@ def _safe_download_url(url: str, save_path) -> None:
         raise
 
 
+GPT_IMAGE_2_MODELS = {"gpt-image-2", "gpt-image-2-2026-04-21"}
+TRANSPARENT_FALLBACK_MODEL = "gpt-image-1.5"
+
+
 def generate_image(
     prompt: str,
     output_path: str = "generated_image.png",
     size: str = "1024x1024",
-    model: str = "gpt-image-1.5",
+    model: str = "gpt-image-2",
     quality: str = "medium",
     background: str = "auto",
     output_format: str = "png",
@@ -144,6 +149,11 @@ def generate_image(
     if not api_key:
         print("エラー: 環境変数 OPENAI_API_KEY が設定されていません")
         sys.exit(1)
+
+    # gpt-image-2 は transparent 背景未対応のため、自動的に gpt-image-1.5 にフォールバック
+    if background == "transparent" and model in GPT_IMAGE_2_MODELS:
+        print(f"警告: {model} は透過背景未対応のため {TRANSPARENT_FALLBACK_MODEL} にフォールバックします")
+        model = TRANSPARENT_FALLBACK_MODEL
 
     client = OpenAI(api_key=api_key)
 
@@ -211,9 +221,15 @@ def main():
   uv run --with openai generate_openai.py "アイコン" -b transparent -o icon.png
 
 モデル:
-  gpt-image-1      標準モデル
-  gpt-image-1-mini 軽量・高速
-  gpt-image-1.5    最新・高品質（推奨）
+  gpt-image-2              最新・最高品質（デフォルト, 透過背景未対応）
+  gpt-image-2-2026-04-21   gpt-image-2 の固定スナップショット
+  gpt-image-1.5            前世代・透過背景対応（透過要求時の自動フォールバック先）
+  gpt-image-1              旧モデル
+  gpt-image-1-mini         軽量・高速・低コスト
+
+注:
+  background=transparent 指定時に gpt-image-2 系を選んだ場合、自動的に
+  gpt-image-1.5 にフォールバックします。
         """
     )
     parser.add_argument("prompt", help="画像生成プロンプト")
@@ -221,9 +237,10 @@ def main():
     parser.add_argument("-s", "--size", default="1024x1024",
                         choices=["1024x1024", "1536x1024", "1024x1536", "auto"],
                         help="画像サイズ")
-    parser.add_argument("-m", "--model", default="gpt-image-1.5",
-                        choices=["gpt-image-1", "gpt-image-1-mini", "gpt-image-1.5"],
-                        help="モデル")
+    parser.add_argument("-m", "--model", default="gpt-image-2",
+                        choices=["gpt-image-2", "gpt-image-2-2026-04-21",
+                                 "gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini"],
+                        help="モデル（デフォルト: gpt-image-2）")
     parser.add_argument("-q", "--quality", default="medium",
                         choices=["low", "medium", "high"],
                         help="品質")

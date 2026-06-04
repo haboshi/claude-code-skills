@@ -130,6 +130,28 @@ def _safe_download_url(url: str, save_path) -> None:
 GPT_IMAGE_2_MODELS = {"gpt-image-2", "gpt-image-2-2026-04-21"}
 TRANSPARENT_FALLBACK_MODEL = "gpt-image-1.5"
 
+# gpt-image-2 がサポートする代表的サイズ（公式 image-generation ガイドの Popular sizes）。
+# gpt-image-2 は柔軟なサイズに対応し、2K/4K も生成可能。
+GPT_IMAGE_2_SIZES = [
+    "1024x1024", "1536x1024", "1024x1536",  # 基本
+    "2048x2048", "2048x1152",               # 2K（square / landscape）
+    "3840x2160", "2160x3840",               # 4K（landscape / portrait）
+    "auto",
+]
+
+# gpt-image-1.5 系（透過フォールバック先）は基本3サイズ＋auto のみ対応。
+# 透過要求で gpt-image-1.5 にフォールバックする際、大サイズを最も近い基本サイズへ丸める。
+FALLBACK_SIZE_MAP = {
+    "1024x1024": "1024x1024",
+    "2048x2048": "1024x1024",  # square
+    "1536x1024": "1536x1024",
+    "2048x1152": "1536x1024",  # landscape
+    "3840x2160": "1536x1024",  # landscape (4K)
+    "1024x1536": "1024x1536",
+    "2160x3840": "1024x1536",  # portrait (4K)
+    "auto": "auto",
+}
+
 
 def generate_image(
     prompt: str,
@@ -152,8 +174,14 @@ def generate_image(
 
     # gpt-image-2 は transparent 背景未対応のため、自動的に gpt-image-1.5 にフォールバック
     if background == "transparent" and model in GPT_IMAGE_2_MODELS:
-        print(f"警告: {model} は透過背景未対応のため {TRANSPARENT_FALLBACK_MODEL} にフォールバックします")
+        clamped_size = FALLBACK_SIZE_MAP.get(size, size)
+        msg = f"警告: {model} は透過背景未対応のため {TRANSPARENT_FALLBACK_MODEL} にフォールバックします"
+        if clamped_size != size:
+            # gpt-image-1.5 は 2K/4K 非対応のため基本サイズへ丸める
+            msg += f"（サイズ {size} → {clamped_size} に調整）"
+        print(msg)
         model = TRANSPARENT_FALLBACK_MODEL
+        size = clamped_size
 
     client = OpenAI(api_key=api_key)
 
@@ -221,29 +249,36 @@ def main():
   uv run --with openai generate_openai.py "アイコン" -b transparent -o icon.png
 
 モデル:
-  gpt-image-2              最新・最高品質（デフォルト, 透過背景未対応）
+  gpt-image-2              最新・最高品質（デフォルト, 透過背景未対応, 2K/4K対応）
   gpt-image-2-2026-04-21   gpt-image-2 の固定スナップショット
   gpt-image-1.5            前世代・透過背景対応（透過要求時の自動フォールバック先）
   gpt-image-1              旧モデル
   gpt-image-1-mini         軽量・高速・低コスト
 
+サイズ:
+  1024x1024 / 1536x1024 / 1024x1536   基本（全モデル対応）
+  2048x2048 / 2048x1152               2K（gpt-image-2のみ）
+  3840x2160 / 2160x3840               4K（gpt-image-2のみ）
+  auto                                モデル自動選択
+
 注:
   background=transparent 指定時に gpt-image-2 系を選んだ場合、自動的に
-  gpt-image-1.5 にフォールバックします。
+  gpt-image-1.5 にフォールバックします。1.5 は 2K/4K 非対応のため、
+  その際はサイズも最も近い基本サイズへ自動調整されます。
         """
     )
     parser.add_argument("prompt", help="画像生成プロンプト")
     parser.add_argument("-o", "--output", default="generated_image.png", help="出力ファイルパス")
     parser.add_argument("-s", "--size", default="1024x1024",
-                        choices=["1024x1024", "1536x1024", "1024x1536", "auto"],
-                        help="画像サイズ")
+                        choices=GPT_IMAGE_2_SIZES,
+                        help="画像サイズ（2K/4Kはgpt-image-2のみ。透過時は基本サイズへ自動調整）")
     parser.add_argument("-m", "--model", default="gpt-image-2",
                         choices=["gpt-image-2", "gpt-image-2-2026-04-21",
                                  "gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini"],
                         help="モデル（デフォルト: gpt-image-2）")
     parser.add_argument("-q", "--quality", default="medium",
-                        choices=["low", "medium", "high"],
-                        help="品質")
+                        choices=["low", "medium", "high", "auto"],
+                        help="品質（auto=モデルが自動選択）")
     parser.add_argument("-b", "--background", default="auto",
                         choices=["transparent", "opaque", "auto"],
                         help="背景（transparent=透過）")

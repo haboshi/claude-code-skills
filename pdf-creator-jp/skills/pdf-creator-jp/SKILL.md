@@ -11,30 +11,25 @@ Markdownファイルを日本語フォント対応の高品質PDFに変換しま
 
 - ✅ **日本語フォント対応**: ヒラギノ明朝/角ゴシック、游書体フォールバック
 - ✅ **ページ番号**: 「1 / N」形式で自動挿入（最初のページは除外）
-- ✅ **目次自動生成**: `--toc` オプションでH2/H3見出しから自動生成
 - ✅ **3種類のスタイル**: business / technical / minimal
 - ✅ **コードブロック折り返し**: 長いコードも自動折り返し
+- ✅ **表の右はみ出し防止**: 長いURL・英単語もセル内で自動折り返し
 - ✅ **表のヘッダー繰り返し**: 複数ページにまたがる表でヘッダー継続
 - ✅ **環境自動設定**: macOS Homebrew環境変数を自動検出
 
 ## 重要な注意事項
 
-### 目次（--toc）は絶対にデフォルトで付けない
-`--toc` はユーザーが「目次をつけて」「TOC付きで」「目次も入れて」等と**明示的に依頼した場合のみ**付与する。以下の場合は `--toc` を付けてはならない:
-- ユーザーが目次について何も言及していない場合
-- 「PDFにして」「PDF生成して」等の一般的な変換指示の場合
-- 長い文書であっても、ユーザーが目次を求めていない場合
-
 ### 画像・図のレイアウト
 - 画像は最大幅100%、最大高さ14cmに自動制限される（A4印刷領域の約半分）
 - 縦長の図（Mermaid図等）も14cm以内に収まるよう自動縮小される
-- 見出し直後の図は見出しと同じページに配置される（分離防止）
 - 画像のalt属性はキャプションとして表示される
+- 縦長の画像・テーブルはページをまたいで配置されるため、見出しのみで改頁される空白ページは発生しない
 
 ### テーブルのレイアウト
 - 長いテーブルはページをまたいで自動改ページされる
 - 改ページ時、ヘッダー行は各ページで自動的に繰り返される
 - 個々の行が途中で分割されることはない
+- セル内の長いURLや英単語は自動で折り返され、右へのはみ出しを防止
 
 ## クイックスタート
 
@@ -42,14 +37,11 @@ Markdownファイルを日本語フォント対応の高品質PDFに変換しま
 # 基本変換
 uv run --with weasyprint --with markdown scripts/md_to_pdf.py input.md output.pdf
 
-# 目次付き
-uv run --with weasyprint --with markdown scripts/md_to_pdf.py input.md --toc
-
 # 技術文書スタイル
 uv run --with weasyprint --with markdown scripts/md_to_pdf.py input.md --style technical
 
-# フルオプション
-uv run --with weasyprint --with markdown scripts/md_to_pdf.py input.md output.pdf --toc --style business
+# ミニマルスタイル・ページ番号なし
+uv run --with weasyprint --with markdown scripts/md_to_pdf.py input.md --style minimal --no-page-numbers
 ```
 
 ## CLIオプション
@@ -58,7 +50,6 @@ uv run --with weasyprint --with markdown scripts/md_to_pdf.py input.md output.pd
 |-----------|------|-----------|
 | `input` | 入力Markdownファイル（必須） | - |
 | `output` | 出力PDFファイル | 入力ファイル名.pdf |
-| `--toc` | 目次を生成（**絶対にデフォルトで付けない。ユーザーが明示的に依頼した場合のみ**） | なし |
 | `--style`, `-s` | スタイルプリセット | business |
 | `--no-page-numbers` | ページ番号を非表示 | ページ番号あり |
 
@@ -113,11 +104,11 @@ uv run --with weasyprint --with markdown scripts/md_to_pdf.py input.md output.pd
 # レポートをPDFに（基本）
 uv run --with weasyprint --with markdown scripts/md_to_pdf.py report.md
 
-# 目次付きビジネスレポート
-uv run --with weasyprint --with markdown scripts/md_to_pdf.py report.md ~/Downloads/report.pdf --toc
+# 出力先指定
+uv run --with weasyprint --with markdown scripts/md_to_pdf.py report.md ~/Downloads/report.pdf
 
 # 技術仕様書（ダークテーマコード）
-uv run --with weasyprint --with markdown scripts/md_to_pdf.py spec.md --style technical --toc
+uv run --with weasyprint --with markdown scripts/md_to_pdf.py spec.md --style technical
 
 # シンプルなメモ（ページ番号なし）
 uv run --with weasyprint --with markdown scripts/md_to_pdf.py memo.md --style minimal --no-page-numbers

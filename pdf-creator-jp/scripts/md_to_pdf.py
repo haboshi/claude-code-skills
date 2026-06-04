@@ -10,7 +10,6 @@ Designed for formal documents (reports, contracts, technical documentation).
 
 Usage:
     python md_to_pdf.py input.md output.pdf
-    python md_to_pdf.py input.md --toc                    # 目次付き
     python md_to_pdf.py input.md --style technical        # 技術文書スタイル
     python md_to_pdf.py input.md --no-page-numbers        # ページ番号なし
 
@@ -104,6 +103,9 @@ th, td {
     padding: 8px 10px;
     text-align: left;
     vertical-align: top;
+    /* 長いURL・英単語もセル内で折り返し、右はみ出しを防止 */
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 th {
@@ -120,11 +122,6 @@ thead {
 
 tr {
     page-break-inside: avoid;
-}
-
-/* テーブル直前の見出しとテーブルを分離させない */
-h2 + table, h3 + table, h4 + table {
-    page-break-before: avoid;
 }
 
 hr {
@@ -184,11 +181,12 @@ img {
     object-fit: contain;
 }
 
-/* figure要素: 見出しと画像の分離を防止 */
+/* figure要素: 縦長画像はページまたぎを許可し、見出しのみが取り残されるのを防止 */
 figure {
     margin: 1em 0;
-    page-break-inside: avoid;
     text-align: center;
+    orphans: 3;
+    widows: 3;
 }
 
 figure img {
@@ -200,57 +198,6 @@ figure figcaption {
     color: #666;
     margin-top: 0.5em;
     font-family: 'Hiragino Kaku Gothic ProN', sans-serif;
-}
-
-/* 見出し直後の図は分離させない */
-h2 + figure, h3 + figure, h4 + figure {
-    page-break-before: avoid;
-}
-
-/* 目次スタイル */
-.toc {
-    background-color: #f9f9f9;
-    border: 1px solid #e0e0e0;
-    border-radius: 4px;
-    padding: 1.5em;
-    margin-bottom: 2em;
-    page-break-after: always;
-}
-
-.toc h2 {
-    margin-top: 0;
-    font-size: 14pt;
-    border-bottom: none;
-    text-align: center;
-}
-
-.toc ul {
-    list-style: none;
-    padding-left: 0;
-    margin: 0;
-}
-
-.toc li {
-    margin: 0.5em 0;
-    line-height: 1.6;
-}
-
-.toc li.toc-h2 {
-    font-weight: bold;
-}
-
-.toc li.toc-h3 {
-    padding-left: 1.5em;
-    font-size: 10pt;
-}
-
-.toc a {
-    color: #333;
-    text-decoration: none;
-}
-
-.toc a:hover {
-    text-decoration: underline;
 }
 """
 
@@ -462,76 +409,6 @@ def wrap_images_in_figure(html_content: str) -> str:
 
 
 # =============================================================================
-# 目次生成
-# =============================================================================
-
-def generate_toc(html_content: str) -> str:
-    """
-    HTMLから目次を生成する。
-
-    Args:
-        html_content: 変換済みのHTML
-
-    Returns:
-        目次HTML
-    """
-    # 見出しを抽出（h2, h3のみ - 深すぎる階層を避ける）
-    heading_pattern = re.compile(r'<h([23])(?:\s+id="([^"]*)")?[^>]*>(.*?)</h\1>', re.IGNORECASE | re.DOTALL)
-    headings = heading_pattern.findall(html_content)
-
-    if not headings:
-        return ""
-
-    toc_items = []
-    for level, id_attr, text in headings:
-        # HTMLタグを除去
-        clean_text = re.sub(r'<[^>]+>', '', text).strip()
-        # IDがない場合は生成
-        if not id_attr:
-            id_attr = re.sub(r'[^\w\s-]', '', clean_text).replace(' ', '-').lower()
-
-        toc_items.append(f'<li class="toc-h{level}"><a href="#{id_attr}">{clean_text}</a></li>')
-
-    toc_html = f"""
-<div class="toc">
-    <h2>目次</h2>
-    <ul>
-        {"".join(toc_items)}
-    </ul>
-</div>
-"""
-    return toc_html
-
-
-def add_heading_ids(html_content: str) -> str:
-    """
-    見出しにIDを追加する（目次リンク用）。
-
-    Args:
-        html_content: 変換済みのHTML
-
-    Returns:
-        ID付きHTML
-    """
-    def replace_heading(match):
-        level = match.group(1)
-        existing_id = match.group(2)
-        text = match.group(3)
-
-        if existing_id:
-            return match.group(0)  # 既存のIDがあればそのまま
-
-        # IDを生成
-        clean_text = re.sub(r'<[^>]+>', '', text).strip()
-        new_id = re.sub(r'[^\w\s-]', '', clean_text).replace(' ', '-').lower()
-
-        return f'<h{level} id="{new_id}">{text}</h{level}>'
-
-    pattern = re.compile(r'<h([23])(?:\s+id="([^"]*)")?[^>]*>(.*?)</h\1>', re.IGNORECASE | re.DOTALL)
-    return pattern.sub(replace_heading, html_content)
-
-
-# =============================================================================
 # メイン変換関数
 # =============================================================================
 
@@ -539,7 +416,6 @@ def markdown_to_pdf(
     md_file: str,
     pdf_file: str | None = None,
     style: str = "business",
-    include_toc: bool = False,
     page_numbers: bool = True,
 ) -> str:
     """
@@ -549,7 +425,6 @@ def markdown_to_pdf(
         md_file: Path to input markdown file
         pdf_file: Path to output PDF file (optional, defaults to same name as input)
         style: Style preset ("business", "technical", "minimal")
-        include_toc: Whether to include table of contents
         page_numbers: Whether to include page numbers
 
     Returns:
@@ -576,19 +451,11 @@ def markdown_to_pdf(
     # Convert to HTML
     html_content = markdown.markdown(
         md_content,
-        extensions=['tables', 'fenced_code', 'codehilite', 'toc']
+        extensions=['tables', 'fenced_code', 'codehilite']
     )
-
-    # 見出しにIDを追加
-    html_content = add_heading_ids(html_content)
 
     # 画像を figure 要素でラップ（改ページ制御改善）
     html_content = wrap_images_in_figure(html_content)
-
-    # 目次を生成
-    toc_html = ""
-    if include_toc:
-        toc_html = generate_toc(html_content)
 
     # Get document title from first h1 or filename
     title_match = re.search(r'<h1[^>]*>(.*?)</h1>', html_content, re.IGNORECASE | re.DOTALL)
@@ -602,7 +469,6 @@ def markdown_to_pdf(
     <title>{title}</title>
 </head>
 <body>
-{toc_html}
 {html_content}
 </body>
 </html>"""
@@ -630,9 +496,8 @@ def main():
 使用例:
   %(prog)s report.md                          # 基本変換
   %(prog)s report.md output.pdf               # 出力先指定
-  %(prog)s report.md --toc                    # 目次付き
   %(prog)s report.md --style technical        # 技術文書スタイル
-  %(prog)s report.md --toc --style minimal    # 目次付きミニマル
+  %(prog)s report.md --style minimal          # ミニマル
 
 スタイル:
   business   ビジネス文書向け（デフォルト）- 見出し装飾あり
@@ -643,7 +508,6 @@ def main():
 
     parser.add_argument("input", help="入力Markdownファイル")
     parser.add_argument("output", nargs="?", help="出力PDFファイル（省略時は入力ファイル名.pdf）")
-    parser.add_argument("--toc", action="store_true", help="目次を生成")
     parser.add_argument("--style", "-s", choices=["business", "technical", "minimal"],
                         default="business", help="スタイルプリセット（デフォルト: business）")
     parser.add_argument("--no-page-numbers", action="store_true", help="ページ番号を非表示")
@@ -659,7 +523,6 @@ def main():
             args.input,
             args.output,
             style=args.style,
-            include_toc=args.toc,
             page_numbers=not args.no_page_numbers,
         )
         print(f"生成完了: {output}")

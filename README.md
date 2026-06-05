@@ -1,7 +1,7 @@
 # Claude Code Skills
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](#)
+[![Version](https://img.shields.io/badge/version-0.5.1-blue.svg)](#)
 [![Skills](https://img.shields.io/badge/skills-2-green.svg)](#利用可能なスキル)
 
 Claude Code用スキルコレクション
@@ -31,22 +31,23 @@ Markdownファイルを日本語フォント対応の高品質PDFに変換しま
 **特徴:**
 - 日本語フォント対応（ヒラギノ/游書体）
 - 3種類のスタイルプリセット（business/technical/minimal）
-- 目次自動生成
+- 表の改ページ対応（ヘッダー繰り返し・セル内折り返し）
 - ページ番号挿入
 
 **使用例:**
 ```bash
-uv run --with weasyprint --with markdown scripts/md_to_pdf.py input.md output.pdf --toc
+uv run --with weasyprint --with markdown scripts/md_to_pdf.py input.md output.pdf --style technical
 ```
 
 詳細: [pdf-creator-jp/SKILL.md](./pdf-creator-jp/SKILL.md)
 
 ### image-creator
 
-Google Gemini / OpenAI GPT Imageで画像を生成・編集します。
+Google Gemini / OpenAI GPT Image / ZhipuAI GLM-Image で画像を生成・編集します（fal.ai 自動フォールバック対応）。
 
 **特徴:**
-- Gemini / OpenAI 両対応
+- 4プロバイダー対応（Gemini / OpenAI gpt-image-2 / GLM-Image / fal.ai）
+- gpt-image-2 の 2K/4K 高解像度生成
 - 透過背景生成
 - 背景除去（Vision API / マゼンタ除去）
 - ステッカーシート生成・分割

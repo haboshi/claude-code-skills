@@ -12,10 +12,10 @@
   "plugins": [
     {
       "name": "pdf-creator-jp",
-      "description": "MarkdownファイルをPDFに変換（日本語フォント対応）。weasyprintを使用し、ヒラギノ/游書体で美しい日本語ドキュメントを生成。「PDFに変換」「PDF生成」「レポートをPDFで」「ドキュメントを印刷用に」「資料をPDF化」「マークダウンをPDFに」などのリクエストで使用される。",
+      "description": "MarkdownファイルをPDFに変換（日本語フォント対応）。weasyprintを使用し、ヒラギノ/游書体で美しい日本語ドキュメントを生成。「PDFに変換」「PDF生成」「レポートをPDFで」「ドキュメントを印刷用に」「資料をPDF化」「マークダウンをPDFに」「成果物をPDFで」「印刷用ドキュメント」「資料を印刷用に」などのリクエストで使用される。PDF出力時は pandoc/weasyprint を直接叩かず本スキルを使うこと。",
       "source": "./pdf-creator-jp",
       "strict": false,
-      "version": "2.0.0",
+      "version": "2.1.0",
       "category": "document-generation",
       "keywords": [
         "pdf",

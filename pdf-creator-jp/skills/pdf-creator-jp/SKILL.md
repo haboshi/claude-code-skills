@@ -1,6 +1,6 @@
 ---
 name: pdf-creator-jp
-description: MarkdownファイルをPDFに変換（日本語フォント対応）。weasyprintを使用し、ヒラギノ/游書体で美しい日本語ドキュメントを生成。「PDFに変換」「PDF生成」「レポートをPDFで」「ドキュメントを印刷用に」「資料をPDF化」「マークダウンをPDFに」などのリクエストで使用される。
+description: MarkdownファイルをPDFに変換（日本語フォント対応）。weasyprintを使用し、ヒラギノ/游書体で美しい日本語ドキュメントを生成。「PDFに変換」「PDF生成」「レポートをPDFで」「ドキュメントを印刷用に」「資料をPDF化」「マークダウンをPDFに」「成果物をPDFで」「印刷用ドキュメント」「資料を印刷用に」などのリクエストで使用される。PDF出力時は pandoc/weasyprint を直接叩かず本スキルを使うこと。
 ---
 
 # PDF Creator (日本語版)
@@ -71,14 +71,15 @@ Markdownファイルを日本語フォント対応の高品質PDFに変換しま
 
 ```bash
 # 基本変換
-# パス注意: 相対 scripts/ 参照は CWD 依存で失敗する（プラグイン実行時は CLAUDE_PLUGIN_ROOT、無ければ standalone 側で解決）
-uv run --with weasyprint --with markdown "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/skills/pdf-creator-jp}/scripts/md_to_pdf.py" input.md output.pdf
+# パス注意: 相対 scripts/ 参照は CWD 依存で失敗するため、必ず ${CLAUDE_PLUGIN_ROOT} 経由で解決する
+# （2026-07-02 の自動試験で相対参照により 11 セッションがパス探索に浪費された実測）
+uv run --with weasyprint --with markdown "${CLAUDE_PLUGIN_ROOT}/scripts/md_to_pdf.py" input.md output.pdf
 
 # 技術文書スタイル
-uv run --with weasyprint --with markdown "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/skills/pdf-creator-jp}/scripts/md_to_pdf.py" input.md --style technical
+uv run --with weasyprint --with markdown "${CLAUDE_PLUGIN_ROOT}/scripts/md_to_pdf.py" input.md --style technical
 
 # ミニマルスタイル・ページ番号なし
-uv run --with weasyprint --with markdown "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/skills/pdf-creator-jp}/scripts/md_to_pdf.py" input.md --style minimal --no-page-numbers
+uv run --with weasyprint --with markdown "${CLAUDE_PLUGIN_ROOT}/scripts/md_to_pdf.py" input.md --style minimal --no-page-numbers
 ```
 
 ## CLIオプション
@@ -139,16 +140,16 @@ uv run --with weasyprint --with markdown "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/sk
 
 ```bash
 # レポートをPDFに（基本）
-uv run --with weasyprint --with markdown "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/skills/pdf-creator-jp}/scripts/md_to_pdf.py" report.md
+uv run --with weasyprint --with markdown "${CLAUDE_PLUGIN_ROOT}/scripts/md_to_pdf.py" report.md
 
 # 出力先指定
-uv run --with weasyprint --with markdown "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/skills/pdf-creator-jp}/scripts/md_to_pdf.py" report.md ~/Downloads/report.pdf
+uv run --with weasyprint --with markdown "${CLAUDE_PLUGIN_ROOT}/scripts/md_to_pdf.py" report.md ~/Downloads/report.pdf
 
 # 技術仕様書（ダークテーマコード）
-uv run --with weasyprint --with markdown "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/skills/pdf-creator-jp}/scripts/md_to_pdf.py" spec.md --style technical
+uv run --with weasyprint --with markdown "${CLAUDE_PLUGIN_ROOT}/scripts/md_to_pdf.py" spec.md --style technical
 
 # シンプルなメモ（ページ番号なし）
-uv run --with weasyprint --with markdown "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/skills/pdf-creator-jp}/scripts/md_to_pdf.py" memo.md --style minimal --no-page-numbers
+uv run --with weasyprint --with markdown "${CLAUDE_PLUGIN_ROOT}/scripts/md_to_pdf.py" memo.md --style minimal --no-page-numbers
 ```
 
 ## トラブルシューティング
@@ -158,9 +159,17 @@ uv run --with weasyprint --with markdown "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/sk
 
 ### `weasyprint` インポートエラー
 ```bash
-uv run --with weasyprint --with markdown "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/skills/pdf-creator-jp}/scripts/md_to_pdf.py" ...
+uv run --with weasyprint --with markdown "${CLAUDE_PLUGIN_ROOT}/scripts/md_to_pdf.py" ...
 ```
 で依存関係を含めて実行してください。
+
+### `${CLAUDE_PLUGIN_ROOT}` が未定義・スクリプトが見つからない
+
+```bash
+find ~/.claude/plugins -path '*pdf-creator-jp*' -name md_to_pdf.py 2>/dev/null | head -1
+```
+
+で実体パスを特定して実行する。相対 `scripts/` 参照は CWD 依存のため使わない。
 
 ### ライブラリエラー（macOS）
 通常は自動設定されますが、問題が発生する場合:

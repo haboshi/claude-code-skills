@@ -71,13 +71,14 @@ Markdownファイルを日本語フォント対応の高品質PDFに変換しま
 
 ```bash
 # 基本変換
-uv run --with weasyprint --with markdown scripts/md_to_pdf.py input.md output.pdf
+# パス注意: 相対 scripts/ 参照は CWD 依存で失敗する（プラグイン実行時は CLAUDE_PLUGIN_ROOT、無ければ standalone 側で解決）
+uv run --with weasyprint --with markdown "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/skills/pdf-creator-jp}/scripts/md_to_pdf.py" input.md output.pdf
 
 # 技術文書スタイル
-uv run --with weasyprint --with markdown scripts/md_to_pdf.py input.md --style technical
+uv run --with weasyprint --with markdown "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/skills/pdf-creator-jp}/scripts/md_to_pdf.py" input.md --style technical
 
 # ミニマルスタイル・ページ番号なし
-uv run --with weasyprint --with markdown scripts/md_to_pdf.py input.md --style minimal --no-page-numbers
+uv run --with weasyprint --with markdown "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/skills/pdf-creator-jp}/scripts/md_to_pdf.py" input.md --style minimal --no-page-numbers
 ```
 
 ## CLIオプション
@@ -138,16 +139,16 @@ uv run --with weasyprint --with markdown scripts/md_to_pdf.py input.md --style m
 
 ```bash
 # レポートをPDFに（基本）
-uv run --with weasyprint --with markdown scripts/md_to_pdf.py report.md
+uv run --with weasyprint --with markdown "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/skills/pdf-creator-jp}/scripts/md_to_pdf.py" report.md
 
 # 出力先指定
-uv run --with weasyprint --with markdown scripts/md_to_pdf.py report.md ~/Downloads/report.pdf
+uv run --with weasyprint --with markdown "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/skills/pdf-creator-jp}/scripts/md_to_pdf.py" report.md ~/Downloads/report.pdf
 
 # 技術仕様書（ダークテーマコード）
-uv run --with weasyprint --with markdown scripts/md_to_pdf.py spec.md --style technical
+uv run --with weasyprint --with markdown "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/skills/pdf-creator-jp}/scripts/md_to_pdf.py" spec.md --style technical
 
 # シンプルなメモ（ページ番号なし）
-uv run --with weasyprint --with markdown scripts/md_to_pdf.py memo.md --style minimal --no-page-numbers
+uv run --with weasyprint --with markdown "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/skills/pdf-creator-jp}/scripts/md_to_pdf.py" memo.md --style minimal --no-page-numbers
 ```
 
 ## トラブルシューティング
@@ -157,7 +158,7 @@ uv run --with weasyprint --with markdown scripts/md_to_pdf.py memo.md --style mi
 
 ### `weasyprint` インポートエラー
 ```bash
-uv run --with weasyprint --with markdown scripts/md_to_pdf.py ...
+uv run --with weasyprint --with markdown "${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/skills/pdf-creator-jp}/scripts/md_to_pdf.py" ...
 ```
 で依存関係を含めて実行してください。
 

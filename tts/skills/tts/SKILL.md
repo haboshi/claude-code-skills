@@ -1,6 +1,6 @@
 ---
 name: tts
-description: テキスト音声変換（TTS）。OpenAI gpt-4o-mini-tts（高品質クラウド）/ COEIROINK / VOICEVOX対応。バッチ音声生成・WAV結合・スタイル指示に対応。「読み上げて」「音声にして」「テキストをTTSで」で発動。
+description: テキスト音声変換（TTS）。OpenAI gpt-4o-mini-tts（高品質クラウド）/ COEIROINK / VOICEVOX対応。バッチ音声生成・WAV結合・スタイル指示に対応。COEIROINK/VOICEVOX向けの発音辞書（英単語のカタカナ読み登録）も内蔵。「読み上げて」「音声にして」「テキストをTTSで」「発音辞書」「読み方登録」「英単語の読みを登録」「発音確認」で発動。
 ---
 
 # Text-to-Speech
@@ -263,15 +263,64 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/batch-tts.js \
 - COEIROINK: localhost:50032 で起動
 - VOICEVOX: localhost:50021 で起動
 
-## 英単語の発音について
+## 発音辞書（ローカルエンジン用）
 
-### ローカルTTS（COEIROINK / VOICEVOX）
+英単語のカタカナ読みを TTS エンジンの辞書に登録し、発音を制御する機能。
+`dict.js` で登録・スキャン・確認を行う。
 
-英語の発音を正しくするには、事前に `tts-dict` プラグインで辞書登録を行ってください。
+**適用範囲**: この辞書は **COEIROINK / VOICEVOX 使用時のみ** 必要。
+OpenAI TTS は英語・日本語のバイリンガル対応のため、辞書登録は不要
+（特殊な読みは `instructions` パラメータで指示できる。例:
+`"instructions": "Read 'LLM' as 'エルエルエム', 'API' as 'エーピーアイ'"`）。
 
-### OpenAI TTS
+### クイックスタート
 
-OpenAI TTSは英語・日本語のバイリンガル対応のため、辞書登録は不要です。
-特殊な読み方が必要な場合は `instructions` パラメータで指示できます。
+```bash
+# 1. 辞書の健全性チェック（ローカルTTS生成前に推奨）
+node ${CLAUDE_PLUGIN_ROOT}/scripts/dict.js healthcheck
 
-例: `"instructions": "Read 'LLM' as 'エルエルエム', 'API' as 'エーピーアイ'"`
+# 2. 英単語を自動登録（LLM経由で読み取得 → エンジン適用）
+node ${CLAUDE_PLUGIN_ROOT}/scripts/dict.js auto-add Claude OpenAI ChatGPT --apply
+
+# 3. エンジンの実際の発音を確認
+node ${CLAUDE_PLUGIN_ROOT}/scripts/dict.js verify Claude OpenAI ChatGPT
+```
+
+### 主要コマンド
+
+| コマンド | 説明 |
+|---------|------|
+| `healthcheck` | 辞書の健全性チェック（ローカルTTS前に推奨） |
+| `auto-add <words...> --apply` | LLMで読み取得 → 登録 → エンジン適用 |
+| `scan --input <file> [--apply] [--with-case-variants]` | テキスト/JSONから英単語を自動抽出 → 登録 |
+| `add <word> <yomi>` | 手動登録 |
+| `check <words...>` | 登録済みか確認 |
+| `verify <words...>` | エンジンの実際の発音を確認 |
+| `apply` | エンジンに辞書を適用 |
+| `list` | 一覧表示 |
+| `reset` | 辞書をリセット |
+
+### スキャン（テキスト/JSONから自動抽出→登録）
+
+```bash
+# dialogue.json からスキャン → プレビュー（変更なし）
+node ${CLAUDE_PLUGIN_ROOT}/scripts/dict.js scan --input dialogue.json --dry-run
+
+# テキスト直接指定 → 未登録単語をLLM登録 → エンジン適用
+node ${CLAUDE_PLUGIN_ROOT}/scripts/dict.js scan --text "Claude CodeのPlan ModeでTypeScriptを書く" --apply
+
+# ケースバリアント（lowercase, UPPERCASE, Pascal）も一括登録
+node ${CLAUDE_PLUGIN_ROOT}/scripts/dict.js scan --text "Claude Code" --with-case-variants --apply
+```
+
+### グローバルオプション（dict.js）
+
+| オプション | 説明 | デフォルト |
+|------------|------|------------|
+| `--api-base` | TTS API基本URL（localhostのみ許可） | http://127.0.0.1:50032 |
+
+### 注意点
+
+- **大文字小文字を区別**: COEIROINK は "git" と "Git" を別エントリ扱い。両方の登録が必要（`--with-case-variants` が便利）。
+- **ハイフン付き単語**: `obsidian-skills` 等はマッチングが不安定。TTS用テキスト側でカタカナに置換するのが確実。
+- **前提**: `auto-add` / `scan --apply` の読み取得には `ZAI_API_KEY` または `OPENROUTER_API_KEY` が必要。エンジン適用には COEIROINK/VOICEVOX の起動が必要。

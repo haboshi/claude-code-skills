@@ -9,7 +9,7 @@
 
 import fs from "fs";
 import path from "path";
-import { fileURLToPath } from "url";
+import { fileURLToPath, pathToFileURL } from "url";
 import { spawn } from "child_process";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -52,7 +52,7 @@ let API_BASE = "http://127.0.0.1:50032";
 /**
  * Count moras in katakana string (simplified).
  */
-function countMoras(yomi) {
+export function countMoras(yomi) {
   const smallKana = /[ャュョッァィゥェォヮ]/g;
   const totalChars = yomi.length;
   const smallCount = (yomi.match(smallKana) || []).length;
@@ -448,7 +448,7 @@ function extractTextFromDialogue(filePath) {
  * - UPPERCASE
  * - PascalCase (first letter capitalized)
  */
-function generateCaseVariants(word) {
+export function generateCaseVariants(word) {
   const variants = new Set();
 
   // Original
@@ -712,7 +712,11 @@ Examples:
   }
 }
 
-main().catch((error) => {
-  console.error("Error:", error.message);
-  process.exit(1);
-});
+// CLI として直接実行されたときのみ main() を起動する。
+// （テスト等から純粋関数を import する際に main() が走らないようにするガード）
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    console.error("Error:", error.message);
+    process.exit(1);
+  });
+}

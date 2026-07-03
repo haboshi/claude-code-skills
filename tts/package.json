@@ -1,6 +1,13 @@
 {
   "name": "tts",
-  "version": "1.0.0",
+  "version": "2.1.0",
   "type": "module",
-  "private": true
+  "private": true,
+  "scripts": {
+    "test": "node --test scripts/provider.test.js"
+  },
+  "dependencies": {
+    "openai": "^4.0.0",
+    "dotenv": "^16.0.0"
+  }
 }

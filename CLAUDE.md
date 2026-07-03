@@ -47,19 +47,21 @@ Claude Code用プラグイン（スキル）のマーケットプレイスコレ
 { "name": "foo", "source": "./foo" }
 ```
 
-### 収録プラグイン一覧（13個）
+### 収録プラグイン一覧（11個）
 
 **ドキュメント生成**: pdf-creator-jp
-**画像生成**: image-creator, gen-ai-image, svg-header-image, svg-diagram, line-sticker-creator
+**画像生成**: image-creator, svg-header-image, svg-diagram, line-sticker-creator
 **画像変換**: svg-to-webp, mermaid-to-webp
-**音声**: tts, tts-dict
+**音声**: tts（発音辞書機能を内蔵）
 **調査**: brave-research, deep-research
-**開発ツール**: task-planner, skill-creator-pro
+**開発ツール**: skill-creator-pro（配布パイプライン特化）
+
+廃止済み（2026-07 棚卸し）: gen-ai-image（image-creator の fal.ai フォールバックに機能内包）、task-planner（汎用の計画スキルで代替。タスク記述フォーマットは docs/task-decomposition-format.md に知見として残置）、tts-dict（tts へ統合）。
 
 ### スクリプト言語
 
 - Python スクリプト: image-creator, pdf-creator-jp, brave-research, skill-creator-pro, line-sticker-creator
-- Node.js スクリプト: svg-to-webp, svg-header-image, svg-diagram, mermaid-to-webp, tts, tts-dict, gen-ai-image
+- Node.js スクリプト: svg-to-webp, svg-header-image, svg-diagram, mermaid-to-webp, tts
 
 Python は `uv run --with <deps>` で実行（venv不要）。Node.js は各プラグインの `node_modules` を使用。
 
@@ -99,8 +101,8 @@ cd image-creator && python -m pytest scripts/
 # Node.js テスト（svg-header-image等）
 cd svg-header-image && node scripts/generate.test.js
 
-# gen-ai-image テスト
-cd gen-ai-image && node scripts/generate.test.js
+# npm test が定義されているプラグイン（svg-to-webp / mermaid-to-webp / svg-diagram / tts）
+cd svg-to-webp && npm test
 ```
 
 ### 必要な環境変数（プラグインごと）
@@ -108,5 +110,5 @@ cd gen-ai-image && node scripts/generate.test.js
 - `GEMINI_API_KEY` — image-creator（Geminiプロバイダ使用時）
 - `OPENAI_API_KEY` — image-creator（OpenAIプロバイダ使用時）, tts
 - `ZHIPU_API_KEY` — image-creator（ZhipuAIプロバイダ使用時）
-- `FAL_KEY` — gen-ai-image
+- `FAL_AI_API_KEY` — image-creator（fal.ai フォールバック使用時）
 - `BRAVE_API_KEY` — brave-research

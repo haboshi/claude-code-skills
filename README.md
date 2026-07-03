@@ -1,8 +1,8 @@
 # Claude Code Skills
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-0.5.1-blue.svg)](#)
-[![Skills](https://img.shields.io/badge/skills-2-green.svg)](#利用可能なスキル)
+[![Version](https://img.shields.io/badge/version-0.6.0-blue.svg)](#)
+[![Skills](https://img.shields.io/badge/skills-11-green.svg)](#利用可能なスキル)
 
 Claude Code用スキルコレクション
 
@@ -58,6 +58,20 @@ python3 scripts/generate_openai.py "かわいい猫のイラスト" -b transpare
 ```
 
 詳細: [image-creator/SKILL.md](./image-creator/SKILL.md)
+
+### その他のスキル
+
+| スキル | 概要 |
+|---|---|
+| [svg-header-image](./svg-header-image/) | テンプレートベースのSVGヘッダー画像生成（外部API不要） |
+| [svg-diagram](./svg-diagram/) | LLMによるカスタムSVG図解生成（OpenRouter） |
+| [line-sticker-creator](./line-sticker-creator/) | LINEスタンプセット生成（LINE Creators Market仕様検証込み） |
+| [svg-to-webp](./svg-to-webp/) | SVG→WebP/PNG変換（sharp） |
+| [mermaid-to-webp](./mermaid-to-webp/) | Mermaid記法→WebP/PNG変換 |
+| [tts](./tts/) | テキスト音声変換（OpenAI/COEIROINK/VOICEVOX、発音辞書内蔵） |
+| [brave-research](./brave-research/) | Brave Search APIによるWeb検索・コンテンツ抽出 |
+| [deep-research](./deep-research/) | マルチエージェント並列深掘り調査 |
+| [skill-creator-pro](./skill-creator-pro/) | スキル配布パイプライン（検証・セキュリティスキャン・パッケージング） |
 
 ## 動作要件
 

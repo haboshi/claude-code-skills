@@ -1,8 +1,8 @@
 # Claude Code Skills
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-0.6.0-blue.svg)](#)
-[![Skills](https://img.shields.io/badge/skills-11-green.svg)](#利用可能なスキル)
+[![Version](https://img.shields.io/badge/version-0.7.0-blue.svg)](#)
+[![Skills](https://img.shields.io/badge/skills-10-green.svg)](#利用可能なスキル)
 
 Claude Code用スキルコレクション
 
@@ -70,7 +70,6 @@ python3 scripts/generate_openai.py "かわいい猫のイラスト" -b transpare
 | [mermaid-to-webp](./mermaid-to-webp/) | Mermaid記法→WebP/PNG変換 |
 | [tts](./tts/) | テキスト音声変換（OpenAI/COEIROINK/VOICEVOX、発音辞書内蔵） |
 | [brave-research](./brave-research/) | Brave Search APIによるWeb検索・コンテンツ抽出 |
-| [deep-research](./deep-research/) | マルチエージェント並列深掘り調査 |
 | [skill-creator-pro](./skill-creator-pro/) | スキル配布パイプライン（検証・セキュリティスキャン・パッケージング） |
 
 ## 動作要件

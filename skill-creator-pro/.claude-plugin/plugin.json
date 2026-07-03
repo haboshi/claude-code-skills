@@ -1,7 +1,7 @@
 {
   "name": "skill-creator-pro",
-  "version": "1.0.1",
-  "description": "Professional-grade skill creation with 5 design patterns, security scanning, sanitization, and 3-stage QA. Create, test, and distribute high-quality skills.",
+  "version": "2.0.0",
+  "description": "作成済みスキルの配布パイプライン。構造検証・サニタイズ・gitleaks による秘密情報スキャン・zip パッケージング・marketplace 登録を担当。スキルの新規作成・執筆は対象外（superpowers:writing-skills / plugin-dev:skill-development を使用）。",
   "author": {
     "name": "haboshi",
     "email": "haboshi@allambitious.co.jp"

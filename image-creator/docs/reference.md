@@ -32,6 +32,71 @@
 |---|---|---|
 | GLM-Image | `glm-image` | 16Bパラメータ、テキスト描画精度91.16%、$0.015/枚 |
 
+### Codex サブスク枠（既定・無課金）
+
+| 経路 | モデル | 認証 | 課金 |
+|---|---|---|---|
+| built-in `image_gen` | `gpt-image-2` | ChatGPT ログイン（`codex login`） | **なし**（サブスク枠） |
+
+> size/quality/厳密な比率は制御不可、透過背景も不可。正確な比率・2K/4K・透過は `generate_openai.py`（従量課金）を使う。
+
+---
+
+## 0. generate_codex.py - Codex サブスク枠生成（既定・無課金）
+
+Codex CLI 組み込みの built-in `image_gen`（gpt-image-2）を ChatGPT ログイン認証で呼び出す。`OPENAI_API_KEY` を自動的に外して起動するため従量課金が発生しない。標準ライブラリのみで動作（`uv run python` で追加依存不要）。
+
+```bash
+uv run python scripts/generate_codex.py "プロンプト" [オプション]
+```
+
+### オプション
+
+| オプション | 説明 | デフォルト |
+|-----------|------|-----------|
+| `-o`, `--output` | 出力ファイルパス | `generated_image.png` |
+| `-n`, `--number` | 生成枚数（1-10、共有スタイルで連続生成） | `1` |
+| `--effort` | 推論強度（`low`/`medium`/`high`/`xhigh`）。作り込みは high/xhigh | `low` |
+| `--aspect` | 比率のヒント（例 `16:9`/`3:4`/`1:1`。向きは誘導可、解像度は built-in 非制御） | なし |
+| `--no-augment` | 品質バー（役割付与・作り込み・レイアウト委譲）の自動付与を無効化 | 付与ON |
+| `--timeout` | タイムアウト秒 | `300` |
+| `--check` | 可用性判定のみ（利用可=exit 0 / 不可=exit 3） | なし |
+
+### 終了コード
+
+| コード | 意味 |
+|---|---|
+| 0 | 成功 |
+| 1 | 一般エラー（タイムアウト等） |
+| 2 | 生成なし・偽装検証失敗（image_gen 未実行の疑い） |
+| 3 | codex CLI 不在・未ログイン（呼び出し側は Gemini 等へフォールバック） |
+| 4 | サブスクトークン期限切れ（`! codex login` で再ログインが必要） |
+
+### 品質向上（augment・既定ON）
+
+built-in image_gen は size/quality を制御できないため、品質は**プロンプト設計**で上げる。既定で「専門デザイナー役の付与＋品質バー＋（構造的内容なら）レイアウト委譲・補助ラベル補完」を自動付与する（effort より効く最大レバー。特にインフォグラフィック・図解・ポスターで顕著）。ユーザーの明示テイストは尊重し、指示にない要素は足さない。`--no-augment` で無効化できる。比率は `--aspect` で向きを強い prose 誘導するが、解像度・厳密比率は built-in の制御外。
+
+### 仕組み・可用性・偽装検証
+
+- **可用性判定**: `codex` が PATH にあり、`codex login status` が `ChatGPT` を含むこと。満たさなければ exit 3。
+- **認証**: 起動時に環境の `OPENAI_API_KEY` を除去し、ChatGPT ログインの OAuth トークン（サブスク枠）で動く。
+- **生成物の取り出し**: codex exec はサンドボックスでプロジェクトに書けないため、codex が生成 PNG の絶対パスを報告し、本スクリプト（非サンドボックス）が `-o` へコピーする。
+- **偽装検証**: プロンプトに偽装禁止文言を含め、codex が報告したパスが `generated_images` 配下の実ファイルかつ開始マーカーより新しい mtime であることを検証（既存流用・SVG/PIL 自作偽装を排除）。**報告パスを正典とするため複数セッション同時実行時も取り違えない**（共有ディレクトリ走査は報告が無いときの最終手段）。
+- **出力パス探索の候補**: `$CODEX_HOME/generated_images`、`~/.codex/generated_images`、orca ランタイム配下（環境依存を吸収）。
+
+### 例
+
+```bash
+# 可用性確認
+uv run python scripts/generate_codex.py --check
+
+# 単発生成（無課金）
+uv run python scripts/generate_codex.py "青空と一本桜のシンプルなイラスト" -o sakura.png
+
+# 複数枚・作り込み
+uv run python scripts/generate_codex.py "章扉の装飾" -n 3 --effort xhigh -o slide.png
+```
+
 ---
 
 ## 1. generate.py - Gemini画像生成

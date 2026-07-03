@@ -194,18 +194,45 @@ def generate_image(
                 print(f"サーバー容量超過 ({status}): {type(e).__name__}")
             break
 
-    # フォールバックチェーン: Pro→OpenAI→NB2→fal→Flash, NB2→OpenAI→fal→Flash
-    # OpenAI gpt-image-2 は第1優先（高品質・別プロバイダで障害分離）
-    # 参照画像指定時は OpenAI スキップ（edit API はインターフェース差異あり）
+    # フォールバックチェーン: Pro→codex→OpenAI→NB2→fal→Flash, NB2→codex→OpenAI→fal→Flash
+    # codex サブスク枠（無課金）を最優先。次いで OpenAI gpt-image-2（高品質・別プロバイダで障害分離）
+    # 参照画像指定時は codex/OpenAI スキップ（比率制御不可 / edit API のインターフェース差異）
     if last_error is not None and not no_fallback:
         status = _get_status_code(last_error)
         if status in FALLBACK_CODES:
             fallback_chain = {
-                "pro": ["openai", "nb2", "fal", "flash"],
-                "nb2": ["openai", "fal", "flash"],
+                "pro": ["codex", "openai", "nb2", "fal", "flash"],
+                "nb2": ["codex", "openai", "fal", "flash"],
             }
             chain = fallback_chain.get(model_type, [])
             for fb_key in chain:
+                # codex サブスク枠フォールバック（無課金・最優先）: subprocess で generate_codex.py を呼び出す
+                if fb_key == "codex":
+                    if reference_image:
+                        # 参照画像は built-in image_gen で扱えないためスキップ
+                        print("\n参照画像指定のため codex サブスク枠をスキップ...")
+                        continue
+                    import subprocess
+                    script_dir = Path(__file__).parent
+                    print(f"\n{model_id} が応答しません。codex サブスク枠（無課金）にフォールバック...")
+                    try:
+                        result = subprocess.run(
+                            [sys.executable, str(script_dir / "generate_codex.py"),
+                             prompt, "-o", str(output_file), "--aspect", aspect_ratio],
+                            capture_output=True, text=True, timeout=300,
+                        )
+                        if result.returncode == 0 and output_file.exists():
+                            print(f"保存完了 (codex サブスク枠): {output_file.absolute()}")
+                            return str(output_file.absolute())
+                        # exit 3(未導入/未ログイン) 等は静かに次へ
+                        if result.stdout:
+                            print(result.stdout.strip().splitlines()[-1][:200])
+                    except subprocess.TimeoutExpired:
+                        print("codex タイムアウト（300秒）")
+                    except Exception as cx_err:
+                        print(f"codex 呼び出しエラー: {type(cx_err).__name__}")
+                    continue
+
                 # OpenAI gpt-image-2 フォールバック: subprocess で generate_openai.py を呼び出す
                 if fb_key == "openai":
                     openai_api_key = os.environ.get("OPENAI_API_KEY")

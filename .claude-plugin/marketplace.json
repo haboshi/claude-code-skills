@@ -28,10 +28,10 @@
     },
     {
       "name": "image-creator",
-      "description": "Google Gemini、OpenAI GPT Image、またはZhipuAI GLM-Imageの画像生成モデルで画像を生成・編集。「画像を生成して」「イラストを作って」「この画像を編集して」などの指示で自動的に使用される。ステッカーシート生成・分割にも対応。3プロバイダーから選択可能。",
+      "description": "Codex サブスク枠（無課金・既定）、Google Gemini、OpenAI GPT Image、ZhipuAI GLM-Image の画像生成モデルで画像を生成・編集。「画像を生成して」「イラストを作って」「この画像を編集して」などの指示で自動的に使用される。何も指定しない汎用生成は codex サブスク枠（ChatGPTログイン・API従量課金なし）を優先し、不可時は Gemini に自動フォールバック。ステッカーシート生成・分割にも対応。",
       "source": "./image-creator",
       "strict": false,
-      "version": "1.4.0",
+      "version": "1.5.0",
       "category": "image-generation",
       "keywords": [
         "image",

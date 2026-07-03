@@ -1,7 +1,7 @@
 {
   "name": "image-creator",
-  "version": "1.4.0",
-  "description": "Google Gemini、OpenAI GPT Image、またはZhipuAI GLM-Imageの画像生成モデルで画像を生成・編集。3プロバイダーから選択可能。",
+  "version": "1.5.0",
+  "description": "Codex サブスク枠（無課金・既定）、Google Gemini、OpenAI GPT Image、ZhipuAI GLM-Image の画像生成モデルで画像を生成・編集。何も指定しない汎用生成は codex サブスク枠（ChatGPTログイン・API従量課金なし）を優先し、不可時は Gemini に自動フォールバック。",
   "author": {
     "name": "haboshi",
     "email": "haboshi@allambitious.co.jp"

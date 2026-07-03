@@ -10,6 +10,7 @@ import "dotenv/config";
 import OpenAI from "openai";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { DOMParser } from "@xmldom/xmldom";
 
 function parseArgs() {
@@ -125,6 +126,13 @@ Create a beautiful, professional diagram.`;
 }
 
 /**
+ * Strip surrounding markdown code fences (```xml / ```svg / ```) from a response.
+ */
+function stripCodeFences(svg) {
+  return svg.replace(/^```(?:xml|svg)?\n?/i, "").replace(/\n?```$/i, "");
+}
+
+/**
  * Validate SVG structure using XML parser.
  */
 function validateSvg(svg) {
@@ -235,7 +243,7 @@ async function main() {
     }
 
     // Strip markdown code block wrappers if present
-    svg = svg.replace(/^```(?:xml|svg)?\n?/i, "").replace(/\n?```$/i, "");
+    svg = stripCodeFences(svg);
 
     // Write output (before validation so Claude can fix errors)
     const outputPath = resolve(options.output);
@@ -266,4 +274,9 @@ async function main() {
   }
 }
 
-main();
+// CLI 実行時のみ main を起動（テストから import しても副作用を起こさないため）
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main();
+}
+
+export { buildSystemPrompt, stripCodeFences, validateSvg };

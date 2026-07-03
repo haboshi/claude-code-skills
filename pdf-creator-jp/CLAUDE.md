@@ -43,7 +43,7 @@ scripts/md_to_pdf.py  # 全ロジックを含む単一スクリプト
 - スタイルのデフォルトは `business`。
 - 画像は `<figure>` 要素でラップされ、max-height: 14cm で制限。縦長画像はページまたぎを許可し、見出しのみの空白ページを防止。
 - テーブルは長い場合に改ページを許可し、thead を各ページで繰り返す。セル内の長いURL・英単語は `overflow-wrap: anywhere` で折り返し。
-- Mermaid 記法は PDF では非対応。検出時に警告を出し、CSS で非表示にする。
+- Mermaid 記法は変換されない（本スクリプトに Mermaid の検出・レンダリング処理は存在しない）。````mermaid コードブロックはコードとしてそのまま出力されるため、図を PDF に載せたい場合は事前に `mermaid-to-webp` 等で画像化し、Markdown に画像として埋め込むこと。
 
 ## Marketplace / Versioning
 

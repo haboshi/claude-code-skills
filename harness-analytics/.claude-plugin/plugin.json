@@ -1,7 +1,7 @@
 {
   "name": "harness-analytics",
-  "version": "0.1.0",
-  "description": "Claude Code の transcript を増分ダイジェスト化し、セッション横断で失敗パターンを分析して改善対象（スキル/ルール/CLAUDE.md）を示唆する運用改善スキル。SessionEnd で軽量収集、/harness-loop で分析→人間向けHTMLレポート。",
+  "version": "0.2.0",
+  "description": "Claude Code の transcript を増分ダイジェスト化し、セッション横断で失敗パターンを分析して改善対象（スキル/ルール/CLAUDE.md）を示唆する運用改善スキル。SessionEnd で軽量収集、/harness-loop で分析→ライト既定・レスポンシブな HTMLレポート（優先度マップ・master-detail 詳細・codex インフォグラフィック）を固定ポート7788のローカルサーバで表示。",
   "author": {
     "name": "haboshi",
     "email": "haboshi@allambitious.co.jp"

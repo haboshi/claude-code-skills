@@ -4,6 +4,10 @@
 
 // 判定順に評価（先勝ち）。ラベルは harness-research/06 の remediation テーブルのキーに対応。
 const RULES = [
+  // guard_block: フック/分類器が危険操作を正しく阻止した「防御成功」。失敗ではないため permission_denied より前段で捕捉し、
+  // クラスターとして可視化しつつ失敗集計から分離できるようにする（secret-leak-guard / commit-test-guard / git-commit-gate /
+  // 理由なし skip-gate / auto mode の Create Unsafe Agents 等）。「Blocked: sleep」等の行動起因ブロックは permission_denied に残す。
+  ['guard_block', /\[Hook\]\s*BLOCKED|BLOCKED \((?:secret-leak-guard|commit-test-guard|git-commit-gate|[a-z-]*guard|[a-z-]*gate)\)|Create Unsafe Agents|dangerously-skip-permissions|に理由がありません|skip.{0,8}キーワードに理由/i],
   ['unavailable', /temporarily unavailable|cannot determine the safety|auto mode cannot|service unavailable|overloaded/i],
   ['permission_denied', /permission denied|permission for this action was denied|denied by the .*classifier|was blocked|\bblocked:|may only (?:list|access|read|write)|not permitted|user (?:denied|declined|rejected)|requires approval|operation not permitted/i],
   ['file_not_read', /file has not been read yet|read it first|must read the file|has not been read/i],
@@ -16,10 +20,18 @@ const RULES = [
   ['command_failed', /exit code [1-9]|non-zero exit|command failed|returned error|\bstderr\b/i],
 ];
 
+// Edit/Write 系のみで意味を持つ細分類（他ツールへ誤適用しないよう toolName でゲート）。
+const EDIT_TOOLS = /^(Edit|Write|NotebookEdit|MultiEdit)$/;
+
 // tool_result のテキストと is_error から error_class を返す。エラーでなければ null。
-function classifyToolResult(_toolName, text, isError) {
+function classifyToolResult(toolName, text, isError) {
   if (!isError) return null;
   const t = String(text || '');
+  // Edit 系の other を no_op（old==new・既適用の再送）/ stale_read（Read 後に formatter/linter/ユーザーが変更）へ細分化。
+  if (EDIT_TOOLS.test(String(toolName || ''))) {
+    if (/no changes to make|old_string and new_string are exactly the same/i.test(t)) return 'no_op';
+    if (/has been modified since (?:you )?read|modified since read|read it again before attempt/i.test(t)) return 'stale_read';
+  }
   for (const [label, re] of RULES) {
     if (re.test(t)) return label;
   }

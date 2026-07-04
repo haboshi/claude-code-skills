@@ -37,5 +37,12 @@ output/
 # Claude Code local settings
 .claude/
 
+# oh-my-claudecode session state (全階層に生成される)
+.omc/
+
+# team-dev 実行中の作業ファイル
+mission-brief.md
+.compact-context.md
+
 # Serena IDE
 .serena/

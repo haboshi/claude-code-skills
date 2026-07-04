@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
+const { spawn } = require('child_process');
 
 const HOME = os.homedir();
 const CLAUDE_DIR = path.join(HOME, '.claude');
@@ -21,8 +22,11 @@ const CLUSTERS_DIR = path.join(HA_DIR, 'clusters');
 const REPORTS_DIR = path.join(HA_DIR, 'reports');
 const HISTORY_DIR = path.join(REPORTS_DIR, 'history');
 const LOGS_DIR = path.join(HA_DIR, 'logs');
+const INFOGRAPHICS_DIR = path.join(HA_DIR, 'infographics');
 const CURSORS_PATH = path.join(HA_DIR, 'cursors.json');
 const CONFIG_PATH = path.join(HA_DIR, 'config.json');
+const SERVER_INFO_PATH = path.join(HA_DIR, 'server.json');
+const SERVER_LOCK_PATH = path.join(HA_DIR, 'server.lock');
 
 // 現行ダイジェストスキーマ版。上げると cursor 不一致セッションが再処理対象になる（分類ロジック変更時も上げる）。
 const DIGEST_VERSION = 2;
@@ -151,6 +155,57 @@ function windowToMs(win) {
   return n * unit;
 }
 
+// ヘッドレス判定（SSH かつ DISPLAY 無し）。turn-review lib/env.js に準拠。
+function isHeadless(env = process.env) {
+  const ssh = !!env.SSH_CONNECTION || !!env.SSH_CLIENT;
+  const hasDisplay = !!(env.DISPLAY || env.WAYLAND_DISPLAY);
+  return ssh && !hasDisplay;
+}
+
+// レポート(ファイルパス or URL)を既定ブラウザで開く。ヘッドレス時はログのみ（開かない）。
+// turn-review の openUrl を移植（macOS `open`、detached・fire-and-forget）。失敗しても致命的でない。
+function openInBrowser(pathOrUrl) {
+  if (isHeadless()) { process.stdout.write(`[harness-analytics] headless のため未起動: ${pathOrUrl}\n`); return false; }
+  try {
+    spawn('open', [pathOrUrl], { stdio: 'ignore', detached: true }).unref();
+    return true;
+  } catch { return false; }
+}
+
+// 稼働中サーバ情報の取得と生存確認（heartbeat 鮮度 + プロセス存在）
+function serverInfo() { return readJson(SERVER_INFO_PATH, null); }
+function serverAlive(info) {
+  if (!info || !info.pid || !info.port) return false;
+  if (Date.now() - (info.updated_at || 0) > 60000) return false; // 60秒以上更新なし＝死んでいる
+  try { process.kill(info.pid, 0); return true; } catch { return false; }
+}
+
+// レポートを開く。サーバが生きていれば http URL、無ければ detached 起動して最大2秒待ち、
+// それでも駄目なら file:// にフォールバック（turn-review の spawnServerIfNotRunning + open 相当）。
+async function openReport({ preferServer = true } = {}) {
+  const htmlPath = path.join(REPORTS_DIR, 'latest.html');
+  if (isHeadless()) { process.stdout.write(`[harness-analytics] headless のため未起動: ${htmlPath}\n`); return { opened: false, url: null }; }
+  if (preferServer) {
+    let info = serverInfo();
+    if (!serverAlive(info)) {
+      try { spawn(process.execPath, [path.join(__dirname, 'server.js')], { detached: true, stdio: 'ignore' }).unref(); } catch { /* fallback へ */ }
+      const start = Date.now();
+      while (Date.now() - start < 2000) {
+        info = serverInfo();
+        if (serverAlive(info)) break;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+    }
+    if (serverAlive(info)) {
+      const url = `http://127.0.0.1:${info.port}/`;
+      openInBrowser(url);
+      return { opened: true, url };
+    }
+  }
+  openInBrowser(htmlPath); // サーバ不可なら静的 file で開く
+  return { opened: true, url: htmlPath };
+}
+
 // 既定 config を返す（ファイルが無ければこれ）
 function defaultConfig() {
   return {
@@ -161,19 +216,32 @@ function defaultConfig() {
     },
     analysis: { window: '14d', top_k_clusters: 8 },
     privacy: { store_raw_tool_result: false },
+    server: { port: 7788, idle_timeout_min: 30 },
+    infographics: { enabled: true, limit: 10, timeout_sec: 600, model: 'gpt-5.4-mini', reasoning: 'low' },
   };
 }
+// 既存の部分 config でも欠けたセクションは既定で補う（server/infographics を後付けしても効くように）
 function loadConfig() {
+  const d = defaultConfig();
   const cfg = readJson(CONFIG_PATH, null);
-  return cfg || defaultConfig();
+  if (!cfg) return d;
+  return {
+    ...d, ...cfg,
+    sinks: { ...d.sinks, ...(cfg.sinks || {}), local_jsonl: { ...d.sinks.local_jsonl, ...((cfg.sinks || {}).local_jsonl || {}) }, fetchdb: { ...d.sinks.fetchdb, ...((cfg.sinks || {}).fetchdb || {}) } },
+    analysis: { ...d.analysis, ...(cfg.analysis || {}) },
+    privacy: { ...d.privacy, ...(cfg.privacy || {}) },
+    server: { ...d.server, ...(cfg.server || {}) },
+    infographics: { ...d.infographics, ...(cfg.infographics || {}) },
+  };
 }
 
 module.exports = {
   HOME, CLAUDE_DIR, PROJECTS_DIR,
   HA_DIR, DIGESTS_DIR, ROLLUPS_DIR, CLUSTERS_DIR, REPORTS_DIR, HISTORY_DIR, LOGS_DIR,
-  CURSORS_PATH, CONFIG_PATH, DIGEST_VERSION,
+  INFOGRAPHICS_DIR, CURSORS_PATH, CONFIG_PATH, SERVER_INFO_PATH, SERVER_LOCK_PATH, DIGEST_VERSION,
   today, nowIso, mtimeMsOf, sizeOf,
   maskSecrets, maskPaths, sanitize, projectHash,
   readJson, writeJson, writeText, getFlag,
   listTranscripts, cwdSlugOf, windowToMs, defaultConfig, loadConfig,
+  isHeadless, openInBrowser, serverInfo, serverAlive, openReport,
 };

@@ -22,8 +22,14 @@ const REMEDIATION = {
   mcp_error: { fix: 'MCP スキーマドリフト対応（サーバ再起動 / 引数見直し）', surface: 'rules(mcp-schema-drift)' },
   command_failed: { fix: 'コマンドの引数・前提条件を確認', surface: 'コマンド実行方針' },
   unavailable: { fix: '一時的な不可用（モデル/auto mode）。リトライ、または auto mode の許可設定を見直す', surface: 'auto mode / settings.json' },
+  guard_block: { fix: '防御成功（フック/分類器が危険操作を正しく阻止）。失敗ではない＝失敗集計・コスト影響から除外して読む。反復するなら正規手順（[skip-gate:理由]＋ユーザー承認、サンクション済み経路の使用）に従う', surface: '計測(除外) / 行動: rules(git-workflow, dangerous-data-handling)' },
+  no_op: { fix: '既適用／old==new の Edit を送らない。送信前に対象の現在値を確認する', surface: '作業手順 / Edit 粒度' },
+  stale_read: { fix: 'Read 後に formatter/linter/ユーザーが変更（File modified since read）。必ず Read で再取得してから Edit を再構成する', surface: '作業手順 / formatter 競合' },
   other: { fix: '個別調査が必要', surface: '—' },
 };
+
+// 防御成功（失敗ではない）error_class。集計/レポートで失敗と区別するために使う。
+const DEFENSE_CLASSES = new Set(['guard_block']);
 
 // 窓内のダイジェストを読み込む
 function loadDigests(cutoffMs) {
@@ -97,6 +103,7 @@ function buildClusters(digests) {
     count: g.count,
     affected_sessions: g.affected_sessions.size,
     cost_impact_usd: Math.round(g.cost_impact_usd * 10000) / 10000,
+    is_defense: DEFENSE_CLASSES.has(g.error_class), // 防御成功（失敗ではない）。KPI/コストの読み分け用フラグ
     suggested_fix: g.suggested_fix,
     target_surface: g.target_surface,
     examples: g.examples,

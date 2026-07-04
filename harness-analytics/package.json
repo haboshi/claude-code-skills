@@ -1,0 +1,9 @@
+{
+  "name": "harness-analytics",
+  "version": "0.1.0",
+  "description": "Claude Code transcript の増分ダイジェスト集約と失敗クラスター分析",
+  "private": true,
+  "scripts": {
+    "test": "node scripts/harness-analytics.test.js"
+  }
+}

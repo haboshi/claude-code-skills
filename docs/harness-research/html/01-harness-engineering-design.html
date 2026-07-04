@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ハーネスエンジニアリングとハーネスデザイン</title>
+  <style>
+    :root {
+      --ink: #172126;
+      --muted: #526269;
+      --paper: #fbfaf7;
+      --panel: #ffffff;
+      --line: #d8dedb;
+      --teal: #0f766e;
+      --amber: #b45309;
+      --rose: #be123c;
+      --green: #4d7c0f;
+      --violet: #6d28d9;
+      --code: #263238;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Yu Gothic", Meiryo, sans-serif;
+      line-height: 1.75;
+      color: var(--ink);
+      background: var(--paper);
+      overflow-x: hidden;
+    }
+    .wrap, section, .card, .callout, p, li, h1, h2, h3, th, td, figcaption {
+      min-width: 0;
+      overflow-wrap: anywhere;
+      word-break: normal;
+    }
+    header {
+      padding: 42px 24px 28px;
+      background: linear-gradient(135deg, #f7f3e8 0%, #e7f2ef 48%, #f8e7ec 100%);
+      border-bottom: 1px solid var(--line);
+    }
+    .wrap { max-width: 1120px; margin: 0 auto; }
+    .eyebrow {
+      margin: 0 0 12px;
+      color: var(--teal);
+      font-size: 0.86rem;
+      font-weight: 700;
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+    h1 {
+      margin: 0;
+      max-width: 980px;
+      font-size: clamp(2rem, 5vw, 4.2rem);
+      line-height: 1.08;
+      letter-spacing: 0;
+    }
+    .lead {
+      max-width: 920px;
+      margin: 20px 0 0;
+      color: #25343a;
+      font-size: 1.08rem;
+    }
+    .tldr {
+      max-width: 920px;
+      margin: 20px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+    .tldr li {
+      position: relative;
+      padding: 4px 0 4px 26px;
+      color: #25343a;
+    }
+    .tldr li::before {
+      content: "▶";
+      position: absolute;
+      left: 0;
+      color: var(--teal);
+      font-size: 0.8rem;
+      top: 8px;
+    }
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: rgba(251, 250, 247, 0.94);
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(10px);
+    }
+    nav .wrap {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 10px 24px;
+    }
+    nav a {
+      flex: 0 0 auto;
+      color: var(--ink);
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 0.88rem;
+      padding: 8px 10px;
+      border-radius: 6px;
+    }
+    nav a:hover { background: #e8efec; }
+    main { padding: 28px 24px 64px; }
+    section { margin: 0 auto 40px; max-width: 1120px; }
+    h2 {
+      margin: 0 0 14px;
+      font-size: clamp(1.45rem, 3vw, 2.2rem);
+      line-height: 1.22;
+      letter-spacing: 0;
+    }
+    h3 { margin: 26px 0 10px; font-size: 1.15rem; line-height: 1.35; }
+    p { margin: 0 0 14px; }
+    a { color: #0f5f59; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 16px;
+    }
+    .card {
+      grid-column: span 4;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      min-width: 0;
+    }
+    .card.wide { grid-column: span 6; }
+    .card.full { grid-column: 1 / -1; }
+    .card h3 { margin-top: 0; }
+    .tag {
+      display: inline-block;
+      margin: 0 6px 8px 0;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #f4f7f5;
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: #405056;
+    }
+    .badge {
+      display: inline-block;
+      padding: 1px 8px;
+      border-radius: 999px;
+      font-size: 0.74rem;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+    .badge.ok { background: #e5f4f1; color: #0b5c55; border: 1px solid #9dd3c9; }
+    .badge.hi { background: #fef6e7; color: #8a5a06; border: 1px solid #e6c483; }
+    .badge.unk { background: #fdecec; color: #a01029; border: 1px solid #eaa7b1; }
+    .legend .badge { margin-right: 8px; }
+    .callout {
+      border-left: 5px solid var(--teal);
+      background: #eef7f4;
+      padding: 16px 18px;
+      border-radius: 8px;
+      margin: 16px 0;
+    }
+    .callout.warning {
+      border-left-color: var(--amber);
+      background: #fff7ed;
+    }
+    .callout.unconfirmed {
+      border-left-color: var(--rose);
+      background: #fdf2f4;
+    }
+    table {
+      width: 100%;
+      max-width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0 22px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      display: table;
+    }
+    th, td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+      text-align: left;
+      font-size: 0.94rem;
+    }
+    th { background: #eef3f1; font-weight: 800; }
+    tr:last-child td { border-bottom: 0; }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      color: var(--code);
+      background: #eef1ef;
+      padding: 0.1em 0.35em;
+      border-radius: 4px;
+      font-size: 0.92em;
+    }
+    pre {
+      margin: 14px 0;
+      padding: 14px;
+      overflow-x: auto;
+      color: #eef7f4;
+      background: #1f2a2e;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      line-height: 1.6;
+    }
+    pre code { color: inherit; background: transparent; padding: 0; }
+    figure {
+      margin: 16px 0 24px;
+      padding: 14px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow-x: auto;
+    }
+    figure img {
+      display: block;
+      width: 100%;
+      height: auto;
+      max-width: 100%;
+      border-radius: 4px;
+    }
+    figcaption { color: var(--muted); font-size: 0.9rem; margin-top: 10px; }
+    .footer-note {
+      color: var(--muted);
+      font-size: 0.9rem;
+      border-top: 1px solid var(--line);
+      padding-top: 18px;
+    }
+    @media (max-width: 820px) {
+      .card, .card.wide { grid-column: 1 / -1; }
+      header { padding: 32px 16px 22px; }
+      main { padding: 22px 16px 52px; }
+      nav .wrap { padding: 8px 16px; }
+      h1 { font-size: clamp(1.65rem, 10vw, 2.35rem); line-height: 1.16; }
+      h2 { font-size: clamp(1.32rem, 7vw, 1.9rem); }
+      .lead { font-size: 1rem; }
+      .callout, .card, figure { padding: 14px; }
+      th, td { font-size: 0.88rem; }
+      table {
+        display: block;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <p class="eyebrow">Harness research synthesis 1 of 3</p>
+      <h1>ハーネスエンジニアリングとハーネスデザイン</h1>
+      <p class="lead">LLMハーネスを「モデルの外側にある制御可能な実行基盤」として定義し、Claude中心の設計原語、micro/macro/metaの三層、実装パターン、Evaluatorの分類、評価・安全・コスト・ガバナンス、段階導入までを一枚の設計図に統合する。</p>
+      <ul class="tldr">
+        <li>成熟度はモデル性能でなく、外側の構造（契約・ツール・評価・観測・ガバナンス）の編成で決まる。</li>
+        <li>Evaluatorは「1か所の採点部品」ではなく、各層に分散配置する遷移関数として設計する。</li>
+        <li>Claude Codeのevolving仕様には確信度3段階ラベルを付し、未確認の数値には依存しない設計を採る。</li>
+      </ul>
+    </div>
+  </header>
+
+  <nav aria-label="ページ内ナビゲーション">
+    <div class="wrap">
+      <a href="#definition">1. ハーネスとは</a>
+      <a href="#layering">2. 三層とレイヤリング</a>
+      <a href="#implementation">3. 実装パターン</a>
+      <a href="#evaluator">4. Evaluator</a>
+      <a href="#operations">5. 評価・安全・ガバナンス</a>
+      <a href="#roadmap">6. 段階導入</a>
+      <a href="#sources">7. ソース対応表</a>
+    </div>
+  </nav>
+
+  <main>
+    <section id="definition">
+      <h2>1. ハーネスとは何か — 外側の構造が質を決める</h2>
+      <div class="callout">
+        <strong>作業定義:</strong> ハーネスとは、モデル呼び出しを再現可能・測定可能・統制可能・拡張可能にする外部構造である。対象はプロンプトだけではなく、入出力契約、状態、ツール、記憶、評価、観測、権限、デプロイ、運用、ガバナンスまでを含む。
+      </div>
+      <p>この定義の要点は、モデル性能とシステム性能を分けることにある。Claudeを中心に組む場合でも、実際の品質はMessages API、Agent SDK、Managed Agents、MCP接続、Web検索、コード実行、Computer Use、プロンプトキャッシュ、バッチ処理、構造化出力、引用付き検索結果をどう編成するかで決まる。つまり「Claudeを呼ぶ」ことではなく、「Claudeが安全に見て、考え、動き、止まり、記録を残せる実行系を作る」ことがハーネスエンジニアリングである。</p>
+
+      <figure>
+        <img src="images/01-fig1.webp" alt="ハーネスの入れ子構造の図。中心にモデルがあり、内側から外側へプロンプト（契約）、コンテキスト（何を入れ何を逃がすか）、ハーネス（ワークフロー・ツール・評価・観測・運用・ガバナンス）の三重の枠が包む。外周にツール接続・評価・観測・権限のアイコンが並ぶ。" width="1672" height="941">
+        <figcaption>図1. プロンプトエンジニアリングはマイクロな契約設計の一部にすぎない。コンテキストエンジニアリングは「何を文脈に入れ、何を外へ逃がすか」を扱い、ハーネスエンジニアリングはさらに外側でワークフロー・ツール・評価・観測・運用・責任分界までを扱う。図は概念の入れ子であり、各層の具体は本文・後続章で補う。</figcaption>
+      </figure>
+
+      <p>ハーネス論では、<strong>モデルそのものの学習方法</strong>（RLHF・Constitutional AI・InstructGPT・DPO）と、<strong>モデルを包む推論時の基盤</strong>（LangGraph・Haystack・LiteLLM・Langfuse・Managed Agents・MCP）を分ける必要がある。両者を混同すると「モデル変更」と「システム変更」の責任分界が曖昧になる。</p>
+      <div class="callout warning">
+        <strong>用語メモ（未確証）:</strong> 元資料ではユーザー文中の “Febble 5” という表記について、レビューした権威ソースでは確認できず、公式文書では “Claude Fable 5” が参照される。元レポートはこれを<strong>「Claude Fable 5文脈の可能性が高いが未確証」</strong>として扱っており、本HTMLの結論も特定モデル名に依存させない。<span class="badge unk">未確認</span>
+      </div>
+    </section>
+
+    <section id="layering">
+      <h2>2. micro / macro / meta の三層と統合レイヤリング</h2>
+      <p>実務でもっとも有用な見取り図は、<strong>マイクロ層・マクロ層・メタ層</strong>の三層に、オーケストレーション・評価・安全・データ・アダプタ・ツール利用・観測・コスト／レイテンシ・ガバナンスを横断セグメントとして重ねる整理である。</p>
+
+      <div class="grid">
+        <article class="card">
+          <h3>マイクロ層</h3>
+          <p>1回の推論呼び出しを壊れにくくする層。system prompt、tool schema、構造化出力、stop reason、token budget、prompt cachingを契約として扱う。代表的な失敗は形式崩れ、隠れたtruncate、コスト肥大、未処理のrefusal。</p>
+          <span class="tag">prompt as contract</span>
+          <span class="tag">schema first</span>
+        </article>
+        <article class="card">
+          <h3>マクロ層</h3>
+          <p>複数ターン、RAG、ツールループ、サブエージェント、承認、メモリーを束ねる層。非決定的なモデルを決定的なワークフローで囲う。代表的な失敗はツール誤選択、状態破損、間接プロンプト注入、長期ドリフト。</p>
+          <span class="tag">workflow</span>
+          <span class="tag">tools</span>
+        </article>
+        <article class="card">
+          <h3>メタ層</h3>
+          <p>ルーティング、評価、監視、ガバナンス、継続改善を扱う層。trace、eval、incident、policy updateがここに入る。代表的な失敗はベンダーロック、評価欠落、ガードレール不在、運用不能。</p>
+          <span class="tag">evals</span>
+          <span class="tag">governance</span>
+        </article>
+      </div>
+
+      <h3>統合レイヤリング表 — 判定器を層ごとに分散する</h3>
+      <p>Evaluator（判定器）の配置を1枚に畳むと下表になる。上から下へ頻度が下がりコストが上がる。基本の振り分けは<strong>「同期層（ブロック権あり）で不可逆を止め、非同期層（記録専用）で軌跡を残す」</strong>である。</p>
+
+      <figure>
+        <img src="images/01-fig2.webp" alt="統合レイヤリングの図。上から micro（tool・毎呼び出し）、meso（turn・毎ターン）、macro（session・節目）、memory write/manage/read（記憶更新）、meta（judge点検・定期）の5段。左に上3段が同期＝ブロック、下2段が非同期＝記録の括り。右に頻度↓・コスト↑の下向き矢印。" width="1672" height="941" loading="lazy">
+        <figcaption>図2. 上位ほど高頻度・低コスト・決定論寄り、下位ほど低頻度・高コスト・深い検証。図は主要レイヤーの相対関係を示す。閾値・頻度の最適対応は実測未検証（本文の注記参照）。</figcaption>
+      </figure>
+
+      <table>
+        <thead>
+          <tr><th>レイヤー</th><th>何を評価するか</th><th>Claude Code実装</th><th>独自ハーネス実装</th><th>頻度・コスト</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>micro（tool）</strong></td><td>個々のtool呼び出しの妥当性・境界逸脱。決定論で割り切れる範囲</td><td>PreToolUse hook（block可・<code>command</code>型で決定論）／PostToolUse（<code>additionalContext</code>追記）</td><td>pre/post-toolミドルウェアgate（regex／allowlist／policy）</td><td>最低／毎tool呼び出し</td></tr>
+          <tr><td><strong>meso（turn）</strong></td><td>1ターンの成果と暫定完了判定（transcriptに surface された証拠のみ）</td><td>prompt型Stop hook／<code>/goal</code>（tool-less・小型高速モデル＝既定Haiku）<span class="badge ok">確認済み</span></td><td>turn-end gate（単発LLM critic）</td><td>低〜中／毎ターン</td></tr>
+          <tr><td><strong>macro（session）</strong></td><td>セッション／ワークフロー全体の達成・実地検証（実コマンド・多票・敵対）</td><td>agent型Stop hook（ツール可）／subagent reviewer／dynamic workflow多票</td><td>session-end gate、Agent SDKの三重cap（max_turns／max_budget_usd／no-progress）</td><td>高／節目（commit・push）</td></tr>
+          <tr><td><strong>memory write/manage/read</strong></td><td>保存候補のpromote/hold/reject/merge/supersede、consolidation、再利用時の再ランク</td><td>MEMORY索引の再ランク、<code>/loop</code>・scheduled taskでの再整理</td><td>write/retrieve/consolidateミドルウェア、quarantine隔離</td><td>中／記憶更新・想起ごと</td></tr>
+          <tr><td><strong>meta</strong></td><td>judge自身のバイアス・drift・calibration</td><td>gold setを定期投入する別ワークフロー（scheduled task／別subagent）</td><td>meta-evaluatorサービス、回帰スイート、採点経路の封印</td><td>最高／最低頻度（定期点検）</td></tr>
+        </tbody>
+      </table>
+      <div class="callout">
+        <strong>表の読み違い防止:</strong> write/manage/read は記憶側設計の枠組み、micro/meso/macro/meta は分析上の定義であり、いずれもClaude Codeの公式機構名ではない。両者の対応（例: writeをmeso相当の頻度に）は<strong>分析上の割り当て</strong>であり、最適な頻度・ループ位置は実測未検証。<span class="badge unk">未確認</span> 統合ビューは <a href="04-evaluator-harness-design.html">04-evaluator-harness-design.html</a> を参照。
+      </div>
+    </section>
+
+    <section id="implementation">
+      <h2>3. 実装パターン — 直結 / 構造化出力 / アダプタ</h2>
+      <p>Claude中心ハーネスの実装は少数の定番に収束する。まず<strong>直結</strong>で基礎体力を作り、形式が崩れると事故になる箇所を<strong>構造化出力</strong>で固め、将来の移行を<strong>アダプタ</strong>境界で吸収する。</p>
+
+      <figure>
+        <img src="images/01-fig3.webp" alt="3つの実装パターンの対比図。カラム1は直結ツールループ（Messages API・tool_use・stop_reason・retry、基礎体力）、カラム2は構造化出力（JSON schemaゲート・型付きI/O・脆いパース禁止、形式崩れを事故にしない）、カラム3はアダプタ境界（LLMAdapterでClaude/OpenAI/Geminiの差異吸収、将来移行に備える）。" width="1672" height="941" loading="lazy">
+        <figcaption>図3. 三パターンは排他ではなく積層する。直結で stop_reason と token budget の扱いを身につけてから、抽象度の高いフレームワークへ持ち上げるのが安全（図右上のページ番号はレイアウトの副産物で本文とは無関係）。</figcaption>
+      </figure>
+
+      <div class="grid">
+        <article class="card">
+          <h3>① Messages API直結のツールループ</h3>
+          <p>最初に基礎体力を作る構成。tool loop、retry、approval、logging、fallbackをアプリ側で握る。ここでの原則は <code>stop_reason</code> をアプリケーション・プロトコルとして扱うこと。<code>tool_use</code>／<code>pause_turn</code>／<code>max_tokens</code>／<code>refusal</code> ごとに継続・再送・ツール実行・フォールバックを分岐させる。</p>
+          <span class="tag">基礎体力</span>
+        </article>
+        <article class="card">
+          <h3>② 構造化出力（schema first）</h3>
+          <p>分類・リスク判定・フォーム生成など形式崩れが事故になる箇所では、正規表現や脆いJSON修復に頼らずschema-firstにする。Anthropicは「常に妥当なJSON schemaに従う必要があるならStructured Outputsを使うべき」と明示している。</p>
+          <span class="tag">形式崩れを事故にしない</span>
+        </article>
+        <article class="card">
+          <h3>③ LLMAdapter境界</h3>
+          <p>プロバイダSDKをアプリ中枢に撒かず、自前の<code>LLMAdapter</code>境界を切る。吸収すべき差はメッセージ形式・ツール呼び出し表現・ストリーミング・構造化出力・長時間ジョブ・キャッシュ／バッチ・評価連携。比較は「どのモデルが賢いか」ではなく「どのハーネス原語が必要か」で行う。</p>
+          <span class="tag">将来移行に備える</span>
+        </article>
+      </div>
+
+      <h3>直結ツールループの骨格（擬似コード）</h3>
+      <pre><code>while True:
+    resp = client.messages.create(model=..., tools=TOOLS, messages=messages)
+
+    if resp.stop_reason == "tool_use":
+        # ツール実行 → tool_result を messages に積んで continue
+        ...
+        continue
+
+    if resp.stop_reason in ("max_tokens", "pause_turn", "refusal"):
+        handle_special_stop_reason(resp)   # 途中中断を成功扱いにしない
+        break
+
+    print(render_final_answer(resp)); break</code></pre>
+
+      <h3>最小の実体関係</h3>
+      <p>ハーネスを運用可能にするには、会話ログだけでなく、PromptVersion・ModelConfig・ToolSchema・Trace・ToolCall・Retrieval・EvalRun・EvalResult・Policy・Incidentを別物として永続化する。この分離がないと、後の事故調査やモデル移行で原因と責任が追えない。trace-first設計（LangSmith・Langfuse・Arize・OpenInference）が共通してこの構造を採る理由である。</p>
+    </section>
+
+    <section id="evaluator">
+      <h2>4. Evaluatorの定義と分類</h2>
+      <p>Evaluatorとは、<strong>ある時点の出力・状態・軌跡・記憶更新候補に対して、継続／停止／採用／棄却／修正方向を決める判定器</strong>である。単なる採点器ではなく二つの顔を持つ。第一に<strong>ループの遷移関数</strong>であり、判定が「No」を返すこと自体が次ターンへの指令になる。第二に<strong>長期記憶の政策エンジン</strong>であり、記憶の昇格・保留・却下・忘却を制御する。</p>
+
+      <h3>6つの異名を正規化する</h3>
+      <p>この役割は用語が統一されていない。設計時は次の対応表で語を正規化する。</p>
+      <table>
+        <thead>
+          <tr><th>別名</th><th>主な文脈</th><th>典型verdict</th><th>ニュアンス</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>grader</td><td>Anthropic eval / OpenAI graders</td><td>pass/fail + score</td><td>性能の一側面を採点。taskごとに複数持ちうる</td></tr>
+          <tr><td>judge（LLM-as-a-Judge）</td><td>MT-Bench系</td><td>score / pairwise勝者</td><td>ルーブリック評価。位置・冗長性・自己優遇バイアスを持つ</td></tr>
+          <tr><td>verifier</td><td>grading logic / TrustMem</td><td>pass/fail・coverage/preservation/faithfulness</td><td>正しさ／整合性の検証。記憶遷移verifierはwrite-pathの代表</td></tr>
+          <tr><td>critic</td><td>Self-Refine系</td><td>critique + next-directive</td><td>「何が悪いか／次に何を直すか」を返す</td></tr>
+          <tr><td>reward model</td><td>RL文脈</td><td>scalar reward</td><td>方策学習の信号。Goodhart・報酬ハッキングの対象</td></tr>
+          <tr><td>policy gate</td><td>security-guidance / auto mode</td><td>allow/block・promote/hold/reject</td><td>実行／保存の可否ゲート</td></tr>
+        </tbody>
+      </table>
+
+      <h3>機能 × 実装方式の直交2軸</h3>
+      <p>設計空間の骨格は、<strong>「何を返すか（機能分類）」と「どう作るか（実装方式）」が直交する</strong>点にある。あるEvaluatorは〔機能 × 実装方式 × 経路〕の三つ組で特定される。たとえばscoringはユニットテスト（ルール型）でもG-Evalスコア（LLM-judge型）でも実装できる。この直交性を混同すると「厳密さが欲しい（実装方式の要求）」と「批評が欲しい（機能の要求）」を取り違える。</p>
+
+      <figure>
+        <img src="images/01-fig4.webp" alt="Evaluatorの機能×実装方式の直交2軸マトリクス。縦軸（機能分類・何を返すか）は上からscoring・critic・counterfactual・meta-evaluator。横軸（実装方式・どう作るか）は左からルール型（決定論）・LLM-judge型・agent-as-judge型・human-in-the-loop型。交点にドットが置かれ、同じ機能を複数の方式で実装できることを示す。下部に『同じ採点をtestでもG-Evalでも作れる』の注記。" width="1672" height="941" loading="lazy">
+        <figcaption>図4. 縦軸＝機能分類、横軸＝実装方式。同じscoringをルール型（test）でもLLM-judge型（G-Eval）でも作れる。ルール型はscoring寄り、agent-as-judgeは実地検証が要る箇所に適する。詳細は本文とキャプションで補い、図中の語は最小限に留めている。</figcaption>
+      </figure>
+
+      <h3>実装方式とその選定</h3>
+      <p>実装方式は「どの基盤で判定を作るか」で、コスト・再現性・誤魔化し耐性が段違いに変わる。Claude Code上の対応と確信度を併記する。</p>
+      <table>
+        <thead>
+          <tr><th>実装方式</th><th>定義</th><th>Claude Codeでの対応（確信度）</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>ルール型（決定論）</td><td>exact match / schema / policy / test / lint</td><td>Stop hookのscript判定・PreToolUse block <span class="badge ok">確認済み</span></td></tr>
+          <tr><td>LLM-judge型</td><td>ルーブリックに基づくモデル評価</td><td>prompt hook・<code>/goal</code>のevaluator（既定はHaiku系small fast model、tool不可、transcript上の証拠のみで判定） <span class="badge ok">確認済み</span></td></tr>
+          <tr><td>agent-as-judge型</td><td>ツール／コマンド／ファイルを見て実地検証</td><td><code>type: "agent"</code> hook（実地検証可） <span class="badge ok">確認済み</span>／ターン数上限値は <span class="badge unk">未確認</span>（要実機確認）</td></tr>
+          <tr><td>human-in-the-loop型</td><td>人間承認点を明示的に埋め込む</td><td>permissions / auto modeの承認点 <span class="badge hi">高確度</span>（記憶のpromote/deleteへの明示的HITL公式機構は資料上未確認）</td></tr>
+        </tbody>
+      </table>
+      <p>選定の優先順位は、①証拠がtranscript／environmentに落ちるものはルール型を最優先 → ②ルール化できない品質はLLM-judge（作業モデルと分離したfresh／別モデルで自己優遇を断つ） → ③実地検証が要る箇所だけagent-as-judgeを節目で → ④破壊的・不可逆・高機微な採用／削除はhuman-in-the-loopを最終ゲートに → ⑤単独でなく<strong>合成</strong>（cheap→expensiveのカスケード）。</p>
+
+      <h3>verdict は機械可読な列挙で返す</h3>
+      <p>verdictを自由文でなく列挙へ落とすことが、ループの自動分岐と監査可能性の前提になる。</p>
+      <pre><code>Verdict =
+  | Loop     { continue | stop, reason }                     // 遷移制御
+  | Score    { pass: bool, score: float, metrics }           // 合否 + 採点
+  | Critique { defects: [...], next_directive }              // 批評 + 次指令
+  | MemoryOp { promote|hold|reject|merge|supersede, target } // 記憶政策</code></pre>
+      <div class="callout">
+        Evaluatorの厳密定義・6異名の正規化・三経路（write/manage/read）を統合した図解ビューは <a href="04-evaluator-harness-design.html">04-evaluator-harness-design.html（統合ビュー）</a> にある。本章はHTML1の文脈でその定義層を独立に折り込んだもので、内容は04と重複しうるが矛盾しない。
+      </div>
+    </section>
+
+    <section id="operations">
+      <h2>5. 運用・評価・安全・コスト・ガバナンス</h2>
+
+      <h3>ハーネスの運用ランブック</h3>
+      <table>
+        <thead>
+          <tr><th>事象</th><th>最初に見るもの</th><th>恒久対応</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>schema崩れ</td><td>traceとraw response</td><td>structured output、validator、schema簡素化</td></tr>
+          <tr><td>ツール誤呼び</td><td>tool call logs</td><td>tool description、required引数、BFCL型の自社ツールベンチ</td></tr>
+          <tr><td>RAG幻覚</td><td>retrieval trace</td><td>retriever改善、rerank、faithfulness監視</td></tr>
+          <tr><td>prompt injection</td><td>source context、MCP、search input</td><td>事前分類、ソース分離、承認必須化、出力無害化</td></tr>
+          <tr><td>コスト急増</td><td>token/costダッシュボード</td><td>effort調整、cache、batch、routing、予算アラート</td></tr>
+          <tr><td>モデル更新後の退行</td><td>offline eval diff</td><td>canary、旧版退避、migration checklist、回帰データセット</td></tr>
+        </tbody>
+      </table>
+
+      <h3>安全は外側に置く</h3>
+      <p>Claude中心ハーネスの安全は「Claudeが安全か」ではなく、<strong>Claudeの前後に何層の検査と承認を置くか</strong>で決まる。学習時アラインメント（RLHF・Constitutional AI）はモデルの素性を決めるが、本番の安全性を保証しない。推論時には別の安全層——軽量モデルの事前スクリーニング、構造化出力での単純分類、Computer Use時の追加確認、ストリーミング拒否の処理、RAG経由の間接プロンプト注入検査——が必要になる。高リスク操作は同期のmicro/macroゲートで止める。</p>
+
+      <h3>コストとレイテンシは三者最適化で扱う</h3>
+      <p>見落とされやすいのは、<strong>高性能モデルが常に高コストとは限らない</strong>点である。場合によっては <code>low</code> thinking のほうが再試行減少により総コストを下げる。1回の出力トークンを減らすことと、<strong>タスク完了あたりの総コスト</strong>を減らすことは別問題で、quality-per-dollarで測る。<code>effort</code>・prompt caching・Batch APIがレバーになる。モデル移行時は見た目の価格表でなく、tokenizer差分を含む実測TCOを見る。</p>
+      <div class="callout warning">
+        <strong>確信度の扱い（コスト前提）:</strong> 「Claude Sonnet 5でadaptive thinkingがデフォルトON・新tokenizerでtoken数が増える」は元レポートの記述に基づく <span class="badge hi">高確度</span> の前提。実際のコスト見積もりは自環境での実測で確認すること。
+      </div>
+
+      <h3>ガバナンスは継続ループ</h3>
+      <p>ガバナンスは本番前チェックではなく、本番トレースを評価資産へ戻す継続ループである。方針 → 仕様化（rubric）→ 評価セット化 → オフライン評価 → 本番投入（canary）→ トレース／監視 → 失敗クラスタ → 改善 → 評価セットへ戻す。これはNIST AI RMFの「govern / map / measure / manage」にほぼ対応する。実装としては、リスク分類・モデル／プロンプト／ツールの版管理・traceの監査保存・本番前オフライン評価・本番中オンラインモニタ・変更管理・高リスク操作のHITL・権限最小化・インシデント後レビューを備える。</p>
+
+      <h3>Claude Code仕様の確信度と未確認注記</h3>
+      <p>各設計主張には確信度を付す。<span class="legend"><span class="badge ok">確認済み</span>公式docs・コード・実行結果で裏付け／<span class="badge hi">高確度</span>一般に高確度だが未検証／<span class="badge unk">未確認</span>推測・記述なし。</span></p>
+      <div class="callout unconfirmed">
+        <strong>未確認（数値に依存しない設計を採る）:</strong>
+        <ul>
+          <li>「Stop hookは連続8回ブロックで上書き」は<strong>未確認</strong>。公式hooks docsに該当記述（連続ブロック上限・8回・自動上書き）が見当たらない（2026-07-04再確認）。turn/budget/no-progress capを別レイヤーに必ず置く。<span class="badge unk">未確認</span></li>
+          <li>agent hookの「最大50 tool-use turns」という具体上限は<strong>未確認</strong>。subagentで実コマンド検証できること自体は確認済みだが、ターン数上限は公式docsに明記なし。<span class="badge unk">未確認</span></li>
+          <li>「async command hookはadditionalContextを次ターンに返せるがブロック権を失う」は<strong>分析上の整理</strong>。docsが明記するのは「<code>async: true</code>のhookは非ブロック実行される」まで。非同期からの通知の文書化機構は <code>asyncRewake</code>（exit code 2でClaudeを起こしstderrをsystem reminder提示）。「同期＝ブロック可／非同期＝記録専用」の配置原則は保持する。<span class="badge ok">確認済み（asyncRewake）</span></li>
+        </ul>
+        <strong>確認済み（各章記述どおり）:</strong> hookの <code>type</code> は正しくは5種——<code>command</code> / <code>prompt</code> / <code>agent</code> / <code>http</code> / <code>mcp_tool</code>（<code>mcp</code>ではなく<code>mcp_tool</code>）。<code>/goal</code> がtool-less・既定Haiku・約4000字上限、Agent SDKの max_turns／max_budget_usd、<code>/loop</code> のcron変換・7日失効、subagents／agent teams／dynamic workflowsの16並列・総計1000。<span class="badge ok">確認済み</span>
+      </div>
+      <p>いずれもClaude Codeのevolvingな機能に関わるため、<strong>実装着手時は最新の公式docsで仕様を再確認する</strong>。</p>
+    </section>
+
+    <section id="roadmap">
+      <h2>6. 段階導入ロードマップ</h2>
+      <p>一度に全層を敷かない。決定論とtool-less判定から入り、Maker–Checkerと記憶審査を足し、最後にmeta-evalとcontrol plane化へ進む。</p>
+
+      <figure>
+        <img src="images/01-fig5.webp" alt="段階導入ロードマップの図。左から右へ上る3段の階段。段1・短期は決定論チェック＋prompt Stop hook / goal・記憶にメタデータ付与。段2・中期はMaker–Checker分離・write-path評価・RAG/tool評価・版管理・HITL。段3・長期はmeta-evaluator・記憶consolidation・control plane化・OTel観測。下部に時間経過を示す右向き矢印。" width="1672" height="941" loading="lazy">
+        <figcaption>図5. 決定論とtool-lessの安価な判定から入り、段階的に深い層を足す。図は各段の代表項目のみで、詳細は下表・本文で補う。</figcaption>
+      </figure>
+
+      <table>
+        <thead>
+          <tr><th>段</th><th>やること</th><th>Claude Code面</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>短期</strong></td><td>決定論チェック（test/lint/型/<code>git status</code>）＋prompt Stop hook／<code>/goal</code>。記憶はストアにprovenance／freshness／scope／timeのメタデータを付与し、write-path evaluatorを1つ挟む</td><td><code>.claude/settings.json</code> のhooksと <code>/goal</code> 条件文</td></tr>
+          <tr><td><strong>中期</strong></td><td>Maker–Checker（agent Stop hook／reviewer subagent）＋write-path evaluator＋メタデータ審査。記憶をsemantic／episodic／proceduralに分離、event graphを部分導入</td><td>dynamic workflow多票、Agent SDKのカスケード評価＋三重cap</td></tr>
+          <tr><td><strong>長期</strong></td><td>meta-evaluator＋consolidation／dreaming＋control plane化（evaluate-write／retrieve／consolidate／forget／outcomeのAPIに境界を保って切り出し、<code>trace_id</code> でobservability／audit trailに接続）</td><td>OTel spanでturn／tool／hook／token／costを記録</td></tr>
+        </tbody>
+      </table>
+      <div class="callout">
+        <strong>中心原則（全段共通）:</strong> ①決定論を土台にcheap→expensiveのカスケードで合成する ②Maker–Checkerを分離する（自己採点の禁止・reviewerはblind化）③完了は「証明」に落とす（「いい感じに」でなく「<code>npm test</code> が exit 0」）④judgeを放置しない（gold setで定期点検し採点経路を封印してGoodhart／reward hackingを防ぐ）。
+      </div>
+    </section>
+
+    <section id="sources">
+      <h2>7. ソース対応表</h2>
+      <p>このHTMLは、既存リサーチのうちハーネス総覧とEvaluator設計資料を中心に再構成した。外部リンクではなく、リポジトリ内の調査スナップショットを一次素材として扱っている。★＝中心ソース、○＝部分ソース。</p>
+      <table>
+        <thead>
+          <tr><th>資料</th><th>区分</th><th>このHTMLでの反映先</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><a href="../01-claude-harness-overview.md">01-claude-harness-overview.md</a></td><td>★</td><td>定義（1章）、三層（2章）、実装パターン（3章）、運用・評価・安全・コスト・ガバナンス（5章）</td></tr>
+          <tr><td><a href="../design/00-overview.md">design/00-overview.md</a></td><td>★</td><td>統合レイヤリング表（2章）、中心原則（6章）、段階導入（6章）、確信度・未確認注記（5章）</td></tr>
+          <tr><td><a href="../design/01-evaluator-taxonomy.md">design/01-evaluator-taxonomy.md</a></td><td>○</td><td>Evaluatorの定義・6異名の正規化・機能×実装方式の直交2軸・verdict語彙（4章）</td></tr>
+          <tr><td><a href="04-evaluator-harness-design.html">04-evaluator-harness-design.html</a></td><td>統合ビュー</td><td>Evaluator設計パッケージ全体の統合図解（2章・4章から相互参照）</td></tr>
+        </tbody>
+      </table>
+      <p class="footer-note">調査時点は元資料の記載に従い2026年7月。Claude Codeの一部仕様はevolvingなため、実装時は公式ドキュメントで再確認する。図はcodex（gpt-image-2 / S2精密スキーマ調）で生成し、本文の代替でなく補強として配置している。</p>
+    </section>
+  </main>
+</body>
+</html>

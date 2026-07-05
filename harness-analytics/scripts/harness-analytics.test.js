@@ -9,6 +9,7 @@ const { costUsd } = require('./pricing');
 const { rankedBars, priorityBubbles, sparkline, donut, beforeAfterCard, wrapText } = require('./charts');
 const { prioritize, scoreOf, clusterDetailBlock } = require('./build-report');
 const { clusterImageFacts, cacheKey } = require('./infographic');
+const { shouldRefresh } = require('./ingest');
 
 let passed = 0;
 function test(name, fn) { fn(); passed++; process.stdout.write(`  ✓ ${name}\n`); }
@@ -255,6 +256,29 @@ test('clusterImageFacts: 数値を含めず・secret をマスク', () => {
   const f = clusterImageFacts({ error_class: 'x', tool: 'Y', count: 5, suggested_fix: 'token sk-ant-ABCDEFGHIJKLMN を直す', target_surface: 's', llm: null });
   assert.ok(!('count' in f) && !('cost_impact_usd' in f), '数値フィールドを含まない');
   assert.ok(!/sk-ant-ABCDEFGHIJKLMN/.test(JSON.stringify(f)), 'secret がマスクされている');
+});
+
+// --- auto-refresh の stale 判定 ---
+const DAY = 86400000;
+test('shouldRefresh: 7日超で発火', () => {
+  const now = 1000 * DAY;
+  assert.strictEqual(shouldRefresh({ auto_refresh: { enabled: true, stale_days: 7, cooldown_hours: 12 } }, now - 8 * DAY, null, now), true);
+});
+test('shouldRefresh: 新鮮なら発火しない', () => {
+  const now = 1000 * DAY;
+  assert.strictEqual(shouldRefresh({ auto_refresh: { stale_days: 7 } }, now - 3 * DAY, null, now), false);
+});
+test('shouldRefresh: cooldown 中は発火しない', () => {
+  const now = 1000 * DAY;
+  assert.strictEqual(shouldRefresh({ auto_refresh: { stale_days: 7, cooldown_hours: 12 } }, now - 8 * DAY, { last_triggered_at: now - 3600000 }, now), false);
+});
+test('shouldRefresh: レポート未生成(=Infinity)は発火', () => {
+  const now = 1000 * DAY;
+  assert.strictEqual(shouldRefresh({ auto_refresh: { stale_days: 7 } }, 0, null, now), true);
+});
+test('shouldRefresh: 無効化で発火しない', () => {
+  const now = 1000 * DAY;
+  assert.strictEqual(shouldRefresh({ auto_refresh: { enabled: false, stale_days: 7 } }, now - 30 * DAY, null, now), false);
 });
 
 process.stdout.write(`\n${passed} tests passed\n`);

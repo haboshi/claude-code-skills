@@ -27,6 +27,7 @@ const CURSORS_PATH = path.join(HA_DIR, 'cursors.json');
 const CONFIG_PATH = path.join(HA_DIR, 'config.json');
 const SERVER_INFO_PATH = path.join(HA_DIR, 'server.json');
 const SERVER_LOCK_PATH = path.join(HA_DIR, 'server.lock');
+const AUTO_REFRESH_PATH = path.join(HA_DIR, '.auto-refresh.json');
 
 // 現行ダイジェストスキーマ版。上げると cursor 不一致セッションが再処理対象になる（分類ロジック変更時も上げる）。
 const DIGEST_VERSION = 2;
@@ -218,6 +219,7 @@ function defaultConfig() {
     privacy: { store_raw_tool_result: false },
     server: { port: 7788, idle_timeout_min: 30 },
     infographics: { enabled: true, limit: 10, timeout_sec: 600, model: 'gpt-5.4-mini', reasoning: 'low' },
+    auto_refresh: { enabled: true, stale_days: 7, cooldown_hours: 12, window: '14d' },
   };
 }
 // 既存の部分 config でも欠けたセクションは既定で補う（server/infographics を後付けしても効くように）
@@ -232,13 +234,14 @@ function loadConfig() {
     privacy: { ...d.privacy, ...(cfg.privacy || {}) },
     server: { ...d.server, ...(cfg.server || {}) },
     infographics: { ...d.infographics, ...(cfg.infographics || {}) },
+    auto_refresh: { ...d.auto_refresh, ...(cfg.auto_refresh || {}) },
   };
 }
 
 module.exports = {
   HOME, CLAUDE_DIR, PROJECTS_DIR,
   HA_DIR, DIGESTS_DIR, ROLLUPS_DIR, CLUSTERS_DIR, REPORTS_DIR, HISTORY_DIR, LOGS_DIR,
-  INFOGRAPHICS_DIR, CURSORS_PATH, CONFIG_PATH, SERVER_INFO_PATH, SERVER_LOCK_PATH, DIGEST_VERSION,
+  INFOGRAPHICS_DIR, CURSORS_PATH, CONFIG_PATH, SERVER_INFO_PATH, SERVER_LOCK_PATH, AUTO_REFRESH_PATH, DIGEST_VERSION,
   today, nowIso, mtimeMsOf, sizeOf,
   maskSecrets, maskPaths, sanitize, projectHash,
   readJson, writeJson, writeText, getFlag,

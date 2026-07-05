@@ -11,7 +11,9 @@
 // hook は best-effort・常に exit 0。真実は cursor。
 
 const fs = require('fs');
+const path = require('path');
 const readline = require('readline');
+const { spawn } = require('child_process');
 const C = require('./common');
 const { digestFromRecords } = require('./digest');
 const { LocalSink } = require('./sinks');
@@ -106,8 +108,38 @@ async function main() {
   const summary = { processed, skipped, failed, files: files.length, window: win, hook: !!isHook };
   logLine(`ingest done ${JSON.stringify(summary)}`);
   if (!isHook) process.stdout.write(JSON.stringify(summary) + '\n');
+
+  // hook 経路のみ: レポートが stale なら自動リフレッシュを detached 起動（決定論・非ブロック）
+  if (isHook) maybeAutoRefresh(config);
 }
 
-main()
-  .then(() => process.exit(0))
-  .catch((e) => { logLine('ingest fatal: ' + e.message); process.exit(0); }); // hook 前提で常に 0
+// stale 判定（純関数・テスト可能）: レポートが stale_days 超で cooldown を過ぎていれば true
+function shouldRefresh(config, reportMtimeMs, marker, nowMs) {
+  const ar = config.auto_refresh || {};
+  if (ar.enabled === false) return false;
+  const ageDays = reportMtimeMs ? (nowMs - reportMtimeMs) / 86400000 : Infinity; // レポート未生成は stale 扱い
+  if (ageDays < (ar.stale_days || 7)) return false;
+  const cooldownMs = (ar.cooldown_hours || 12) * 3600000;
+  if (marker && marker.last_triggered_at && (nowMs - marker.last_triggered_at) < cooldownMs) return false;
+  return true;
+}
+
+function maybeAutoRefresh(config) {
+  try {
+    const reportMtimeMs = C.mtimeMsOf(path.join(C.REPORTS_DIR, 'latest.html'));
+    const marker = C.readJson(C.AUTO_REFRESH_PATH, null);
+    if (!shouldRefresh(config, reportMtimeMs, marker, Date.now())) return false;
+    C.writeJson(C.AUTO_REFRESH_PATH, { last_triggered_at: Date.now() }); // 先に印を打ち二重起動を防ぐ
+    spawn(process.execPath, [path.join(__dirname, 'auto-refresh.js')], { detached: true, stdio: 'ignore' }).unref();
+    logLine('auto-refresh triggered (stale report)');
+    return true;
+  } catch (e) { logLine('auto-refresh error: ' + e.message); return false; }
+}
+
+module.exports = { shouldRefresh };
+
+if (require.main === module) {
+  main()
+    .then(() => process.exit(0))
+    .catch((e) => { logLine('ingest fatal: ' + e.message); process.exit(0); }); // hook 前提で常に 0
+}

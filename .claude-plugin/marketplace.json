@@ -185,7 +185,7 @@
       "description": "Claude Code の transcript ログを増分ダイジェスト化し、セッション横断で失敗パターン（ツールエラー・リトライ・権限拒否・compaction・ドリフト）を分析して、どのスキル/ルール/CLAUDE.md/settings を直すべきかを人間向けHTMLレポートで示唆する運用改善スキル。「ハーネス分析」「運用改善レポート」「失敗パターン分析」「/harness-loop」で発動。自動書き換えはせず示唆のみ。",
       "source": "./harness-analytics",
       "strict": false,
-      "version": "0.2.0",
+      "version": "0.3.0",
       "category": "developer-tools",
       "keywords": [
         "harness",

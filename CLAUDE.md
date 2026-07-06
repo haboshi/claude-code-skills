@@ -47,21 +47,21 @@ Claude Code用プラグイン（スキル）のマーケットプレイスコレ
 { "name": "foo", "source": "./foo" }
 ```
 
-### 収録プラグイン一覧（10個）
+### 収録プラグイン一覧（11個）
 
 **ドキュメント生成**: pdf-creator-jp
 **画像生成**: image-creator, svg-header-image, svg-diagram, line-sticker-creator
 **画像変換**: svg-to-webp, mermaid-to-webp
 **音声**: tts（発音辞書機能を内蔵）
 **調査**: brave-research
-**開発ツール**: skill-creator-pro（配布パイプライン特化）
+**開発ツール**: skill-creator-pro（配布パイプライン特化）, harness-analytics（transcript ログ分析→改善示唆）
 
 廃止済み（2026-07 棚卸し）: gen-ai-image（image-creator の fal.ai フォールバックに機能内包）、task-planner（汎用の計画スキルで代替。タスク記述フォーマットは docs/task-decomposition-format.md に知見として残置）、tts-dict（tts へ統合）、deep-research（実走ブラインド審査でグローバル汎用スキルに 2-0 敗北し一本化。設計知見は docs/deep-research-design-notes.md に残置）。
 
 ### スクリプト言語
 
 - Python スクリプト: image-creator, pdf-creator-jp, brave-research, skill-creator-pro, line-sticker-creator
-- Node.js スクリプト: svg-to-webp, svg-header-image, svg-diagram, mermaid-to-webp, tts
+- Node.js スクリプト: svg-to-webp, svg-header-image, svg-diagram, mermaid-to-webp, tts, harness-analytics
 
 Python は `uv run --with <deps>` で実行（venv不要）。Node.js は各プラグインの `node_modules` を使用。
 

@@ -15,11 +15,13 @@
 | 03 | [03-loop-engineering-deep-dive.md](./03-loop-engineering-deep-dive.md) | ループエンジニアリング | ループの5層分解と **Evaluator 中心設計**、証拠生成ループという捉え方、普遍理論（MAPE-K・active inference・GAN的分離）、実践パターン/アンチパターン、プラットフォーム比較、実装サンプル |
 | 04 | [04-agent-long-term-memory.md](./04-agent-long-term-memory.md) | 長期記憶 | AI エージェントの多層メモリーアーキテクチャ（原典/イベント/意味/手続き/作業/再整理/ガバナンス層）、学術研究の到達点、企業プロダクト比較、Obsidian/LLM Wiki の位置づけ、dreaming/sleep-time compute |
 | 05 | [05-long-term-memory-and-evaluators.md](./05-long-term-memory-and-evaluators.md) | 長期記憶+評価 | write–manage–read 循環に **エバリュエーターを組み込む二重審査型アーキテクチャ**、参照 ER/フロー図と API 設計、ツール比較（Mem0/LangGraph/GraphRAG 他）、評価ベンチマーク、倫理・法務・セキュリティ（memory poisoning・削除権） |
+| 06 | [06-claude-code-hooks.md](./06-claude-code-hooks.md) | フック大全 | Claude Code の**全フックイベント（約30種）一覧とライフサイクル内の位置（フロー図）**、設定・実行モデル（type 5種・exit code 意味論・多重フック合成）、5機能軸分類（制御ゲート/文脈注入/観測/変換/ループ制御）、国内外の活用事例カタログ＋実装フック実例、Stop hook 一般化のマルチエージェント拡張（PostToolBatch/SubagentStop/TeammateIdle）、evaluator 設置点としての本質論。**図解付き1枚 HTML 版**: [html/05-claude-code-hooks.html](./html/05-claude-code-hooks.html) |
 
 ## テーマ別の読み方
 
 - **まず全体像を掴む** → 01。ハーネスを設計対象として扱う視点と、三層 × 横断セグメントの見取り図。
 - **実行ループを設計する** → 02 → 03。02 が Claude Code の機能とパターンの実務面、03 が Evaluator を中核に据えた理論的深掘り。両者は補完関係。
+- **フックを設計する** → 06。全イベントの介入点マップと、02/03 の停止規則・evaluator 理論をフック面に写像した実装カタログ。
 - **記憶を設計する** → 04 → 05。04 が多層メモリーの全体設計、05 が「評価された更新・評価された再利用」という制御面としての記憶。
 
 ## 横断する設計原則（各資料の共通結論）

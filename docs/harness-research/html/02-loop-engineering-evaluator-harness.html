@@ -1,0 +1,533 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ループエンジニアリングとEvaluatorハーネス</title>
+  <style>
+    :root {
+      --ink: #172126;
+      --muted: #526269;
+      --paper: #fbfaf7;
+      --panel: #ffffff;
+      --line: #d8dedb;
+      --teal: #0f766e;
+      --amber: #b45309;
+      --rose: #be123c;
+      --green: #4d7c0f;
+      --violet: #6d28d9;
+      --code: #263238;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Yu Gothic", Meiryo, sans-serif;
+      line-height: 1.75;
+      color: var(--ink);
+      background: var(--paper);
+      overflow-x: hidden;
+    }
+    .wrap, section, .card, .callout, p, li, h1, h2, h3, th, td, figcaption {
+      min-width: 0;
+      overflow-wrap: anywhere;
+      word-break: normal;
+    }
+    header {
+      padding: 42px 24px 28px;
+      background: linear-gradient(135deg, #edf7f4 0%, #f7f0de 50%, #f2e9ff 100%);
+      border-bottom: 1px solid var(--line);
+    }
+    .wrap { max-width: 1120px; margin: 0 auto; }
+    .eyebrow {
+      margin: 0 0 12px;
+      color: var(--violet);
+      font-size: 0.86rem;
+      font-weight: 700;
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+    h1 {
+      margin: 0;
+      max-width: 980px;
+      font-size: clamp(2rem, 5vw, 4.2rem);
+      line-height: 1.08;
+      letter-spacing: 0;
+    }
+    .lead {
+      max-width: 930px;
+      margin: 20px 0 0;
+      color: #25343a;
+      font-size: 1.08rem;
+    }
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: rgba(251, 250, 247, 0.94);
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(10px);
+    }
+    nav .wrap {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 10px 24px;
+    }
+    nav a {
+      flex: 0 0 auto;
+      color: var(--ink);
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 0.88rem;
+      padding: 8px 10px;
+      border-radius: 6px;
+    }
+    nav a:hover { background: #e8efec; }
+    main { padding: 28px 24px 64px; }
+    section { margin: 0 auto 34px; max-width: 1120px; }
+    h2 {
+      margin: 0 0 14px;
+      font-size: clamp(1.45rem, 3vw, 2.2rem);
+      line-height: 1.22;
+      letter-spacing: 0;
+    }
+    h3 { margin: 26px 0 10px; font-size: 1.15rem; line-height: 1.35; }
+    p { margin: 0 0 14px; }
+    a { color: #0f5f59; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 16px;
+    }
+    .card {
+      grid-column: span 4;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      min-width: 0;
+    }
+    .card.wide { grid-column: span 6; }
+    .card.full { grid-column: 1 / -1; }
+    .card h3 { margin-top: 0; }
+    .tag {
+      display: inline-block;
+      margin: 0 6px 8px 0;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #f4f7f5;
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: #405056;
+    }
+    .conf {
+      display: inline-block;
+      padding: 1px 8px;
+      border-radius: 999px;
+      font-size: 0.76rem;
+      font-weight: 700;
+      white-space: nowrap;
+      border: 1px solid transparent;
+    }
+    .conf-ok { background: #eaf5ec; color: #3f6b1f; border-color: #cbe3cf; }
+    .conf-mid { background: #fdf3e3; color: #97590b; border-color: #f0d9b4; }
+    .conf-un { background: #fdecef; color: #a01033; border-color: #f3ccd6; }
+    .callout {
+      border-left: 5px solid var(--violet);
+      background: #f4f0ff;
+      padding: 16px 18px;
+      border-radius: 8px;
+      margin: 16px 0;
+    }
+    .warning {
+      border-left-color: var(--amber);
+      background: #fff7ed;
+    }
+    .note-un {
+      border-left-color: var(--rose);
+      background: #fdeef1;
+    }
+    table {
+      width: 100%;
+      max-width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0 22px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      display: table;
+    }
+    th, td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+      text-align: left;
+      font-size: 0.94rem;
+    }
+    th { background: #eef3f1; font-weight: 800; }
+    tr:last-child td { border-bottom: 0; }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      color: var(--code);
+      background: #eef1ef;
+      padding: 0.1em 0.35em;
+      border-radius: 4px;
+      font-size: 0.92em;
+    }
+    pre {
+      margin: 14px 0;
+      padding: 14px;
+      overflow-x: auto;
+      color: #eef7f4;
+      background: #1f2a2e;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      line-height: 1.6;
+    }
+    pre code { color: inherit; background: transparent; padding: 0; }
+    figure {
+      margin: 16px 0 24px;
+      padding: 14px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow-x: auto;
+    }
+    figure img {
+      display: block;
+      width: 100%;
+      height: auto;
+      border-radius: 6px;
+    }
+    figcaption { color: var(--muted); font-size: 0.9rem; margin-top: 8px; }
+    .footer-note {
+      color: var(--muted);
+      font-size: 0.9rem;
+      border-top: 1px solid var(--line);
+      padding-top: 18px;
+    }
+    .xref {
+      display: inline-block;
+      margin: 4px 0 0;
+      padding: 6px 12px;
+      border: 1px solid var(--teal);
+      border-radius: 999px;
+      background: #e9f4f1;
+      color: #0c5a53;
+      font-weight: 700;
+      font-size: 0.86rem;
+      text-decoration: none;
+    }
+    .xref:hover { background: #d9ede8; }
+    @media (max-width: 820px) {
+      .card, .card.wide { grid-column: 1 / -1; }
+      header { padding: 32px 16px 22px; }
+      main { padding: 22px 16px 52px; }
+      nav .wrap { padding: 8px 16px; }
+      h1 { font-size: clamp(1.65rem, 10vw, 2.35rem); line-height: 1.16; }
+      h2 { font-size: clamp(1.32rem, 7vw, 1.9rem); }
+      .lead { font-size: 1rem; }
+      .callout, .card, figure { padding: 14px; }
+      th, td { font-size: 0.88rem; }
+      table {
+        display: block;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <p class="eyebrow">Harness research synthesis 2 of 3</p>
+      <h1>ループエンジニアリングとEvaluatorハーネス</h1>
+      <p class="lead">ループエンジニアリングを、AIが観測、行動、検証、再計画を続ける反復構造の設計として整理する。中心は「回すこと」ではなく、証拠を生成し、MakerとCheckerを分け、正しく止まる外側ハーネスを作ることにある。図解は本文の補強であり、詳細と確信度ラベルは本文・キャプションに置く。</p>
+    </div>
+  </header>
+
+  <nav aria-label="ページ内ナビゲーション">
+    <div class="wrap">
+      <a href="#definition">1. 定義</a>
+      <a href="#claude-code">2. Claude Code</a>
+      <a href="#evaluator">3. Evaluator中心</a>
+      <a href="#maker-checker">4. verdictとMaker–Checker</a>
+      <a href="#reliability">5. judgeの信頼性</a>
+      <a href="#custom-harness">6. 自前ハーネス</a>
+      <a href="#unconfirmed">7. 未確認と対応表</a>
+    </div>
+  </nav>
+
+  <main>
+    <!-- 1 -->
+    <section id="definition">
+      <h2>1. ループとは — 証拠生成ループ</h2>
+      <div class="callout">
+        <strong>作業定義:</strong> ループエンジニアリングとは、AIに一回よいプロンプトを書く技術ではなく、AIが自律的に観測し、行動し、検証し、未達なら次の手を選び続ける反復構造そのものを設計する技術である。実務上の結論は「良いループは<strong>作業ループではなく証拠生成ループ</strong>である」という一点に集約される。
+      </div>
+      <p>完了条件は、会話内証拠または環境上の結果として実証できなければならない。Evaluatorは感想を述べる役ではなく、継続、停止、差し戻し、採用、棄却を決める<strong>遷移関数</strong>である。判定が「No」を返すこと自体が、次ターンの指令になる。</p>
+      <p>「Loop Engineering」「内側ループ／外側ループ」はAnthropicのAPIやドキュメントに明示定義があるわけではなく、公式仕様と学術文献を統合した<strong>分析上の定義</strong>である<span class="conf conf-un">未確認（用語の厳密な起源・固定定義は流動的）</span>。一方で、Claude Codeのagentic loop、<code>/goal</code>、<code>/loop</code>、Stop hook、subagents、agent teams、dynamic workflows、Agent SDK、OpenTelemetryは、事実上この設計空間を構成している<span class="conf conf-ok">確認済み（公式 docs）</span>。Anthropic自身もClaude Codeをモデルではなく「agentic harness」と呼ぶ。</p>
+
+      <h3>ループは一層ではなく多層</h3>
+      <p>02章は micro / meso / macro / meta の4階層、03章（deep dive）は inner-tool / session-turn / schedule-event / parallel-agent / meta の5層に分解する。Evaluator配置の観点では次の4層に束ねると扱いやすい。<strong>内側ループの改善だけでは長時間安定運用は得られず、外側ループとメタループまで設計しないと、早すぎる完了宣言とコンテキストドリフトを防げない。</strong></p>
+      <table>
+        <thead>
+          <tr><th>ループ層</th><th>意味</th><th>代表サーフェス</th><th>停止条件</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>micro（マイクロ）</td><td>単一ツール、単一検査</td><td>tool call、PreToolUse、PostToolUse</td><td>成功、拒否、失敗</td></tr>
+          <tr><td>meso（メゾ）</td><td>1ターン内の観測、行動、検証（内側ループ）</td><td>agentic loop、ReAct風turn</td><td>turn完了、max tokens</td></tr>
+          <tr><td>macro（マクロ）</td><td>セッションやワークフローの継続（外側ループ）</td><td><code>/goal</code>、<code>/loop</code>、Stop hook、teams</td><td>成果、時間、予算、no-progress</td></tr>
+          <tr><td>meta（メタ）</td><td>ループ設計そのものの改善</td><td>eval suite、rubric更新、policy tuning</td><td>指標改善の鈍化、ガバナンス判断</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 2 -->
+    <section id="claude-code">
+      <h2>2. Claude Code のループ面</h2>
+      <p>Claude Codeの内側ループは「コンテキスト収集 → アクション実行 → 結果検証」を回す turn-level の実行ループである<span class="conf conf-ok">確認済み</span>。その外側に、いつ・誰が再起動するかを定める層が乗る。並列面は「<strong>次遷移を誰が決めるか</strong>」で分かれ、内側/外側の区別は時間スケールだけでなく<strong>制御権の階層</strong>でもある。</p>
+
+      <figure>
+        <img src="images/02-fig1.webp" alt="Claude Code の入れ子ループを同心円で表した図。内側から内側ループ（思考→ツール→観測）、セッションループ（/goal・Stop hook）、時間/イベントループ（/loop・schedule）、並列エージェント（subagents・teams・workflow）が並び、各層に『次を誰が決めるか（親／lead／script）』の注記が付く。右に Evaluator（遷移関数）が別ボックスで置かれる。" width="1672" height="941">
+        <figcaption>図1. ループは一つではなく、制御権が異なる複数の閉ループが入れ子で存在する。内側から外側へ、次遷移の決定主体は「親 → lead → script」と移る。Evaluatorのverdictは、その決定主体に届いて初めて遷移関数として働く。</figcaption>
+      </figure>
+
+      <div class="grid">
+        <article class="card">
+          <h3><code>/goal</code>（条件収束型）</h3>
+          <p>成果条件駆動。各ターン後にfresh evaluator（既定はHaiku系の小型高速モデル）が<strong>会話上の証拠だけ</strong>で完了を判定し、未達理由を次ターンのガイダンスにする<span class="conf conf-ok">確認済み</span>。実装、テスト収束、backlog消化に向く。<code>/goal</code>は prompt-based Stop hook のセッション限定ラッパーで、評価器はツールを呼べない。条件本文は最大4,000文字、trusted workspace 必須で <code>disableAllHooks</code> / <code>allowManagedHooksOnly</code> 下では使えない。</p>
+        </article>
+        <article class="card">
+          <h3><code>/loop</code>（時間駆動型）</h3>
+          <p>時間駆動。固定間隔ではcronに変換され最小1分、間隔省略時はClaudeが1分〜1時間で自己ペースを決め、場合によってはMonitor toolでポーリング自体を避ける<span class="conf conf-ok">確認済み</span>。CI監視、PR見守り、deploy待ち、定期保守に向く。Evaluatorそのものではなく<strong>L3の非同期トリガ</strong>として扱う。固定間隔ループは停止操作か7日で失効。bare <code>/loop</code> は <code>loop.md</code>（25,000 byte超で切り捨て）を使う。</p>
+        </article>
+        <article class="card">
+          <h3>Stop hook（汎用停止判定）</h3>
+          <p>任意の判定器をturn終端へ差し込む汎用機構で、<code>/goal</code> はその特化形。prompt型は軽量（tool-less）、agent型は実ファイルやコマンドを見られる重量版。hookは shell command・HTTP・prompt・agent・MCP tool の<strong>5種</strong>を発火でき、PreToolUseで遮断、PostToolUseで追記、Stopで継続/停止を判定できる<span class="conf conf-ok">確認済み</span>。</p>
+        </article>
+        <article class="card">
+          <h3>subagents（サブエージェント）</h3>
+          <p>親が次遷移を決める軽量委譲。調査、レビュー、反証など副作用の少ない仕事に向く。独立コンテキストで進み、結果は要約返信なので、証拠参照を明示させる<span class="conf conf-ok">確認済み</span>。worktree隔離が使える。</p>
+        </article>
+        <article class="card">
+          <h3>agent teams（協調）</h3>
+          <p>shared task listとmailboxを持つpeerセッション群。leadが評価結果を集約しタスク状態を更新する。teammateごとのworktree隔離は基本ではないため、<strong>別ファイル所有権で分割</strong>する。依存が強い作業では競合とコストが増える。experimental な機能を含む<span class="conf conf-ok">確認済み（experimental）</span>。</p>
+        </article>
+        <article class="card">
+          <h3>dynamic workflows</h3>
+          <p>計画をJavaScript artifactへ移し、scriptが次遷移を決める。多票、敵対検証、大規模監査など再実行性・監査性が要る場面で強い。同時16 agent・総計1,000 agent/run の制約がある。mid-run input 不可<span class="conf conf-ok">確認済み</span>。</p>
+        </article>
+      </div>
+
+      <div class="callout">
+        <p style="margin:0"><strong>同期と非同期:</strong> <code>/goal</code>・Stop hook・foreground subagent は<strong>同期ループ</strong>（品質統制が強いが待ち時間とコストが増える）。<code>/loop</code>・background subagent・workflow background は<strong>非同期ループ</strong>（スループットは高いが孤児タスク・ログ散逸・競合のリスク）。安全ゲートは同期層に置き、監視・記録は非同期層に置く。</p>
+      </div>
+
+      <a class="xref" href="04-evaluator-harness-design.html">design/ パッケージの統合ビューはこちら →</a>
+    </section>
+
+    <!-- 3 -->
+    <section id="evaluator">
+      <h2>3. Evaluator 中心設計 — cheap→expensive カスケード</h2>
+      <p>Evaluatorは「出力が良いか」を見るだけではない。ループの次遷移を決める関数であり、判定がNoを返すと、その理由が次ターンの指令になる。したがってEvaluator設計は採点プロンプトの問題ではなく、<strong>証拠、Verdict、差し戻し先、停止保険</strong>の設計である。単一の万能judgeを置くと、安すぎて素通りするか、高すぎてコストが暴走するかのどちらかになる。</p>
+
+      <figure>
+        <img src="images/02-fig2.webp" alt="評価カスケードを左から右への4段パイプラインで表した図。段1 決定論チェック（test / lint / git、高頻度・低コスト）、段2 LLM critic（重大欠陥、中頻度）、段3 独立Done判定（別model・fresh-context、節目）、段4 人間ゲート（高リスクのみ、低頻度・高コスト）。上に『頻度 高→低』、下に『コスト 低→高』の軸。各段から下へ fail → 差し戻し（next_directive）の戻り矢印。" width="1672" height="941" loading="lazy">
+        <figcaption>図2. 頻度・粒度・コスト・ブロック権を層ごとに分け、安い決定論で落ちるものをLLM judgeへ回さない。決定論で白黒つく領域にLLM judgeを投入しないのが、信頼性とコストを同時に満たす配置原則。security-guidance plugin の3層（編集時 pattern-check → ターン末 model-review → commit/push 時 agentic-review）がこのカスケードの実例<span class="conf conf-ok">確認済み</span>。</figcaption>
+      </figure>
+
+      <h3>層ごとに証拠・ブロック権・同期性を変える</h3>
+      <table>
+        <thead>
+          <tr><th>層</th><th>Claude Code サーフェス</th><th>証拠（何を見るか）</th><th>ブロック権</th><th>確信度</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>L1 micro</td><td>PreToolUse / PostToolUse hook（決定論）</td><td>tool引数・生出力（exit code, diff, match）</td><td>deny/allow（同期必須）</td><td><span class="conf conf-ok">確認済み</span></td></tr>
+          <tr><td>L2 meso</td><td>prompt Stop hook / <code>/goal</code>（tool-less）</td><td>transcriptに surface された証拠のみ</td><td>soft（guidance追記）</td><td><span class="conf conf-ok">確認済み</span></td></tr>
+          <tr><td>L3 macro</td><td>agent Stop hook / reviewer subagent / workflow</td><td>environment outcome（test exit, git状態, 実ファイル）</td><td>停止・採用/棄却</td><td><span class="conf conf-ok">capability確認済み</span></td></tr>
+          <tr><td>L4 meta</td><td>meta-evaluator（run横断）</td><td>複数trial集計（成功率, no-progress率, judge一致率）</td><td>ガバナンス</td><td><span class="conf conf-ok">確認済み</span></td></tr>
+        </tbody>
+      </table>
+
+      <div class="callout note-un">
+        <p style="margin:0"><strong>未確認の数値に依存しない:</strong> agent hook のターン数上限「最大50 tool-use turns」は<span class="conf conf-un">未確認・要実機確認</span>（公式 hooks docs に記述が見当たらない）。Stop hook が「連続8回ブロックで上書きされる」という整理も<span class="conf conf-un">未確認</span>。これらの数値に依存せず、ブロック層とは別に turn / budget / no-progress の各capを必ず置く。</p>
+      </div>
+
+      <h3>証拠モデル: 完了は「証明」に落とす</h3>
+      <p>最重要の制約は、<strong>判定は証拠の上でしか行えない</strong>点。tool-lessな <code>/goal</code> 評価器は会話に現れた証拠だけで yes/no を返すため、「レビューを片付ける」ではなく「<code>npm test</code> が exit 0、<code>git status</code> が clean」のように、worker自身がtranscriptに痕跡を残せる条件へ翻訳する<span class="conf conf-ok">確認済み</span>。決定論的outcomeを第一級に置き、LLM判断は決定論で割り切れない残差にだけ使う。</p>
+      <table>
+        <thead>
+          <tr><th>証拠クラス</th><th>取得方法</th><th>信頼度</th><th>適する判定</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>決定論チェック</td><td>test exit code / lint / 型 / <code>git status --porcelain</code> / diff境界</td><td>最高（再現可能）</td><td>完了・回帰・境界逸脱</td></tr>
+          <tr><td>environment outcome</td><td>HTTP 200 / DB行数 / 生成物mtime / migration済み</td><td>高（外部実測）</td><td>デプロイ・副作用の実在</td></tr>
+          <tr><td>会話内観測</td><td>transcriptに載ったコマンド出力・ログ</td><td>中（自己申告混入）</td><td>tool-less評価器（<code>/goal</code>）の唯一の入力</td></tr>
+          <tr><td>LLM critic判断</td><td>別モデルの批評</td><td>低〜中（バイアスあり）</td><td>設計妥当性・可読性など非機械的品質</td></tr>
+        </tbody>
+      </table>
+      <a class="xref" href="04-evaluator-harness-design.html">Evaluatorの分類・配置の統合ビューはこちら →</a>
+    </section>
+
+    <!-- 4 -->
+    <section id="maker-checker">
+      <h2>4. 4値 verdict と Maker–Checker 分離</h2>
+      <p>判定器を「ループの遷移関数」として実装するなら、まず入出力契約を固定する。契約が曖昧なままプロンプトを磨いても、継続/停止/採用/棄却の分岐がtranscript上で再現できず、ハーネスは「賢い無駄働き」に陥る。</p>
+
+      <figure>
+        <img src="images/02-fig3.webp" alt="証拠生成ループとMaker–Checker分離の図。左のMaker（作業エージェント：実装・修正→コミット→テスト実行→証拠収集）から『成果物＋証拠（test出力・git status）』の矢印で右のChecker（別model・fresh-context：diffとrubricのみを見る）へ。Checkerから下にverdictの4値 pass採用・fail再試行・revise方針転換・escalate人間へ。fail/revise から next_directive を次ターンへ戻す矢印がMakerに戻る。" width="1672" height="941" loading="lazy">
+        <figcaption>図3. 作業者本人に完了を採点させない。Checkerには<strong>diffとacceptance criteria（rubric）だけ</strong>を見せ、実装者の思考過程・弁明・改善履歴は渡さない。狙いを渡すとjudgeが作業者の意図に同調し批判性が落ちる。<code>/goal</code>が作業モデルとは別の小型モデルで判定するのは、この構造的な自己承認回避のソフトウェア工学版<span class="conf conf-ok">確認済み</span>。</figcaption>
+      </figure>
+
+      <h3>4値 status を分ける</h3>
+      <p><code>status</code> を4値にするのが実装上の要点。<code>pass</code>（停止・採用）/ <code>fail</code>（同一方針で再試行）/ <code>revise</code>（方針転換を指示）/ <code>escalate</code>（人間または上位ループへ委譲）を分けると、no-progress capと人間ゲートが自然に接続する。<code>reason</code> と <code>evidence_refs</code> を必須にすることで、「なぜ止めた/続けたか」が後から追える operation ledger になる。</p>
+      <pre><code>type Verdict = {
+  status: "pass" | "fail" | "revise" | "escalate"
+  reason: string               // なぜその判定か（1〜3文）
+  next_directive?: string      // fail/revise 時に worker へ渡す次ターンの明示指令
+  score?: number               // 0..1（任意。比較・トレンド監視用）
+  evidence_refs: string[]      // 判定根拠へのポインタ（trace id / path / テスト名）
+}</code></pre>
+      <p>良い <code>next_directive</code> は「何が未達か」ではなく「次に何をどの順で試すか」を1つ示す。例: reason=「<code>test_login.py</code> が2件失敗」→ next_directive=「まず期限計算を修正し、<code>npm test -- test/auth</code> を再実行して結果を会話に残せ」。曖昧な「改善して」ではなく、証拠に接続した具体指令にする。</p>
+
+      <h3>構造化出力で verdict を機械可読にする</h3>
+      <p>verdictを正規表現抽出すると壊れる。schema第一で受け取る。Claudeの<strong>構造化出力</strong>は <code>output_config.format</code>（<code>type: "json_schema"</code>）で指定する<span class="conf conf-ok">確認済み（2026-07-04 に現行 Anthropic API docs のリクエスト例と照合）</span>。<code>status</code> を enum に固定し <code>reason</code> / <code>evidence_refs</code> を required にするだけで、ループ側は分岐と監査を型で扱える。</p>
+
+      <div class="callout warning">
+        <strong>rubricは3点で書く:</strong> <strong>measurable end state</strong>（1つの終状態）/ <strong>proof</strong>（どう証明するか）/ <strong>constraints</strong>（守る制約・触れない範囲・予算・安全境界）。曖昧done（「いい感じに」）、evaluator blindness（tool-less評価器に「実際に動くこと」を求める）、metric monoculture（単一スコア最適化＝reward hacking）の3アンチパターンを避ける。
+      </div>
+    </section>
+
+    <!-- 5 -->
+    <section id="reliability">
+      <h2>5. judge の信頼性・3大バイアス・メタ評価</h2>
+      <p>Evaluatorを置けば品質が保証される、というのは誤り。judge自身がバイアスを持ち、時間とともに壊れ（drift）、報酬ハッキングの標的になる。ハーネスの信頼性は、判定器を導入したかではなく、<strong>判定器を継続的に点検する層（メタ評価）を常設できるか</strong>で決まる。MT-BenchとChatbot Arenaは、強いjudgeが人間判断と80%以上で整合しうる一方、系統的なバイアスを持つことを示した<span class="conf conf-ok">確認済み（一次研究由来）</span>。</p>
+
+      <figure>
+        <img src="images/02-fig4.webp" alt="judgeを評価する（メタ評価）の図。上段にLLM judgeの3大バイアス：position bias（提示順）、verbosity bias（冗長さ）、self-enhancement bias（自己優遇）。下段に緩和策：A/B入替の二重評価、別モデルのjudge、gold setで定点観測。右にmeta指標 human agreement / false accept / drift のボックス。矢印でバイアスから緩和策へ対応づける。" width="1672" height="941" loading="lazy">
+        <figcaption>図4. 3大バイアスと既定の緩和策。position biasはA/B入替の二重評価（両方向で同じ勝者のときだけ採用、不一致はtie）、verbosity biasはrubricで長さを評価軸から外す、self-enhancement biasは作業モデルと別モデル/別プロバイダのjudgeにする。総則は「絶対スコアよりpairwise ranking」「rubricを固定し実行ごとに変えない」。</figcaption>
+      </figure>
+
+      <h3>meta-evaluator: judge の定期点検</h3>
+      <p><strong>gold set</strong>（人間が確定ラベルを付けた少数の検証セット、数十件で足りる）を定期的にjudgeへ流し、以下を再計測する。この点検自体を時間駆動ループ（<code>/loop</code> や scheduled task）に載せ、閾値割れを検知したらjudgeをrubric再調整または降格（LLM判定から決定論チェックの補助へ格下げ）する。</p>
+      <table>
+        <thead>
+          <tr><th>指標</th><th>何を測るか</th><th>合格ラインの考え方</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>human agreement</td><td>人間ラベルとの一致率</td><td>高リスク判定は0.9+、境界判定は0.8+</td></tr>
+          <tr><td>inter-run consistency</td><td>同一入力の再現性</td><td>逸脱が閾値超なら temperature を下げるか多数決化</td></tr>
+          <tr><td>calibration (ECE)</td><td>確信度と実正答率の対応</td><td>過信（高確信で外す）を特に警戒</td></tr>
+          <tr><td>false accept / false reject</td><td>見逃し / 過検出</td><td>false accept（不良を通す）をより重く扱う</td></tr>
+          <tr><td>drift</td><td>上記の時系列劣化</td><td>モデル更新・プロンプト変更・分布シフトでアラート</td></tr>
+        </tbody>
+      </table>
+
+      <h3>敵対的検証と Goodhart 防御</h3>
+      <p>単一judgeをN回回す多数決は、同一モデルの共通バイアスを打ち消せない。<strong>異なるレンズ（correctness / security / reproducibility）の懐疑者を並べて多票化</strong>し、「全レンズ合格で採用、一つでもfailなら差し戻し」を既定にする（false acceptを抑える安全側）。これはWorkflowのverifyステージ相当で、<strong>GAN</strong>的な生成／検証分離（generatorとdiscriminatorのminimaxゲーム）と multi-agent review / devil's advocate の実務形である。</p>
+      <p>閉ループでは実力を上げるより<strong>採点を甘くするほうが速く点が伸びる</strong>ため、Goodhartの法則で指標が壊れる。防御は4点: <strong>採点経路の封印</strong>（rubric・合格ライン・評価スクリプト・judgeプロンプトを被改善対象が書き換えられない領域に置く）/ <strong>指標多様化</strong>（直交する複数指標を併記）/ <strong>点数でなく目的達成で収束</strong> / <strong>no-regressionチェック</strong>（マージ後の統合状態で再ベンチ）。judgeは「作った時点で正しい」のではなく、「継続的に点検される限りにおいて信頼できる」。</p>
+      <a class="xref" href="04-evaluator-harness-design.html">信頼性・メタ評価の統合ビューはこちら →</a>
+    </section>
+
+    <!-- 6 -->
+    <section id="custom-harness">
+      <h2>6. 大きな外側ループを独自ハーネスにする</h2>
+      <p>外側ループは「Claude Codeの便利コマンド」ではなく、自前ハーネスの中核にできる。参照実装は二系統に分かれる。<strong>系統A</strong>はClaude Codeのネイティブ機能（hooks・<code>/goal</code>・subagent・dynamic workflow）だけで組む最小構成、<strong>系統B</strong>はAgent SDKもしくは自前ループでEvaluatorを明示的な部品として握る構成。両系統は排他ではなく、in-proc（関数呼び出し）から独立control planeサービスへという発展軸の両端に位置する。</p>
+
+      <figure>
+        <img src="images/02-fig5.webp" alt="系統B 自前ハーネスのループ状態遷移図。開始→worker.step（内側ループ1ターン）→evaluate（カスケード評価）→分岐。分岐先は pass→stop採用、no-progress cap（連続2回停滞）、budget cap（予算超過）、turn cap（上限到達）の4つ。三重cap（turn / budget / no-progress）は保険条件として枠で囲まれる。evaluateからworkerへ next_direction を注入する戻り矢印。" width="1672" height="941" loading="lazy">
+        <figcaption>図5. 系統Bのループ状態遷移。要点は3つ — <strong>決定論を先に集める・MakerとCheckerが別個体・verdictが次ターンの入力になる</strong>。加えて<strong>三重cap</strong>（<code>max_turns</code> / <code>max_budget_usd</code> / no-progress）で暴走とサイレント早期終了の両方を止める。<code>max_turns</code> / <code>max_budget_usd</code> はハード上限として併用<span class="conf conf-ok">確認済み</span>。</figcaption>
+      </figure>
+
+      <h3>系統A: Claude Code ネイティブ実装</h3>
+      <p><code>.claude/settings.json</code> の hooks で頻度×コストの異なる3層を重ねる。examples/ の参照実装がこの短期〜中期ロードマップの具体形になっている。</p>
+      <div class="grid">
+        <article class="card">
+          <span class="tag">系統A / 短期</span>
+          <h3><code>settings.hooks.example.json</code></h3>
+          <p>hooks 3層の設定雛形。PreToolUse command（決定論ゲート）→ Stop prompt（tool-less完了判定）→ Stop agent（Maker–Checkerの受入検証）。短期のcommand+promptから中期のagent Stopへの橋渡し。</p>
+        </article>
+        <article class="card">
+          <span class="tag">系統A / 短期</span>
+          <h3><code>secret-scan.sh</code></h3>
+          <p>PreToolUseの決定論ゲート最小例。標準入力のペイロードから秘密情報らしき代入（<code>api_key</code>/<code>secret</code>/<code>token</code>/<code>password</code>への長い文字列）と破壊的コマンド（<code>rm -rf /</code>、<code>git push --force</code>）を検出し、exit 2でブロック、stderrの理由が次ターンのガイダンスになる。サンプル値はすべてプレースホルダ（<code>XXXX</code>）。</p>
+        </article>
+        <article class="card">
+          <span class="tag">系統A / 短期</span>
+          <h3><code>goal-conditions.md</code></h3>
+          <p><code>/goal</code> 条件文テンプレ集（テスト収束 / backlog消化 / docs整合の3型）。各テンプレは rubric 3点法（end_state / proof / constraints）＋保険条項（turn cap）で構成。tool-less評価器が読める証拠に翻訳する「良い条件 vs 悪い条件」の対比付き。</p>
+        </article>
+      </div>
+
+      <h3>系統B: 独自ハーネス（Agent SDK / 自前ループ）</h3>
+      <p>manager–worker–evaluatorを、カスケード評価（安い順に評価して早期決着で打ち切る）と三重cap、OpenTelemetry spanで拡張する。設計上のポイントは4つ: <strong>(1) カスケード</strong>（決定論 → LLM critic → 独立判定）/ <strong>(2) blind judge</strong>（<code>independent_done</code> に改善履歴を渡さず成果物と目的だけを見せ、self-approveを避ける）/ <strong>(3) 三重cap</strong>（<code>max_turns</code> / <code>max_budget_usd</code> / no-progress）/ <strong>(4) OTel span</strong>（turn / tool / hook / token / cost を記録）。</p>
+      <div class="grid">
+        <article class="card wide">
+          <span class="tag">系統B / 中期</span>
+          <h3><code>evaluator_harness.py</code></h3>
+          <p>カスケード評価＋三重capの実行可能スケルトン（stdlibのみ、外部依存ゼロ、OTel未導入ならno-op tracerにフォールバック）。<code>python3 evaluator_harness.py</code> で「fail → 修正 → pass」のカスケード遷移デモが動く。<code>llm_critic</code> / <code>independent_done</code> は実APIを呼ばないスタブで、実運用では別モデルのcritic / blind judgeに差し替える。</p>
+        </article>
+        <article class="card wide">
+          <span class="tag">系統B / 短期〜中期</span>
+          <h3><code>verdict.schema.json</code></h3>
+          <p>統一Verdict契約のJSON Schema（draft 2020-12）。10値 <code>decision</code>（promote / hold / reject / merge / supersede / retrieve / drop / forget / continue / stop）＋ <code>score</code> ＋ <code>reason</code> ＋ <code>next_direction</code>。LLMに構造化出力させる際のスキーマとして使える。hook境界（<code>{"ok": bool, "reason": ...}</code>）へは pass 相当を <code>ok:true</code>、それ以外を <code>ok:false</code> へ写像する。</p>
+        </article>
+      </div>
+
+      <div class="callout note-un">
+        <p style="margin:0"><strong>雛形が依存しないこと:</strong> 「Stop hook は連続8回ブロックで上書き」「agent hook は最大50 tool-use turns」はいずれも<span class="conf conf-un">未確認</span>（2026-07時点の公式 hooks docs に記述なし）。雛形はこれらに一切依存せず、暴走・空回りは自前の三重cap（turn / budget / no-progress）で止める。また非同期hookを安全ゲートに使わない（「同期＝ブロック可 / 非同期＝記録専用」）。非同期からの通知が要るなら、文書化された <code>asyncRewake</code>（exit code 2 で wake・stderr/stdout を system reminder 提示）を使う。</p>
+      </div>
+
+      <h3>普遍理論からの補助線</h3>
+      <p>制御理論の<strong>MAPE-K</strong>（Monitor, Analyze, Plan, Execute over Knowledge）は、Claude Codeの gather context / take action / verify results や <code>/goal</code> のターン末評価にほぼそのまま写像できる。model predictive control 的に見れば各turnは有限地平の計画と実行であり、long-running harnessが「一気に完遂を避け、毎セッションでincremental progressとclean stateを残せ」と言うのは、MPC的な安定性要求に近い。強化学習の観点ではループは探索予算配分の設計問題であり、哲学的には自己参照・価値定義（reward misspecification / Goodhart）・運用的同一性の問題として再記述できる。</p>
+    </section>
+
+    <!-- 7 -->
+    <section id="unconfirmed">
+      <h2>7. 未確認事項の注記とソース対応表</h2>
+      <p>本HTMLは、design/00 の anti-sycophancy 規律に従い、確信度3段階（<span class="conf conf-ok">確認済み</span> / <span class="conf conf-mid">高確度</span> / <span class="conf conf-un">未確認</span>）を明示する。特に以下は<strong>未確認・要実機確認</strong>であり、これらの数値・機構に依存しない設計にする。</p>
+      <table>
+        <thead>
+          <tr><th>項目</th><th>整理内容</th><th>確信度</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Stop hook 連続ブロック上限</td><td>「連続8回ブロックで上書きされる」との整理。公式 hooks docs に連続ブロック上限の記述が見当たらない</td><td><span class="conf conf-un">未確認</span></td></tr>
+          <tr><td>agent hook のターン数上限</td><td>「最大50 tool-use turns」との整理。公式 docs に記述が見当たらない（tool可のcapability自体は確認済み）</td><td><span class="conf conf-un">未確認</span></td></tr>
+          <tr><td>非同期 hook の I/F</td><td>「<code>additionalContext</code> を次ターンへ返せるがブロック権限を失う」は分析上の整理。docs記載は「<code>async: true</code> ＝非ブロック実行」まで。文書化された通知機構は <code>asyncRewake</code></td><td><span class="conf conf-un">未確認（分析上の整理）</span></td></tr>
+          <tr><td>hook の発火種別</td><td>shell command・HTTP・prompt・agent・MCP tool の5種を発火できる</td><td><span class="conf conf-ok">確認済み</span></td></tr>
+          <tr><td>Loop Engineering という語</td><td>コミュニティ主導の総称。Anthropic公式の正式用語体系ではない。内側/外側ループの定義は分析的統合</td><td><span class="conf conf-un">未確認（用語の起源は流動的）</span></td></tr>
+          <tr><td>agent teams / dynamic workflows</td><td>experimental / evolving な機能を含む。2026年7月時点の仕様として読む</td><td><span class="conf conf-ok">確認済み（experimental）</span></td></tr>
+          <tr><td>ループ工学の統一理論</td><td>ループエンジニアリング自体を統一的に定式化した学術理論は現時点で未成立。プロダクト実装・推論枠組み・LLM-as-a-judge研究・自律システム理論を横断して再構成するのが最も正確</td><td><span class="conf conf-mid">高確度</span></td></tr>
+        </tbody>
+      </table>
+
+      <h3>ソース対応表</h3>
+      <table>
+        <thead>
+          <tr><th>資料</th><th>このHTMLでの反映先</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><a href="../02-loop-engineering-claude-code.md">02-loop-engineering-claude-code.md</a></td><td>内側/外側ループ、4階層分解、<code>/goal</code>・<code>/loop</code>・Stop hook・subagents・teams・dynamic workflows、同期/非同期、評価プロトコル（章1・2・3）</td></tr>
+          <tr><td><a href="../03-loop-engineering-deep-dive.md">03-loop-engineering-deep-dive.md</a></td><td>証拠生成ループ、5層分解、Evaluator中心設計、MAPE-K・GAN・自己参照、実践パターンとアンチパターン（章1・3・4・6）</td></tr>
+          <tr><td><a href="../design/02-layering-and-placement.md">design/02-layering-and-placement.md</a>（★）</td><td>L1〜L4のレイヤリング、cheap-frequent→expensive-rareカスケード、Claude Codeサーフェスへの写像、配置アンチパターン（章3・図2）</td></tr>
+          <tr><td><a href="../design/03-implementation-patterns.md">design/03-implementation-patterns.md</a>（★）</td><td>Evaluatorインターフェース契約、4値status、証拠モデル、Maker–Checker分離、構造化出力、rubric記法（章4・図3）</td></tr>
+          <tr><td><a href="../design/05-reliability-and-meta-evaluation.md">design/05-reliability-and-meta-evaluation.md</a>（★）</td><td>3大バイアスと緩和策、A/B入替、gold setメタ評価、敵対的検証、Goodhart防御（章5・図4）</td></tr>
+          <tr><td><a href="../design/06-reference-implementation.md">design/06-reference-implementation.md</a>（○）</td><td>系統A/系統Bのループ実装、カスケード評価＋三重cap、control plane化、段階導入（章6・図5）</td></tr>
+          <tr><td><a href="../design/examples/README.md">design/examples/README.md</a>（○）</td><td>参照コード雛形の一覧、4値status↔10値decision↔hook境界の対応（章6）</td></tr>
+          <tr><td><a href="../design/examples/claude-code/goal-conditions.md">examples/claude-code/goal-conditions.md</a>（○）</td><td><code>/goal</code> 条件文テンプレ3型（章6・系統Aカード）</td></tr>
+          <tr><td><a href="../design/examples/claude-code/settings.hooks.example.json">examples/claude-code/settings.hooks.example.json</a>（○）</td><td>hooks 3層設定雛形（章6・系統Aカード）</td></tr>
+          <tr><td><a href="../design/examples/claude-code/hooks/secret-scan.sh">examples/claude-code/hooks/secret-scan.sh</a>（○）</td><td>PreToolUse決定論ゲート最小例（章6・系統Aカード）</td></tr>
+          <tr><td><a href="../design/examples/custom-harness/evaluator_harness.py">examples/custom-harness/evaluator_harness.py</a>（○）</td><td>カスケード評価＋三重capの実行可能スケルトン（章6・系統Bカード・図5）</td></tr>
+          <tr><td><a href="../design/examples/custom-harness/verdict.schema.json">examples/custom-harness/verdict.schema.json</a>（○）</td><td>統一Verdict契約のJSON Schema（章6・系統Bカード）</td></tr>
+          <tr><td><a href="04-evaluator-harness-design.html">04-evaluator-harness-design.html</a></td><td>design/ 全体の統合ビュー（各design関連章から相互参照）</td></tr>
+        </tbody>
+      </table>
+      <p class="footer-note">このHTMLでは、Loop Engineering・内側ループ・外側ループを元資料の注記どおり新興語彙として扱い、公式定義（確認済み）と分析上の定義（未確認）を区別した。題材: ハーネスリサーチ本体 02/03 と design/ パッケージ（02・03・05・06章＋examples/）。★=中心ソース / ○=部分ソース。</p>
+    </section>
+  </main>
+</body>
+</html>

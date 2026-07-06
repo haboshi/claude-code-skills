@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Evaluator ハーネス設計 — 証拠生成の遷移関数をどの層に置くか</title>
+<style>
+  :root {
+    color-scheme: light;
+    --ink: #1a1a1a;
+    --ink-2: #4a4a4a;
+    --bg: #f7f5ee;
+    --paper: #fbf9f1;
+    --line: #d8d2bf;
+    --accent: #cc785c;
+    --accent-soft: #f5e0d6;
+    --accent-deep: var(--accent);
+    --accent-deep: color-mix(in srgb, var(--accent) 72%, black);
+    --warn: #c83a2c;
+    --warn-soft: #f6dcd6;
+    --yellow: #f4d35e;
+    --shadow: 0 1px 0 rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06);
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN",
+            "Hiragino Sans", "Noto Sans JP", "Yu Gothic", "Meiryo", sans-serif;
+    --measure: 42em;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  @media (prefers-reduced-motion: no-preference) {
+    html { scroll-behavior: smooth; }
+  }
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.8;
+    line-break: strict;
+    overflow-wrap: anywhere;
+    -webkit-font-smoothing: antialiased;
+  }
+  :focus-visible { outline: 3px solid var(--accent-deep); outline-offset: 2px; }
+  .skip {
+    position: absolute; left: -9999px; top: 0; z-index: 10;
+    background: var(--accent-deep); color: #fff;
+    padding: 8px 16px; border-radius: 0 0 8px 0; font-weight: 700;
+  }
+  .skip:focus { left: 0; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 56px 28px 96px; }
+
+  h1, h2 { font-feature-settings: "palt" 1; text-wrap: balance; }
+  p { text-wrap: pretty; }
+  section > p, section ul, section ol, .quote { max-width: var(--measure); }
+
+  .hero { margin-bottom: 48px; }
+  .hero .kicker {
+    display: inline-block;
+    background: var(--accent-deep); color: #fff;
+    font-size: 12px; font-weight: 700; letter-spacing: .12em;
+    padding: 6px 12px; border-radius: 999px;
+    margin-bottom: 18px;
+  }
+  .hero h1 {
+    font-size: clamp(1.875rem, 1.43rem + 1.9vw, 2.5rem); line-height: 1.35; margin: 0 0 14px;
+    letter-spacing: -.01em;
+  }
+  .hero h1 b { color: var(--accent-deep); }
+  .hero p.lede {
+    font-size: 18px; color: var(--ink-2); margin: 0; max-width: var(--measure);
+  }
+  .tldr {
+    margin-top: 28px; padding: 22px 24px;
+    background: var(--paper); border: 1px solid var(--line); border-radius: 12px;
+    box-shadow: var(--shadow);
+  }
+  .tldr h2 { font-size: 13px; letter-spacing: .15em; color: var(--accent-deep); margin: 0 0 10px; }
+  .tldr ol { margin: 0; padding-left: 20px; }
+  .tldr li { margin: 4px 0; }
+
+  .toc {
+    margin: 0 0 8px; padding: 18px 24px;
+    background: var(--paper); border: 1px solid var(--line); border-radius: 12px;
+  }
+  .toc h2 { font-size: 13px; letter-spacing: .15em; color: var(--accent-deep); margin: 0 0 8px; }
+  .toc ol {
+    margin: 0; padding-left: 20px;
+    columns: 2; column-gap: 32px;
+  }
+  .toc li { margin: 3px 0; break-inside: avoid; font-size: 14.5px; }
+  .toc a { color: var(--ink); text-decoration: none; }
+  .toc a:hover { color: var(--accent-deep); text-decoration: underline; }
+
+  section { margin: 64px 0 0; scroll-margin-top: 24px; }
+  section > h2 {
+    font-size: clamp(1.375rem, 1.11rem + 1.15vw, 1.75rem); line-height: 1.4; margin: 0 0 6px;
+    border-left: 6px solid var(--accent); padding-left: 12px;
+  }
+  section > h2 .num {
+    color: var(--accent-deep); font-variant-numeric: tabular-nums; margin-right: 10px;
+  }
+  section > p.sub { color: var(--ink-2); margin: 0 0 22px; }
+
+  figure {
+    margin: 0 0 24px; padding: 12px;
+    background: var(--paper); border: 1px solid var(--line); border-radius: 14px;
+    box-shadow: var(--shadow);
+  }
+  figure img { display: block; width: 100%; height: auto; border-radius: 8px; }
+  figcaption {
+    font-size: 13px; color: var(--ink-2); margin-top: 10px; text-align: center;
+  }
+
+  .table {
+    width: 100%; border-collapse: collapse; margin: 12px 0 6px;
+    background: var(--paper); border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
+    box-shadow: var(--shadow);
+    font-variant-numeric: tabular-nums;
+  }
+  .table th, .table td {
+    text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--line);
+    vertical-align: top; font-size: 14.5px;
+  }
+  .table th { background: #efeadb; font-weight: 700; }
+  .table tr:last-child td { border-bottom: 0; }
+  .table .pick { background: var(--accent-soft); }
+  .table .pick td:first-child { font-weight: 700; color: var(--accent-deep); }
+
+  pre {
+    margin: 0; padding: 16px 18px;
+    background: #1f2226; color: #e8e6df; border-radius: 10px;
+    font-family: var(--mono); font-size: 13px; line-height: 1.65;
+    overflow-x: auto; tab-size: 2;
+  }
+  pre .c { color: #8a8f78; }
+  pre .k { color: #6ec5a8; }
+  pre .s { color: #f4d35e; }
+  pre .n { color: #ec9c8c; }
+  code.inline {
+    font-family: var(--mono); font-size: .92em;
+    background: #efeadb; padding: 1px 6px; border-radius: 4px;
+    overflow-wrap: anywhere;
+  }
+
+  .callout {
+    margin: 18px 0;
+    padding: 16px 18px;
+    border-left: 4px solid var(--accent);
+    background: var(--accent-soft);
+    border-radius: 0 10px 10px 0;
+    max-width: calc(var(--measure) + 36px);
+  }
+  .callout.warn { border-color: var(--warn); background: var(--warn-soft); }
+  .callout p { margin: 0; }
+  .callout strong { color: var(--accent-deep); }
+  .callout.warn strong { color: var(--warn); }
+
+  .quote {
+    border-left: 3px solid var(--line); padding: 6px 16px;
+    color: var(--ink-2); font-size: 14.5px; margin: 18px 0;
+  }
+
+  .src { font-size: 13px; color: var(--ink-2); }
+
+  .conclusion {
+    margin-top: 56px; padding: 28px 28px 24px;
+    background: var(--ink); color: #f6f3e8; border-radius: 16px;
+  }
+  .conclusion h2 { color: var(--yellow); border: 0; padding: 0; margin: 0 0 12px; }
+  .conclusion ol { margin: 0; padding-left: 20px; }
+  .conclusion li { margin: 6px 0; }
+  .conclusion code.inline { background: #2c2f33; color: #f6f3e8; }
+
+  footer { margin-top: 36px; color: var(--ink-2); font-size: 13px; }
+
+  @media (max-width: 720px) {
+    .wrap { padding: 32px 18px 64px; }
+    .toc ol { columns: 1; }
+  }
+
+  @media print {
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body { background: #fff; }
+    .wrap { max-width: none; padding: 0; }
+    .toc, .skip { display: none; }
+    h1, h2 { break-after: avoid; }
+    figure, .table, pre, .callout, .tldr { break-inside: avoid; box-shadow: none; }
+    a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 11px; color: var(--ink-2); }
+    .conclusion { background: #fff; color: var(--ink); border: 2px solid var(--ink); }
+    .conclusion h2 { color: var(--ink); }
+    .conclusion code.inline { background: #efeadb; color: var(--ink); }
+  }
+  @page { size: A4; margin: 18mm; }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">本文へスキップ</a>
+<div class="wrap">
+
+  <header class="hero">
+    <span class="kicker">EVALUATOR HARNESS DESIGN</span>
+    <h1>Evaluator ハーネス設計 — ループを回し続ける<b>「証拠生成の遷移関数」</b>をどの層に置くか</h1>
+    <p class="lede">Evaluator（判定器）は出力を採点する部品ではない。エージェントループの継続/停止と、長期記憶の採否・忘却を決める制御面そのものである。ディープリサーチ5本から合成した設計パッケージ（design/00〜06 ＋実行可能な雛形）の全体像を、この1枚にまとめる。</p>
+    <div class="tldr">
+      <h2>TL;DR</h2>
+      <ol>
+        <li>Evaluator は micro / meso / macro / meta の各ループ接続点と、記憶の write / manage / read 経路に<b>分散配置</b>する——単一の万能 judge は「素通り」か「コスト暴走」で必ず破綻する。</li>
+        <li>決定論チェックを土台に cheap→expensive の<b>カスケード</b>で束ね、Maker と Checker を別個体に分離し、完了は transcript か environment outcome 上の<b>「証明」</b>に落とす。</li>
+        <li>judge 自身もバイアスと drift を持つ——gold set による <b>meta 評価</b>を常設し、導入は「決定論＋tool-less 判定 → Maker–Checker＋write 審査 → meta-eval＋control plane」の3段で進める。</li>
+      </ol>
+    </div>
+  </header>
+
+  <nav class="toc" aria-label="目次">
+    <h2>目次</h2>
+    <ol>
+      <li><a href="#s-01">定義 — Evaluator は採点器ではなく「遷移関数」</a></li>
+      <li><a href="#s-02">配置 — どのレイヤーで扱うか</a></li>
+      <li><a href="#s-03">実装 — Verdict 契約と4段カスケード</a></li>
+      <li><a href="#s-04">記憶 — write / manage / read の二重審査</a></li>
+      <li><a href="#s-05">信頼性 — judge を誰が見張るか</a></li>
+      <li><a href="#s-06">導入 — 3段ロードマップと実行可能な雛形</a></li>
+    </ol>
+  </nav>
+
+  <main id="main" tabindex="-1">
+
+  <section id="s-01">
+    <h2><span class="num">01</span>定義 — Evaluator は採点器ではなく「遷移関数」</h2>
+    <p class="sub">判定が No を返すこと自体が、次ターンの指令になり、記憶の政策になる</p>
+    <figure>
+      <img src="images/evaluator-harness/concept-01.webp" alt="エージェントループの検証点に Evaluator が置かれ、No は次ターン指令として差し戻され、Yes は停止・採用に抜ける構造図。下段では記憶更新候補の採否も同じ判定器が決める" width="1672" height="941">
+      <figcaption>図01 — Evaluator の二面性: ループの遷移関数 × 記憶の政策エンジン。判定の No がそのまま次ターンの指令になる</figcaption>
+    </figure>
+    <p>本設計での Evaluator の定義は「ある時点の<b>出力・状態・軌跡・記憶更新候補</b>に対して、継続/停止/採用/棄却/修正方向を決める判定器」である。grader・judge・verifier・critic・reward model・policy gate——文献ごとに呼び名は違うが、すべてこの同一役割の別名として正規化できる。</p>
+    <table class="table">
+      <thead><tr><th>機能分類</th><th>何を返すか</th><th>使いどころ</th></tr></thead>
+      <tbody>
+        <tr><td>scoring</td><td>数値 / pass・fail</td><td>回帰検知・閾値ゲート</td></tr>
+        <tr><td>critic</td><td>何が悪いか＋次に何を直すか</td><td>差し戻し時の next_directive 生成</td></tr>
+        <tr><td>counterfactual</td><td>案 A/B どちらが良いか</td><td>判定の頑健化（pairwise・多票）</td></tr>
+        <tr><td>meta-evaluator</td><td>judge 自身の妥当性</td><td>バイアス・drift の定期監査</td></tr>
+      </tbody>
+    </table>
+    <div class="callout"><p><strong>二面性が設計の出発点。</strong>Evaluator はループの<b>遷移関数</b>（No＝次ターン指令）であると同時に、記憶の<b>政策エンジン</b>（promote / hold / reject / merge / supersede）でもある。この2つを同じ Verdict 契約で扱うことが、後段のすべての設計を貫く。</p></div>
+  </section>
+
+  <section id="s-02">
+    <h2><span class="num">02</span>配置 — どのレイヤーで扱うか</h2>
+    <p class="sub">層ごとに（証拠・ブロック権・同期性・頻度×コスト）を変えて分散する</p>
+    <figure>
+      <img src="images/evaluator-harness/concept-02.webp" alt="micro・meso・macro・meta の4層に別種の判定器を配置し、右側の記憶 write/manage/read 経路にもゲートを置くレイヤリング図。上の層ほど高頻度・低コスト" width="1672" height="941" loading="lazy">
+      <figcaption>図02 — 統合レイヤリング。cheap-frequent → expensive-rare の勾配に沿って判定器の種類を変える</figcaption>
+    </figure>
+    <p>中心の問い「どのレイヤーでどう扱うか」への答えがこの表である。単一の万能 judge を置くと、安すぎて素通りするか、高すぎてコストが暴走するかの二択に陥る。層ごとに<b>証拠・ブロック権・同期性・頻度×コスト</b>を変えた別種の判定器を置く。</p>
+    <table class="table">
+      <thead><tr><th>レイヤー</th><th>何を評価</th><th>Claude Code 実装</th><th>コスト・頻度</th></tr></thead>
+      <tbody>
+        <tr><td>micro（tool）</td><td>危険操作・境界逸脱（決定論）</td><td>PreToolUse / PostToolUse hook</td><td>最低 / 毎 tool</td></tr>
+        <tr class="pick"><td>meso（turn）</td><td>ターン完了（transcript 証拠のみ）</td><td>prompt Stop hook / /goal（tool-less・既定 Haiku）</td><td>低〜中 / 毎ターン</td></tr>
+        <tr><td>macro（session）</td><td>実地検証・多票・敵対</td><td>agent Stop hook / reviewer subagent / workflow 多票</td><td>高 / 節目</td></tr>
+        <tr><td>memory write/manage/read</td><td>記憶の採否・忘却・再ランク</td><td>hook＋ファイル memory（MEMORY.md・compaction）</td><td>経路依存</td></tr>
+        <tr><td>meta</td><td>judge 自身の監査</td><td>gold set を定期投入する別ワークフロー</td><td>最高 / 低頻度</td></tr>
+      </tbody>
+    </table>
+    <div class="callout warn"><p><strong>未確認の仕様に依存しない。</strong>「Stop hook は連続8回ブロックで上書き」「agent hook は最大50 tool-use turns」は現行公式 docs に記述がない（2026-07-04 再確認）。これらの数値には依存せず、turn / budget / no-progress の<b>保険 cap を必ず自前の別レイヤー</b>に置く。</p></div>
+  </section>
+
+  <section id="s-03">
+    <h2><span class="num">03</span>実装 — Verdict 契約と4段カスケード</h2>
+    <p class="sub">安い順・厳しい順に並べ、決定論で落ちるものを LLM に回さない</p>
+    <figure>
+      <img src="images/evaluator-harness/concept-03.webp" alt="決定論チェック、LLM critic、独立 Done 判定、人間ゲートの4段カスケード。どの段で落ちても next_directive 付きで worker に差し戻される" width="1672" height="941" loading="lazy">
+      <figcaption>図03 — 合成カスケード。高頻度・低コストの粗い検査と、低頻度・高コストの深い検査を分離する</figcaption>
+    </figure>
+    <p>判定器の入出力は<b>契約</b>として固定する。status は4値（pass / fail / revise / escalate）、reason と evidence_refs は必須、fail・revise 時は必ず next_directive を返す。これで「なぜ止めた/続けたか」が後から追える operation ledger になる。</p>
+    <pre>{
+  <span class="n">"status"</span>: <span class="s">"revise"</span>,
+  <span class="n">"reason"</span>: <span class="s">"test_login.py の2件が期限計算で失敗"</span>,
+  <span class="n">"next_directive"</span>: <span class="s">"まず test_expiry の期限計算を修正し、npm test -- test/auth を再実行して結果を会話に残す"</span>,
+  <span class="n">"score"</span>: 0.62,
+  <span class="n">"evidence_refs"</span>: [<span class="s">"npm-test#run-14"</span>, <span class="s">"git-status#turn-7"</span>]
+}</pre>
+    <p>最重要の制約は「<b>判定は証拠の上でしか行えない</b>」こと。<code class="inline">/goal</code> の評価器はツールを呼べず、会話に現れた証拠だけで判定する（公式 docs 照合済み）。だから rubric は3点法で書く。</p>
+    <ul>
+      <li><b>end_state</b>: 単一の測定可能な終状態（例: npm test -- test/auth が exit 0）</li>
+      <li><b>proof</b>: どう証明するか（例: 実行ログを transcript に残す）</li>
+      <li><b>constraints</b>: 守る制約（例: src/auth 以外に差分を作らない・20ターンで停止）</li>
+    </ul>
+    <div class="callout"><p><strong>Maker–Checker 分離（自己採点の禁止）。</strong>実装ループと評価ループは別 prompt・別 model・別 agent に分け、reviewer には <b>diff と rubric だけ</b>を渡す。改善履歴や弁明を渡すと、判定が「作った理由への同意」に流れる。</p></div>
+  </section>
+
+  <section id="s-04">
+    <h2><span class="num">04</span>記憶 — write / manage / read の二重審査</h2>
+    <p class="sub">長期記憶は「保存」ではなく「評価された更新と、評価された再利用」</p>
+    <figure>
+      <img src="images/evaluator-harness/concept-04.webp" alt="記憶の書き込み・管理・読み出しの3経路それぞれにゲート型の Evaluator を置いたパイプライン図。書き込みは promote から supersede までの5値、読み出しはスコア合成とハードゲート" width="1672" height="941" loading="lazy">
+      <figcaption>図04 — 記憶3経路の二重審査。poisoning は write gate が第一防衛、stale は read gate が最終防衛</figcaption>
+    </figure>
+    <p>記憶側の Evaluator は3経路に分かれる。<b>write</b> は保存候補の新規性・根拠・既存記憶との矛盾を審査して promote / hold / reject / merge / supersede の5値を返す。<b>manage</b> は consolidation・dreaming・忘却のゲートで、鉄則は「dreaming は原典を上書きしない（派生として昇格させる）」。<b>read</b> は relevance だけでなく freshness・authority・policy fitness を合成して再ランクし、scope / sensitivity / status の hard gate で先に除外する。</p>
+    <table class="table">
+      <thead><tr><th>経路</th><th>主な判定</th><th>返す decision</th><th>守るもの</th></tr></thead>
+      <tbody>
+        <tr><td>write</td><td>新規性・根拠・矛盾（coverage / faithfulness / risk）</td><td>promote / hold / reject / merge / supersede</td><td>poisoning の第一防衛</td></tr>
+        <tr><td>manage</td><td>統合の preservation・忘却式・期限</td><td>統合 / forget（tombstone）</td><td>原典の不変性</td></tr>
+        <tr><td>read</td><td>final_score 合成＋ hard gate</td><td>retrieve / drop</td><td>stale・scope 外の混入防止</td></tr>
+      </tbody>
+    </table>
+    <div class="callout"><p><strong>比例性の原則。</strong>ファイルベースの単一ユーザー MEMORY.md 規模なら、第一級メタデータ数個＋ write ゲート1つ＋ read 再ランクの<b>最小経路で足りる</b>。10エンティティの ER・dreaming・source-lineage tombstone・control plane 化は、大規模システムで初めて導入する。</p></div>
+  </section>
+
+  <section id="s-05">
+    <h2><span class="num">05</span>信頼性 — judge を誰が見張るか</h2>
+    <p class="sub">Evaluator を置けば品質が保証される、という前提をまず捨てる</p>
+    <figure>
+      <img src="images/evaluator-harness/concept-05.webp" alt="gold set を judge 群へ定期投入して一致率や一貫性を測り、閾値を割ったら rubric を再調整するメタ評価のループ図。LLM judge の3大バイアスも注記" width="1672" height="941" loading="lazy">
+      <figcaption>図05 — meta 評価。judge の劣化・偏りは自動では表面化しないため、定期点検を常設する</figcaption>
+    </figure>
+    <p>LLM judge には <b>position bias</b>（先に見た方を好む）・<b>verbosity bias</b>（長い方を好む）・<b>self-enhancement bias</b>（自分の出力を好む）が確認されている。緩和は A/B 入替の二重評価・pairwise 優先・作業モデルとは別モデルでの判定。</p>
+    <ul>
+      <li><b>採点経路の封印</b>: rubric・合格ライン・評価スクリプト・judge プロンプトを作業ループから書き換え不能にする（採点を緩めて点を稼ぐ Goodhart / reward hacking の防止）</li>
+      <li><b>指標の多様化</b>: 単一スコアで止めない。決定論ゲート＋critic＋Done 判定の複数軸で合否を取る</li>
+      <li><b>点数でなく目的達成で収束</b>: スコアが頭打ちでも目的未達なら続行、スコアが伸びても代理指標のハックなら失敗と扱う</li>
+    </ul>
+    <div class="callout warn"><p><strong>コストの現実。</strong>Evaluator が純増益になるのは、タスクが<b>モデル単独の信頼境界を越える</b>とき。易しい領域では不要なオーバーヘッドでしかない。まず決定論チェックを土台にし、LLM judge は境界領域にだけ投入する。</p></div>
+  </section>
+
+  <section id="s-06">
+    <h2><span class="num">06</span>導入 — 3段ロードマップと実行可能な雛形</h2>
+    <p class="sub">一度に全層を敷かない。決定論と tool-less 判定から始める</p>
+    <table class="table">
+      <thead><tr><th>段階</th><th>Evaluator</th><th>記憶</th><th>ハーネス面</th></tr></thead>
+      <tbody>
+        <tr class="pick"><td>短期</td><td>決定論チェック＋ prompt Stop hook / /goal</td><td>メタデータ付与（provenance / freshness / scope / time）＋ write ゲート1つ</td><td>.claude/settings.json の hooks と /goal 条件文</td></tr>
+        <tr><td>中期</td><td>Maker–Checker（agent hook / reviewer subagent）＋ write 審査</td><td>semantic / episodic / procedural の分離・event graph 部分導入</td><td>workflow 多票・Agent SDK カスケード＋三重 cap</td></tr>
+        <tr><td>長期</td><td>meta-evaluator ＋ consolidation / dreaming</td><td>reconsolidation・learned forgetting</td><td>control plane 化＋ OTel 監査</td></tr>
+      </tbody>
+    </table>
+    <p>設計パッケージには短期段の雛形一式が同梱されている。hooks 3層の設定断片（PreToolUse 決定論ゲート→ prompt Stop → agent Stop）、/goal 条件文テンプレ3型、そして<b>実行可能な自前ループのスケルトン</b>（カスケード評価＋三重 cap、標準ライブラリのみで動作検証済み）。</p>
+    <pre>/goal src/auth 配下の failing test を全て修正する。
+完了条件（各ターン後に fresh evaluator が transcript の証拠で判定）:
+- <span class="s">`npm test -- test/auth`</span> が exit 0（実行ログを会話に残す）
+- <span class="s">`git status`</span> が clean で src/auth と test/auth 以外に差分がない
+制約: 既存の公開 API シグネチャを変更しない。
+保険: 20 ターンで停止。</pre>
+    <p>条件本文は最大4,000文字。trust dialog を受諾した workspace のみで動作し、disableAllHooks / allowManagedHooksOnly 下では使えない<span class="src">（公式 /goal docs、2026-07-04 照合）</span>。</p>
+    <div class="callout"><p><strong>入口は1つ。</strong>詳細は <code class="inline">docs/harness-research/design/00-overview.md</code>（統合レイヤリング表・4原則・確信度注記）から。雛形は <code class="inline">design/examples/</code> 配下にある。</p></div>
+  </section>
+
+  <div class="conclusion">
+    <h2>結論</h2>
+    <ol>
+      <li>Evaluator 設計の対象は判定の<b>配線と証拠</b>であって、プロンプトの巧拙ではない。「どのレイヤーで扱うか」の答えは、各ループ接続点＋記憶3経路への分散配置。</li>
+      <li>4原則に収束する: 決定論を土台にした cheap→expensive カスケード / Maker–Checker 分離 / 完了を「証明」に落とす / judge 自身を meta 評価で監視。</li>
+      <li>まず決定論＋tool-less 判定の最小構成から。<code class="inline">design/examples/</code> の hooks 設定・/goal 条件文・実行可能スケルトンがその出発点になる。</li>
+    </ol>
+  </div>
+  </main>
+
+  <footer>題材: docs/harness-research/design/（Evaluator ハーネス設計パッケージ 00〜06 ＋ examples）。リサーチ原典は docs/harness-research/01〜05。Claude Code 仕様は 2026-07-04 時点の公式 docs に照合（確認済み/未確認の別は design/00-overview.md の注意書きを参照）。</footer>
+
+</div>
+</body>
+</html>

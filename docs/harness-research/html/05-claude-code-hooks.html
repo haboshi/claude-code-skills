@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Claude Code フック大全 — 約30イベントの地図とループ・評価器への写像</title>
+<style>
+  :root {
+    color-scheme: light;
+    --ink: #1a1a1a;
+    --ink-2: #4a4a4a;
+    --bg: #f7f5ee;
+    --paper: #fbf9f1;
+    --line: #d8d2bf;
+    --accent: #cc785c;
+    --accent-soft: #f5e0d6;
+    --accent-deep: var(--accent);
+    --accent-deep: color-mix(in srgb, var(--accent) 72%, black);
+    --warn: #c83a2c;
+    --warn-soft: #f6dcd6;
+    --yellow: #f4d35e;
+    --shadow: 0 1px 0 rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06);
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN",
+            "Hiragino Sans", "Noto Sans JP", "Yu Gothic", "Meiryo", sans-serif;
+    --measure: 42em;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  @media (prefers-reduced-motion: no-preference) {
+    html { scroll-behavior: smooth; }
+  }
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.8;
+    line-break: strict;
+    overflow-wrap: anywhere;
+    -webkit-font-smoothing: antialiased;
+  }
+  :focus-visible { outline: 3px solid var(--accent-deep); outline-offset: 2px; }
+  .skip {
+    position: absolute; left: -9999px; top: 0; z-index: 10;
+    background: var(--accent-deep); color: #fff;
+    padding: 8px 16px; border-radius: 0 0 8px 0; font-weight: 700;
+  }
+  .skip:focus { left: 0; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 56px 28px 96px; }
+
+  h1, h2 { font-feature-settings: "palt" 1; text-wrap: balance; }
+  p { text-wrap: pretty; }
+  section > p, section ul, section ol, .quote { max-width: var(--measure); }
+
+  .hero { margin-bottom: 48px; }
+  .hero .kicker {
+    display: inline-block;
+    background: var(--accent-deep); color: #fff;
+    font-size: 12px; font-weight: 700; letter-spacing: .12em;
+    padding: 6px 12px; border-radius: 999px;
+    margin-bottom: 18px;
+  }
+  .hero h1 {
+    font-size: clamp(1.875rem, 1.43rem + 1.9vw, 2.5rem); line-height: 1.35; margin: 0 0 14px;
+    letter-spacing: -.01em;
+  }
+  .hero h1 b { color: var(--accent-deep); }
+  .hero p.lede {
+    font-size: 18px; color: var(--ink-2); margin: 0; max-width: var(--measure);
+  }
+  .tldr {
+    margin-top: 28px; padding: 22px 24px;
+    background: var(--paper); border: 1px solid var(--line); border-radius: 12px;
+    box-shadow: var(--shadow);
+  }
+  .tldr h2 { font-size: 13px; letter-spacing: .15em; color: var(--accent-deep); margin: 0 0 10px; }
+  .tldr ol { margin: 0; padding-left: 20px; }
+  .tldr li { margin: 4px 0; }
+
+  .toc {
+    margin: 0 0 8px; padding: 18px 24px;
+    background: var(--paper); border: 1px solid var(--line); border-radius: 12px;
+  }
+  .toc h2 { font-size: 13px; letter-spacing: .15em; color: var(--accent-deep); margin: 0 0 8px; }
+  .toc ol {
+    margin: 0; padding-left: 20px;
+    columns: 2; column-gap: 32px;
+  }
+  .toc li { margin: 3px 0; break-inside: avoid; font-size: 14.5px; }
+  .toc a { color: var(--ink); text-decoration: none; }
+  .toc a:hover { color: var(--accent-deep); text-decoration: underline; }
+
+  section { margin: 64px 0 0; scroll-margin-top: 24px; }
+  section > h2 {
+    font-size: clamp(1.375rem, 1.11rem + 1.15vw, 1.75rem); line-height: 1.4; margin: 0 0 6px;
+    border-left: 6px solid var(--accent); padding-left: 12px;
+  }
+  section > h2 .num {
+    color: var(--accent-deep); font-variant-numeric: tabular-nums; margin-right: 10px;
+  }
+  section > p.sub { color: var(--ink-2); margin: 0 0 22px; }
+
+  figure {
+    margin: 0 0 24px; padding: 12px;
+    background: var(--paper); border: 1px solid var(--line); border-radius: 14px;
+    box-shadow: var(--shadow);
+  }
+  figure img { display: block; width: 100%; height: auto; border-radius: 8px; }
+  figcaption {
+    font-size: 13px; color: var(--ink-2); margin-top: 10px; text-align: center;
+  }
+
+  .table {
+    width: 100%; border-collapse: collapse; margin: 12px 0 6px;
+    background: var(--paper); border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
+    box-shadow: var(--shadow);
+    font-variant-numeric: tabular-nums;
+  }
+  .table th, .table td {
+    text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--line);
+    vertical-align: top; font-size: 14.5px;
+  }
+  .table th { background: #efeadb; font-weight: 700; }
+  .table tr:last-child td { border-bottom: 0; }
+  .table .pick { background: var(--accent-soft); }
+  .table .pick td:first-child { font-weight: 700; color: var(--accent-deep); }
+  .table.compact th, .table.compact td { padding: 7px 10px; font-size: 13px; }
+  .table .grp td {
+    background: #efeadb; font-weight: 700; font-size: 12.5px; letter-spacing: .08em;
+    color: var(--accent-deep); padding: 5px 10px;
+  }
+  .ok { color: var(--accent-deep); font-weight: 700; }
+  .no { color: var(--ink-2); }
+
+  pre {
+    margin: 0; padding: 16px 18px;
+    background: #1f2226; color: #e8e6df; border-radius: 10px;
+    font-family: var(--mono); font-size: 13px; line-height: 1.65;
+    overflow-x: auto; tab-size: 2;
+  }
+  pre .c { color: #8a8f78; }
+  pre .k { color: #6ec5a8; }
+  pre .s { color: #f4d35e; }
+  pre .n { color: #ec9c8c; }
+  code.inline {
+    font-family: var(--mono); font-size: .92em;
+    background: #efeadb; padding: 1px 6px; border-radius: 4px;
+    overflow-wrap: anywhere;
+  }
+
+  .callout {
+    margin: 18px 0;
+    padding: 16px 18px;
+    border-left: 4px solid var(--accent);
+    background: var(--accent-soft);
+    border-radius: 0 10px 10px 0;
+    max-width: calc(var(--measure) + 36px);
+  }
+  .callout.warn { border-color: var(--warn); background: var(--warn-soft); }
+  .callout p { margin: 0; }
+  .callout strong { color: var(--accent-deep); }
+  .callout.warn strong { color: var(--warn); }
+
+  .quote {
+    border-left: 3px solid var(--line); padding: 6px 16px;
+    color: var(--ink-2); font-size: 14.5px; margin: 18px 0;
+  }
+
+  .src { font-size: 13px; color: var(--ink-2); }
+
+  .badge {
+    display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 999px;
+    background: var(--accent-deep); color: #fff; font-weight: 700; letter-spacing: .04em;
+    vertical-align: 2px; margin-left: 6px;
+  }
+
+  .conclusion {
+    margin-top: 56px; padding: 28px 28px 24px;
+    background: var(--ink); color: #f6f3e8; border-radius: 16px;
+  }
+  .conclusion h2 { color: var(--yellow); border: 0; padding: 0; margin: 0 0 12px; }
+  .conclusion ol { margin: 0; padding-left: 20px; }
+  .conclusion li { margin: 6px 0; }
+  .conclusion code.inline { background: #2c2f33; color: #f6f3e8; }
+
+  footer { margin-top: 36px; color: var(--ink-2); font-size: 13px; }
+
+  @media (max-width: 720px) {
+    .wrap { padding: 32px 18px 64px; }
+    .toc ol { columns: 1; }
+  }
+
+  @media print {
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body { background: #fff; }
+    .wrap { max-width: none; padding: 0; }
+    .toc, .skip { display: none; }
+    h1, h2 { break-after: avoid; }
+    figure, .table, pre, .callout, .tldr { break-inside: avoid; box-shadow: none; }
+    a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 11px; color: var(--ink-2); }
+    .conclusion { background: #fff; color: var(--ink); border: 2px solid var(--ink); }
+    .conclusion h2 { color: var(--ink); }
+    .conclusion code.inline { background: #efeadb; color: var(--ink); }
+  }
+  @page { size: A4; margin: 18mm; }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">本文へスキップ</a>
+<div class="wrap">
+
+  <header class="hero">
+    <span class="kicker">CLAUDE CODE HOOKS 大全</span>
+    <h1>フックは<b>ハーネスの割り込み点</b> — 約30イベントの地図と、ループ・評価器への写像</h1>
+    <p class="lede">Claude Code のフックは、モデルの外側に固定された介入点の集合であり、プロンプト工学ではなく系（システム）設計に属する。全イベントのライフサイクル位置・5機能軸・停止規律・評価器カスケードを、振り返り用に1枚へ集約する。</p>
+    <div class="tldr">
+      <h2>TL;DR</h2>
+      <ol>
+        <li>フックは「お願い」ではなく<b>必ず発火する</b> — 規約は読まれることを期待するが、フックは発火する</li>
+        <li>約30イベントは <b>制御ゲート / 文脈注入 / 観測 / 変換 / ループ制御</b> の5軸に整理できる</li>
+        <li>Stop hook の一般化は <code class="inline">PostToolBatch</code> / <code class="inline">SubagentStop</code> / <code class="inline">TeammateIdle</code> へ同型に反復する</li>
+        <li>フックは<b>評価器の設置点</b> — 決定論 → Critic → 独立 Done 判定 → HITL のカスケードを境界に写像する</li>
+        <li>フックは制御力と攻撃面を同時に増やす<b>信頼コード実行</b>である</li>
+      </ol>
+    </div>
+  </header>
+
+  <nav class="toc" aria-label="目次">
+    <h2>目次</h2>
+    <ol>
+      <li><a href="#s-01">フックとは何か — 系の割り込み点</a></li>
+      <li><a href="#s-02">全イベントの地図 — ライフサイクルの駅</a></li>
+      <li><a href="#s-03">5機能軸 — 欲しい能力から逆引きする</a></li>
+      <li><a href="#s-04">ループ制御 — 停止弁は境界ごとに同型で反復する</a></li>
+      <li><a href="#s-05">評価器の設置点 — cheap-to-expensive カスケード</a></li>
+      <li><a href="#s-06">実践カタログ — 国内外の定番と一歩先の実装</a></li>
+      <li><a href="#s-07">アンチパターンと運用</a></li>
+    </ol>
+  </nav>
+
+  <main id="main" tabindex="-1">
+
+  <section id="s-01">
+    <h2><span class="num">01</span>フックとは何か — 系の割り込み点</h2>
+    <p class="sub">プロンプトはモデルへの「お願い」、フックは実行系への「配線」。制御の所在が根本的に違う。</p>
+    <figure>
+      <img src="images/claude-code-hooks/concept-01.webp" alt="左: お願いの手紙を受け取るロボット（読むかどうかは自由で揺らぐ）。右: 生産ラインに固定された検問ゲート（通るものすべてをコードが判定する）" width="1672" height="941">
+      <figcaption>図1 — プロンプト=お願い（従うかはモデル次第）に対し、フック=遷移の境界に固定された検問（コードが判定・決定論で確実）</figcaption>
+    </figure>
+    <p>フックとは、Claude Code の実行ライフサイクル（起動 → プロンプト受領 → ツール呼び出し → 応答終了 → サブエージェント → コンパクション → 終了）の各<b>遷移の境界</b>に固定配置された、確定的なコールバック点である。モデルが何を「考える」かとは独立に、系のどの瞬間に何が起きるかを外側から規定する。</p>
+    <p>制御理論の語彙で言えば、フックはプラント（モデル＝非決定的な被制御対象）を囲む<b>コントローラ</b>であり、各イベントはセンサ点（観測）とアクチュエータ点（介入）を兼ねる。MAPE-K の枠では、共通入力（<code class="inline">session_id</code> / <code class="inline">transcript_path</code> / <code class="inline">cwd</code> 等）が Knowledge、観測系フックが Monitor、フック内スクリプトが Analyze + Plan、<code class="inline">exit 2</code> / <code class="inline">updatedInput</code> / <code class="inline">permissionDecision</code> が Execute にあたる。</p>
+    <div class="callout">
+      <p><strong>規約は読まれることを期待するが、フックは発火する。</strong>「ルールとして書いたが行動変容ゼロだったため、フックへ昇格させた」という実例（§06 の report-integrity-check）が、この差を最も端的に示している。</p>
+    </div>
+  </section>
+
+  <section id="s-02">
+    <h2><span class="num">02</span>全イベントの地図 — ライフサイクルの駅</h2>
+    <p class="sub">約30イベントを路線図で掴む。事前の駅は止められ、事後の駅は観測のみ、終端の駅は判定器の差込点。</p>
+    <figure>
+      <img src="images/claude-code-hooks/concept-02.webp" alt="鉄道路線図: 本線（SessionStart→SessionEnd）、環状線（UserPromptSubmit→モデル推論→PreToolUse→ツール実行→PostToolUse→PostToolBatch→Stop）、支線（SubagentStart→SubagentStop）、チーム駅（TeammateIdle・TaskCompleted）、臨時線（PreCompact→PostCompact、FileChanged）" width="1672" height="941" loading="lazy">
+      <figcaption>図2 — フックはライフサイクルの「駅」。本線=セッション層、環状線=ターン層、支線=委譲層、臨時線=割り込み層</figcaption>
+    </figure>
+    <p>読み方の要点は四つ。</p>
+    <ul>
+      <li><b>ツール層は「Pre → 権限 → 実行 → Post」の直列パイプ</b> — PreToolUse だけが「何も起こさせない」ことができ、Post 系は観測と差し戻ししかできない。<b>ブロックしたいなら Pre 系、学習させたいなら Post 系</b></li>
+      <li><b>PostToolBatch は唯一の同期点</b> — 並列ツール束の全解決後・次のモデル呼び出し前。ターン内ループの停止弁はここにしか置けない</li>
+      <li><b>Stop / SubagentStop / TeammateIdle・TaskCompleted はそれぞれターン・委譲・協調の終端</b> — 同じ「終わろうとする瞬間に判定器を差す」構造がスコープごとに反復する</li>
+      <li><b>割り込み層（Compact / Config / Cwd / File / Elicitation）は直列軸に属さない</b> — 特に PreCompact → PostCompact はコンテキスト窓の境界で、圧縮前の状態外部化・圧縮後の再水和という記憶運搬の要所</li>
+    </ul>
+    <table class="table compact">
+      <thead><tr><th>イベント</th><th>発火点</th><th>exit 2</th><th>主要出力 / 軸</th></tr></thead>
+      <tbody>
+        <tr class="grp"><td colspan="4">セッション層</td></tr>
+        <tr><td>SessionStart</td><td>開始・再開（startup/resume/clear/compact）</td><td class="no">✗</td><td>additionalContext・watchPaths・reloadSkills ／ B注入</td></tr>
+        <tr><td>Setup</td><td>--init / --maintenance</td><td class="no">✗</td><td>additionalContext ／ B注入</td></tr>
+        <tr><td>InstructionsLoaded</td><td>CLAUDE.md / rules 読込ごと</td><td class="no">✗</td><td>ログ専用 ／ C観測</td></tr>
+        <tr><td>SessionEnd</td><td>終了（clear/logout/exit…）</td><td class="no">✗</td><td>cleanup・メトリクス収集 ／ C観測</td></tr>
+        <tr class="grp"><td colspan="4">ターン層</td></tr>
+        <tr><td>UserPromptSubmit</td><td>プロンプト送信直後・処理前</td><td class="ok">✓ 阻止</td><td>decision:block・additionalContext ／ A・B</td></tr>
+        <tr><td>UserPromptExpansion</td><td>スラッシュコマンド展開時</td><td class="ok">✓ 阻止</td><td>decision:block ／ A</td></tr>
+        <tr class="pick"><td>Stop</td><td>応答終了時＝判定器の差込点</td><td class="ok">✓ 継続強制</td><td>decision:block・additionalContext ／ A・E</td></tr>
+        <tr><td>StopFailure</td><td>API エラー終了（rate_limit 等）</td><td class="no">✗</td><td>ログ専用 ／ C</td></tr>
+        <tr><td>MessageDisplay</td><td>テキスト表示時</td><td class="no">✗</td><td>displayContent（表示のみ差替・transcript 不変）／ D変換</td></tr>
+        <tr><td>Notification</td><td>通知送出時</td><td class="no">✗</td><td>terminalSequence ／ C</td></tr>
+        <tr class="grp"><td colspan="4">ツール層</td></tr>
+        <tr class="pick"><td>PreToolUse</td><td>ツール実行前</td><td class="ok">✓ 阻止</td><td>permissionDecision(allow/deny/ask/defer)・updatedInput ／ A・D</td></tr>
+        <tr><td>PermissionRequest</td><td>権限ダイアログ時</td><td class="ok">✓ deny</td><td>decision.behavior・permissionRule（永続化）／ A・D</td></tr>
+        <tr><td>PermissionDenied</td><td>auto mode 拒否後</td><td class="no">✗</td><td>retry:true ／ C・D</td></tr>
+        <tr><td>PostToolUse</td><td>ツール成功後</td><td class="no">✗（差し戻しは可）</td><td>updatedToolOutput・additionalContext ／ B・C・D</td></tr>
+        <tr><td>PostToolUseFailure</td><td>ツール失敗後</td><td class="no">✗</td><td>additionalContext（エラー診断注入）／ B・C</td></tr>
+        <tr class="pick"><td>PostToolBatch</td><td>並列束の全解決後・次推論前</td><td class="ok">✓ ループ停止</td><td>decision:block ／ A・E</td></tr>
+        <tr class="grp"><td colspan="4">委譲・チーム層</td></tr>
+        <tr><td>SubagentStart</td><td>サブエージェント起動時</td><td class="no">✗</td><td>additionalContext（規約・境界の注入）／ B</td></tr>
+        <tr class="pick"><td>SubagentStop</td><td>サブエージェント終了時</td><td class="ok">✓ 継続強制</td><td>decision:block ／ A・E</td></tr>
+        <tr><td>TaskCreated</td><td>タスク生成時</td><td class="ok">✓ ロールバック</td><td>continue:false ／ A・E</td></tr>
+        <tr><td>TaskCompleted</td><td>完了マーク時</td><td class="ok">✓ 完了阻止</td><td>continue:false ／ A・E</td></tr>
+        <tr><td>TeammateIdle</td><td>teammate の idle 直前</td><td class="ok">✓ idle 阻止</td><td>continue:false ／ A・E</td></tr>
+        <tr class="grp"><td colspan="4">環境・割り込み層</td></tr>
+        <tr><td>PreCompact</td><td>コンパクション直前（manual/auto）</td><td class="ok">✓ 阻止</td><td>decision:block ／ A・E</td></tr>
+        <tr><td>PostCompact</td><td>コンパクション完了後</td><td class="no">✗</td><td>ログ専用 ／ C</td></tr>
+        <tr><td>ConfigChange</td><td>設定ファイル変更時</td><td class="ok">✓ 棄却（policy 除く）</td><td>decision:block ／ A・C</td></tr>
+        <tr><td>CwdChanged</td><td>作業 dir 変更時</td><td class="no">✗</td><td>CLAUDE_ENV_FILE（direnv 連携）／ C</td></tr>
+        <tr><td>FileChanged</td><td>監視ファイル変更時</td><td class="no">✗</td><td>change_type ／ C</td></tr>
+        <tr><td>WorktreeCreate</td><td>worktree 作成時</td><td class="ok">非0で失敗</td><td>worktreePath（既定 git 挙動を置換）／ D</td></tr>
+        <tr><td>WorktreeRemove</td><td>worktree 削除時</td><td class="no">✗</td><td>cleanup ／ C</td></tr>
+        <tr><td>Elicitation</td><td>MCP の入力要求時</td><td class="ok">✓ deny</td><td>action(accept/decline/cancel)・content ／ A・D</td></tr>
+        <tr><td>ElicitationResult</td><td>elicitation 応答後・返送前</td><td class="ok">✓ decline 化</td><td>action・content ／ A・D</td></tr>
+      </tbody>
+    </table>
+    <p class="src">※ 2026-07 公式リファレンス（code.claude.com/docs/en/hooks）2回の独立フェッチで照合。公式一覧表は31イベント掲載で、1種は個別仕様未取得。グローバル出力 <code class="inline">continue:false / stopReason / suppressOutput / systemMessage / terminalSequence</code> は全イベント共通。</p>
+    <div class="callout">
+      <p><strong>日本語圏の「14イベント」解説は旧世代のスナップショット。</strong>PostToolBatch・TeammateIdle・TaskCreated/Completed・WorktreeCreate・ConfigChange・Elicitation 系はその後に追加された現行世代であり、古い記事と本ページの差は矛盾ではなくバージョン差である。</p>
+    </div>
+  </section>
+
+  <section id="s-03">
+    <h2><span class="num">03</span>5機能軸 — 欲しい能力から逆引きする</h2>
+    <p class="sub">イベントの羅列は覚えられない。機能軸で束ねると「欲しい能力 → 置くべきフック」が逆引きできる。</p>
+    <figure>
+      <img src="images/claude-code-hooks/concept-03.webp" alt="5つの道具の棚: 遮断機（制御ゲート exit 2）・じょうろ（文脈注入 additionalContext）・監視カメラ（観測 ログ専用）・ろ過フィルタ（変換 updatedInput）・バルブ（ループ制御 継続と停止）" width="1672" height="941" loading="lazy">
+      <figcaption>図3 — フックの5機能軸。1つのイベントは複数軸に属しうる</figcaption>
+    </figure>
+    <table class="table">
+      <thead><tr><th>軸</th><th>本質</th><th>主なイベント</th><th>動いている実例</th></tr></thead>
+      <tbody>
+        <tr><td><b>A 制御ゲート</b></td><td>物理的に遷移を止めるリミッタ。安全と完了規律を担保</td><td>PreToolUse / PermissionRequest / Stop / SubagentStop / PostToolBatch / Task系 / PreCompact / ConfigChange</td><td>危険コマンドブロック、commit 前 typecheck/test/lint ゲート、secret 漏洩阻止</td></tr>
+        <tr><td><b>B 文脈注入</b></td><td>次の推論に入る前に知識を差し込む（記憶の read-path）</td><td>SessionStart / SubagentStart / PostToolUse / UserPromptSubmit / Stop</td><td>git status・README 自動注入、モデル条件付き playbook 注入、前提裏取りの問いかけ</td></tr>
+        <tr><td><b>C 観測</b></td><td>記録するが実行を変えない（センサ専用）。監査性の源泉</td><td>PostToolUseFailure / StopFailure / InstructionsLoaded / SessionEnd / FileChanged / Notification</td><td>全 Bash 監査ログ、日次メトリクス JSONL、スキル起動記録</td></tr>
+        <tr><td><b>D 変換</b></td><td>流れているデータを書き換える（無害化・正規化・マスク）</td><td>PreToolUse(updatedInput) / PostToolUse(updatedToolOutput) / MessageDisplay / WorktreeCreate</td><td>引数の正規化、表示層の機密マスク（transcript 不変）、worktree パス規約</td></tr>
+        <tr class="pick"><td><b>E ループ制御</b></td><td>反復の継続・停止・分岐を司る遷移規則そのもの</td><td>Stop / SubagentStop / TeammateIdle / PostToolBatch / TaskCompleted / PreCompact</td><td>テスト green まで停止拒否、品質未達 subagent の差し戻し</td></tr>
+      </tbody>
+    </table>
+    <div class="callout">
+      <p><strong>A と E は重なるが視点が違う。</strong>A は「危険だから止める」個別ゲート、E は「反復構造をどう回し続け・どう終えるか」というループの遷移規則。C（観測）に制御を持たせるとセンサとアクチュエータが混線し、系が発振する — 軸 C は記録専用に保つ。</p>
+    </div>
+  </section>
+
+  <section id="s-04">
+    <h2><span class="num">04</span>ループ制御 — 停止弁は境界ごとに同型で反復する</h2>
+    <p class="sub">「Stop hook は外側ループの一般化、/goal はその session-scoped 特化形」— この主張はマルチエージェント境界へ同型に拡張される。</p>
+    <figure>
+      <img src="images/claude-code-hooks/concept-04.webp" alt="同心円の水路と4つの水門: 内側からターン内 PostToolBatch、セッション Stop、委譲 SubagentStop、チーム TeammateIdle・TaskCompleted。中央の巻物に「証拠なき完了を exit 2 で拒否」" width="1672" height="941" loading="lazy">
+      <figcaption>図4 — 各ループ境界に同じ停止規律。水門（制御主体）は違っても掟は共通</figcaption>
+    </figure>
+    <table class="table">
+      <thead><tr><th>ループ層</th><th>制御主体</th><th>停止弁フック</th><th>一般化された停止判定</th></tr></thead>
+      <tbody>
+        <tr><td>meso（1ターン内）</td><td>モデル自身</td><td><code class="inline">PostToolBatch</code></td><td>束の解決後・次推論前に「これ以上回すか」を決める</td></tr>
+        <tr class="pick"><td>macro（セッション）</td><td>ハーネス / ユーザー</td><td><code class="inline">Stop</code></td><td>成果条件を証拠で判定。<code class="inline">/goal</code> の一般化</td></tr>
+        <tr><td>macro（委譲）</td><td>親エージェント</td><td><code class="inline">SubagentStop</code></td><td>委譲先の完了を親の基準で採点（Maker-Checker の Checker）</td></tr>
+        <tr><td>macro（並列チーム）</td><td>lead</td><td><code class="inline">TeammateIdle</code> + <code class="inline">TaskCompleted</code></td><td>未達の idle を拒否・証拠なき完了マークを拒否（fan-in の停止規則）</td></tr>
+        <tr><td>meta（コンテキスト境界）</td><td>ハーネス</td><td><code class="inline">PreCompact</code> / <code class="inline">PostCompact</code></td><td>ループを跨ぐ知識の圧縮点・作業状態の外部化境界</td></tr>
+      </tbody>
+    </table>
+    <p>とりわけ <b>TeammateIdle</b> は理論的に示唆深い。単一エージェントでは「止まる＝完了 or 行き詰まり」だが、マルチエージェントでは<b>一体が idle になることは全体の完了を意味しない</b>（idle 通知を完了と誤認する障害は実運用で頻出する）。TeammateIdle はこの罠への「遊ばせない負帰還」を、規約ではなくフック層で提供する。</p>
+    <div class="callout">
+      <p><strong>「良いループは作業ループではなく証拠生成ループ」をフック層に降ろすと</strong>、「各制御境界の Stop 系フックが、証拠なき停止・完了を exit 2 で拒否する」という具体的な規則になる。</p>
+    </div>
+  </section>
+
+  <section id="s-05">
+    <h2><span class="num">05</span>評価器の設置点 — cheap-to-expensive カスケード</h2>
+    <p class="sub">評価器は感想役ではなく、継続・停止・差し戻しを決める遷移関数。フックはその設置スロットの集合である。</p>
+    <figure>
+      <img src="images/claude-code-hooks/concept-05.webp" alt="空港セキュリティ風の4段検問: 段1 決定論の自動ゲート（最速最安・大量通過）→段2 Critic のブラインド審査官→段3 独立 Done 判定の別室審査→段4 人間の有人カウンター（少数のみ）" width="1672" height="941" loading="lazy">
+      <figcaption>図5 — 高頻度層は決定論・節目は LLM・高リスクだけ人間へ。段が進むほど通過数が減りコストが上がる</figcaption>
+    </figure>
+    <table class="table">
+      <thead><tr><th>カスケード段</th><th>設置フック</th><th>maker / checker 分離の形</th></tr></thead>
+      <tbody>
+        <tr><td>段1 決定論（test / lint / git）</td><td>PostToolUse・Stop（command 型）</td><td>コードが判定しモデルは判定しない。最高頻度・最安</td></tr>
+        <tr><td>段2 Critic（重大欠陥の指摘）</td><td>Stop・SubagentStop（agent 型）</td><td>fresh-context の reviewer。改善履歴を渡さない blind 判定</td></tr>
+        <tr><td>段3 独立 Done 判定</td><td>Stop（prompt 型）・PostToolBatch</td><td>maker と別の判定器。No が additionalContext で次ターンの指令になる</td></tr>
+        <tr><td>段4 HITL（高リスクのみ）</td><td>PermissionRequest・PreToolUse（ask）</td><td>人間ゲート。破壊的操作を同期で止めて承認へ回す</td></tr>
+        <tr><td>記憶の write / read 評価</td><td>PostToolUse（書込時）・SessionStart（読込時）</td><td>長期記憶の二重審査をフック境界で実装</td></tr>
+      </tbody>
+    </table>
+    <ul>
+      <li><b>Maker-Checker 分離の最適地は Stop / SubagentStop / PostToolBatch</b> — 作業が一区切りした瞬間に、履歴を持たない fresh evaluator を差せる</li>
+      <li><b>証拠第一を強制できるのは PostToolUse</b> — テストの exit code・git status・HTTP 200 という環境証拠は、ツール実行直後にしか鮮度よく捕捉できない</li>
+      <li><b>verdict は遷移主体に届いて初めて遷移関数になる</b> — SubagentStop の判定は親へ、TaskCompleted の判定は lead へ。フックの出力契約はこの配線そのもの</li>
+    </ul>
+    <p>判定器の実装形式はフックの <b>type</b> で差し替えられる: <code class="inline">command</code>（決定論・600s）/ <code class="inline">prompt</code>（小型モデルの合否判定・30s）/ <code class="inline">agent</code>（ツールを使う実地検証・60s・実験的）。<code class="inline">/goal</code> が「prompt-based Stop hook の session-scoped ラッパー」である構図は、この type 体系の帰結である。</p>
+    <div class="callout warn">
+      <p><strong>評価器の自己承認は分離の崩壊。</strong>Stop hook 内の判定器に作業者本人の文脈・改善履歴を渡すと判定が甘化する（Goodhart / 報酬ハッキング）。fresh-context・blind・目的ベースの判定器を差すこと。</p>
+    </div>
+  </section>
+
+  <section id="s-06">
+    <h2><span class="num">06</span>実践カタログ — 国内外の定番と一歩先の実装</h2>
+    <p class="sub">国内外30件超の事例は人気4イベントに集中する。定番を押さえた上で、空白イベントと自己言及的な設計に伸びしろがある。</p>
+    <table class="table">
+      <thead><tr><th>イベント</th><th>定番パターン（海外 / 国内で確認）</th></tr></thead>
+      <tbody>
+        <tr><td>PreToolUse</td><td>危険コマンドブロック（rm -rf / force push / DROP TABLE）、.env・秘密鍵アクセス遮断、deploy 前テスト強制、MCP rate-limit、diff サイズ制限（500 行超で分割要求）</td></tr>
+        <tr><td>PostToolUse</td><td>Prettier / ESLint / Ruff 自動整形（「やります」と言うだけの実装忘れを 100% 実行に変える）、監査ログ、doc 更新の再プロンプト</td></tr>
+        <tr><td>Stop</td><td>テスト green まで停止拒否（Ralph Wiggum 型自律ループ）、agent 型の最終検証、TTS / Slack / macOS 通知（国内で特に厚い）</td></tr>
+        <tr><td>SessionStart</td><td>README・git status・環境変数の自動注入、前回セッション状態の復元</td></tr>
+        <tr><td>UserPromptSubmit</td><td>キーワード自動挿入（「ルールを忘れる」問題対策）、プロンプト事前検査</td></tr>
+        <tr><td>SessionEnd</td><td>メトリクス収集、Obsidian 同期（セカンドブレイン化）</td></tr>
+      </tbody>
+    </table>
+    <p>実運用30本の実装（筆者環境 <code class="inline">~/.claude/scripts/hooks/</code>）から抽出できる、一歩先の設計を4つ挙げる。</p>
+    <table class="table">
+      <thead><tr><th>実装</th><th>何が本質的か</th></tr></thead>
+      <tbody>
+        <tr class="pick"><td>bundle-detector<br>（UserPromptSubmit）</td><td>複数目的の一括要求を検出して Plan-First を強制するゲート。検出後の<b>次プロンプトの変化を自己ラベリングして誤検知率を学習する</b> — フック自身が自分の判定品質を測る評価器付きゲート</td></tr>
+        <tr><td>report-integrity-check<br>（Stop）</td><td>完了宣言と同ターン内の失敗痕跡の<b>共起</b>を検出（「デプロイ完了」と npm ERR! の同居を警告）。報告誠実性の規約をフックへ昇格させた実例</td></tr>
+        <tr><td>git-commit-gate<br>（PreToolUse）</td><td>typecheck/test/lint 並列ゲート。依存不在の偽失敗を BLOCK でなく <b>ENV_SKIP に自動分流</b>し、既存負債はベースライン記録して<b>新規増分のみ</b>止めるラチェット式 — 偽陽性を構造的に潰す</td></tr>
+        <tr><td>hook-manifest-check<br>（SessionStart）</td><td>期待名簿と実登録を突合し、<b>無音失効</b>（配線が外れたのに気づかない）と <b>orphan</b>（スクリプトはあるが配線なし）を検知 — フックによるフックの監査</td></tr>
+      </tbody>
+    </table>
+    <div class="callout">
+      <p><strong>実装30本に共通する5原則:</strong> ①フェイルオープン（フック障害で作業を止めない）②ログなきフックは計測不能（判定を JSONL に記録）③透明 bypass（理由必須の脱出口）④アラート疲労の設計（発火上限・ベースライン比較・同一警告1回）⑤フックによるフックの監査（無音失効の検知）。</p>
+    </div>
+    <p>事例が薄いイベントは伸びしろでもある: TaskCompleted での<b>成果物実在検査</b>（mtime・テスト証拠 — 「idle ≠ done」の機械化）、WorktreeCreate での<b>依存事前コピー</b>、ConfigChange での<b>危険な設定変更の棄却</b>、MessageDisplay での<b>表示層マスク</b>など（いずれも設計提案・事例未確認）。</p>
+  </section>
+
+  <section id="s-07">
+    <h2><span class="num">07</span>アンチパターンと運用</h2>
+    <p class="sub">フックは制御力と攻撃面を同時に増やす。落とし穴・デバッグ・自己保全までが設計の範囲。</p>
+    <div class="callout warn">
+      <p><strong>exit 2 乱用でループが止まらない。</strong>Stop hook が常に exit 2 を返すと、成果条件を満たしても永久に回る。<code class="inline">stop_hook_active</code> フラグの確認（再入時は exit 0）と、保険条件（max turns / budget / no-progress cap）をフック内に必ず持つ — コミュニティで最も繰り返し警告される失敗。</p>
+    </div>
+    <div class="callout warn">
+      <p><strong>フックはユーザー権限の任意コード実行＝信頼境界。</strong>悪意ある settings.json のフック定義や、外部由来テキストを無検査で additionalContext に流す注入経路は、プロンプトインジェクションより深い層で系を乗っ取る。フックを1本足すことは信頼境界を1つ増やすこと。</p>
+    </div>
+    <ul>
+      <li><b>重い同期処理を高頻度フックに置かない</b> — PreToolUse の重処理は毎ツールでレイテンシに乗る。重い検証は節目フックか非同期へ</li>
+      <li><b>フックの騒音</b> — 成功通知や advisory の出しすぎは本物のエラーを埋める。観測系は原則 <code class="inline">suppressOutput</code>、出力は「判断根拠 or エラー」に限る</li>
+      <li><b>stdout の汚染</b> — debug 出力は stderr へ。stdout は契約された JSON のみ（shell profile の echo 混入で JSON パースが壊れる）</li>
+      <li><b>多重フックの合成は deny 優先</b> — <code class="inline">deny &gt; defer &gt; ask &gt; allow</code>。ゲートの追加は常に系を厳しくする方向にしか働かないので、追加時は false positive の予算を先に決める</li>
+    </ul>
+    <p>デバッグの定跡: ① <code class="inline">/hooks</code> で登録確認（設定は<b>セッション開始時スナップショット</b> — 編集後は新セッション）→ ② <code class="inline">claude --debug</code> で実行トレース → ③ 環境要因（timeout バイナリ不在・隔離 worktree の依存不在による exit 127 偽失敗）→ ④ 無音失効は名簿突合で仕組み化。</p>
+    <pre><span class="c">// settings.json 最小スケルトン — 判定形式は type で差し替える</span>
+{ <span class="s">"hooks"</span>: {
+    <span class="s">"PreToolUse"</span>: [ { <span class="s">"matcher"</span>: <span class="s">"Bash"</span>, <span class="s">"hooks"</span>: [
+      { <span class="s">"type"</span>: <span class="s">"command"</span>, <span class="s">"command"</span>: <span class="s">"bash ~/.claude/scripts/hooks/my-gate.sh"</span>, <span class="s">"timeout"</span>: 30 } ] } ],
+    <span class="s">"Stop"</span>: [ { <span class="s">"hooks"</span>: [
+      { <span class="s">"type"</span>: <span class="s">"prompt"</span>, <span class="s">"prompt"</span>: <span class="s">"transcript にテスト成功の証拠(exit 0)があるときだけ ok:true。自己申告のみなら ok:false と不足根拠を reason に。"</span> } ] } ],
+    <span class="s">"SubagentStop"</span>: [ { <span class="s">"hooks"</span>: [
+      { <span class="s">"type"</span>: <span class="s">"agent"</span>, <span class="s">"prompt"</span>: <span class="s">"変更ファイルを読み受け入れ基準で pass/fail 判定。diff の作成経緯は参照しない。"</span>, <span class="s">"timeout"</span>: 120 } ] } ]
+} }</pre>
+  </section>
+
+  <div class="conclusion">
+    <h2>結論</h2>
+    <ol>
+      <li><b>ブロックしたいなら Pre 系、学習させたいなら Post 系</b> — exit 2 の効果は事前か事後かで決まる</li>
+      <li><b>高頻度層は決定論、節目は LLM 判定、高リスクは人間</b> — 判定形式は type（command / prompt / agent）で差し替えられる</li>
+      <li><b>証拠なき停止・完了を exit 2 で拒否する</b> — これが Stop / SubagentStop / TeammateIdle / PostToolBatch に共通する停止規律</li>
+      <li><b>フックは入れっぱなしにすると沈黙したまま死ぬ</b> — 無音失効の検知（名簿突合）まで含めて設計する</li>
+      <li><b>フックを1本足すことは信頼境界を1つ増やすこと</b> — 制御力と攻撃面は同時に増える</li>
+    </ol>
+  </div>
+  </main>
+
+  <footer>題材: harness-research/06-claude-code-hooks.md（2026-07-04 調査・公式リファレンス2回照合＋国内外事例30件超）。図解: gpt-image-2（グラレコ様式）。シリーズ: 01 ハーネス総覧 / 02–03 ループエンジニアリング / 04–05 長期記憶と評価器 / design/ 設計パッケージ</footer>
+
+</div>
+</body>
+</html>

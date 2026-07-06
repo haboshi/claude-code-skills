@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Verdict",
+  "description": "統一 Verdict 契約（06章）。write / manage / read / outcome の全評価点が同じ形を返す。hook 境界では pass 相当を ok:true、それ以外を ok:false（+reason）へ写像する。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["decision", "score", "reason"],
+  "properties": {
+    "decision": {
+      "type": "string",
+      "description": "遷移決定。write/manage: promote/hold/reject/merge/supersede、read: retrieve/drop、manage: forget、loop/outcome: continue/stop。",
+      "enum": [
+        "promote",
+        "hold",
+        "reject",
+        "merge",
+        "supersede",
+        "retrieve",
+        "drop",
+        "forget",
+        "continue",
+        "stop"
+      ]
+    },
+    "score": {
+      "type": "number",
+      "description": "総合スコア（比較・収束トレンド監視用）。主判定は decision 側で行う。",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "reason": {
+      "type": "string",
+      "description": "なぜその判定か（1〜3文）。監査ログ（operation ledger）の根拠になる。"
+    },
+    "next_direction": {
+      "type": ["string", "null"],
+      "description": "未達なら次に何をどの順で直すか。No 判定自体を次ターンの指令にする。達成時は null。"
+    },
+    "scores": {
+      "type": "object",
+      "description": "軸別スコア（coverage / preservation / faithfulness / usefulness / risk など）。キーは軸名、値は数値。",
+      "additionalProperties": {
+        "type": "number"
+      }
+    }
+  }
+}

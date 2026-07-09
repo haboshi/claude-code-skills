@@ -56,7 +56,7 @@ interface RealtimeVoiceSession {
   events(): AsyncIterable<RealtimeEvent>       // 単一イベントストリーム購読
   sendAudio(chunk: AudioChunk): void            // fire-and-forget
   sendToolResult(callId: string, result: unknown): void
-  interrupt(): void                             // barge-in の明示トリガー
+  interrupt(opts?): void                        // クライアント起動キャンセル（capabilities.bargeIn.clientCancel 対応時）
   close(): Promise<void>
 }
 ```
@@ -94,10 +94,11 @@ interface RealtimeVoiceSession {
 - **プロバイダ固有イベントは `handleXxxEvent()` に閉じ込め**、正規化しきれないものは `raw` へ逃がす
 - **VAD 設定は `VadConfig`（`semantic_vad` / `server_vad` / `local` の3方式）を受け取り、プロバイダの
   wire フォーマットへアダプタ内で変換する**（`references/session-lifecycle.md`「VAD 3方式の選び方」参照）
-- **`interrupt()` の実装はプロバイダごとに異なる**: OpenAI は `response.cancel` + `input_audio_buffer.clear`
-  の明示キャンセル。Gemini はクライアント発の明示キャンセルAPIが無いため `activityEnd` で入力ターンを
-  区切り、実質的な役割はアプリ側の再生キュークリアが担う（`references/session-lifecycle.md`「barge-in の
-  実装型」参照）
+- **barge-in は二軸（`bargeIn.serverAuto` / `bargeIn.clientCancel`）で符号化する**: 両プロバイダとも
+  サーバ VAD による自動割り込みは対応。クライアント起動の明示キャンセル `interrupt()` は OpenAI のみ
+  （`response.cancel` + `input_audio_buffer.clear`、再生位置が分かる場合は `conversation.item.truncate` 併用を
+  推奨）。Gemini は公式のキャンセル手段が未確認のため `unsupported` を投げる。アプリ側の再生キュークリアは
+  どちらでも必須（`references/session-lifecycle.md`「barge-in の実装型」参照）
 - **`capabilities()` は実際の非対称性を反映する**（例: Gemini の `directRelayFormats` は常に空配列。
   出力が24kHz固定でレート交渉できないため素通し不可）
 

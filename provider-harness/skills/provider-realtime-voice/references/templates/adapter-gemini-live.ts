@@ -114,7 +114,8 @@ function handleGeminiEvent(
   event: Record<string, unknown>,
   queue: RealtimeEventQueue,
   codec: AudioCodecPort,
-  onReady: () => void
+  onReady: () => void,
+  pendingToolCalls: Map<string, string>
 ): void {
   if ('setupComplete' in event) {
     onReady()
@@ -125,6 +126,9 @@ function handleGeminiEvent(
   if ('toolCall' in event) {
     const toolCall = event['toolCall'] as { functionCalls?: Array<{ id: string; name: string; args: Record<string, unknown> }> }
     for (const fc of toolCall.functionCalls ?? []) {
+      // sendToolResult() で functionResponses.name を補完するため callId→name を記憶する
+      // （Gemini の toolResponse は id だけでなく name も要求する。port.ts 冒頭コメント「tools」参照）。
+      pendingToolCalls.set(fc.id, fc.name)
       queue.push({ type: 'tool.call', call: { callId: fc.id, name: fc.name, arguments: fc.args } })
     }
     return
@@ -167,6 +171,7 @@ function handleGeminiEvent(
       }
       const functionCall = part['functionCall'] as { id: string; name: string; args: Record<string, unknown> } | undefined
       if (functionCall) {
+        pendingToolCalls.set(functionCall.id, functionCall.name)
         queue.push({ type: 'tool.call', call: { callId: functionCall.id, name: functionCall.name, arguments: functionCall.args } })
       }
     }
@@ -210,10 +215,12 @@ export class GeminiLiveAdapter implements RealtimeVoicePort {
 
   capabilities(): RealtimeCapabilities {
     return {
-      // Gemini Live は interrupted フラグで割り込みを通知するが、サーバ側で response を自動停止する
-      // 保証がドキュメント上確認できていない（アプリ側での明示 interrupt() 呼び出しが前提）ため、
-      // OpenAI ほど成熟した barge-in とは言えず false とする（../model-catalog.md「未確認事項」参照）。
-      bargeIn: false,
+      // serverContent.interrupted フラグは、サーバが進行中の応答を自動的に打ち切ったことの通知であり
+      // （../model-catalog.md「VAD」節に一次情報あり）、アプリ側の明示操作なしに barge-in が起きる
+      // ため serverAuto: true とする。一方、アプリ側から能動的に応答をキャンセルする公式な手段
+      // （OpenAI の response.cancel 相当）は一次情報で確認できていないため clientCancel: false とする
+      // （../model-catalog.md「未確認事項」参照。interrupt() 参照）。
+      bargeIn: { serverAuto: true, clientCancel: false },
       serverVad: true,
       // Gemini はレート交渉不可の固定フォーマットのため素通し不可（codec 必須。上記ファイル冒頭コメント参照）。
       directRelayFormats: [],
@@ -239,6 +246,9 @@ export class GeminiLiveAdapter implements RealtimeVoicePort {
 
     const queue = new RealtimeEventQueue()
     const codec = this.codec
+    // callId→name の記憶（sendToolResult() で functionResponses.name を補完するため。tool.call を
+    // push するたびに handleGeminiEvent() が set し、応答送出後に sendToolResult() 側で削除する）。
+    const pendingToolCalls = new Map<string, string>()
     const url = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${encodeURIComponent(apiKey)}`
     const socket = this.socketFactory.connect(url)
 
@@ -287,7 +297,7 @@ export class GeminiLiveAdapter implements RealtimeVoicePort {
       } catch {
         return
       }
-      handleGeminiEvent(event, queue, codec, onReady)
+      handleGeminiEvent(event, queue, codec, onReady, pendingToolCalls)
     })
 
     socket.onError((err) => {
@@ -342,16 +352,33 @@ export class GeminiLiveAdapter implements RealtimeVoicePort {
       },
       sendToolResult(callId: string, result: unknown): void {
         if (sessionClosed) return
+        const name = pendingToolCalls.get(callId)
+        pendingToolCalls.delete(callId)
+        // Gemini の toolResponse は id だけでなく name も要求する（欠落させると疎通しない）。
+        // response はオブジェクトを要求するため、非オブジェクトの結果は { result } に包む
+        // （port.ts 冒頭コメント「tools」参照）。
+        const response = typeof result === 'object' && result !== null ? result : { result }
         socket.send(
-          JSON.stringify({ toolResponse: { functionResponses: [{ id: callId, response: result }] } })
+          JSON.stringify({
+            toolResponse: { functionResponses: [{ id: callId, name: name ?? '', response }] },
+          })
         )
       },
-      interrupt(): void {
+      interrupt(_opts?: { itemId?: string; audioEndMs?: number }): void {
         if (sessionClosed) return
-        // Gemini Live にはクライアント発の明示キャンセルメッセージが無いため、
-        // アプリ側の再生キュークリアで対応する（../session-lifecycle.md「barge-in の実装型」参照）。
-        // ここでは activityEnd を送り、進行中の入力ターンを閉じることで擬似的に区切りを作る。
-        socket.send(JSON.stringify({ realtimeInput: { activityEnd: {} } }))
+        // 自動 barge-in は serverContent.interrupted 経由で観測できる（capabilities().bargeIn.serverAuto）。
+        // しかしアプリ側から能動的に応答をキャンセルする公式手段は一次情報で確認できていない
+        // （../model-catalog.md「未確認事項」参照）。activityEnd（手動VADの発話終了通知であり応答
+        // キャンセルではない）を送る疑似対応は意味論的に誤りだったため撤去し、非対応として明示的に
+        // エラーを投げる。
+        throw new RealtimeVoiceError({
+          kind: 'unsupported',
+          message:
+            'GeminiLiveAdapter はクライアント起動の応答キャンセル（clientCancel）に対応していません。自動 barge-in は serverContent.interrupted 経由で観測してください。',
+          providerName: 'gemini',
+          retryable: false,
+          failoverable: false,
+        })
       },
       async close(): Promise<void> {
         sessionClosed = true

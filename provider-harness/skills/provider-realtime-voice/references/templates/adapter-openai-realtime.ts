@@ -237,7 +237,10 @@ export class OpenAIRealtimeAdapter implements RealtimeVoicePort {
 
   capabilities(): RealtimeCapabilities {
     return {
-      bargeIn: true,
+      // OpenAI は VAD 有効時にサーバ側が自動で応答をキャンセルし（serverAuto）、response.cancel による
+      // アプリ側能動キャンセルにも対応する（clientCancel）。両方揃うプロバイダの実例
+      // （../port.md「barge-in capability の二軸分離」参照）。
+      bargeIn: { serverAuto: true, clientCancel: true },
       serverVad: true,
       directRelayFormats: ['g711_ulaw', 'g711_alaw'],
       parallelToolCalls: true,
@@ -376,12 +379,27 @@ export class OpenAIRealtimeAdapter implements RealtimeVoicePort {
         )
         socket.send(JSON.stringify({ type: 'response.create' }))
       },
-      interrupt(): void {
+      // barge-in: response.cancel + バッファクリア。エコー防止の先行ミュートはアプリ側の責務
+      // （../session-lifecycle.md「barge-in の実装型」参照）。opts.itemId と opts.audioEndMs を
+      // 両方指定すると、実際に再生済みの位置までを conversation.item.truncate で切り詰め、
+      // サーバ側の会話コンテキストと実際に聴取された音声内容の乖離を防ぐ（H4: 従来は
+      // response.cancel のみでコンテキスト整合を取っていなかった。../port.md「H4」参照）。省略時は
+      // cancel 相当のみで、再生位置を知る呼び出し側は truncate 併用を推奨する。content_index は
+      // 本テンプレートが単一音声コンテンツのみを想定しているため 0 固定にしてある。
+      interrupt(opts?: { itemId?: string; audioEndMs?: number }): void {
         if (sessionClosed) return
-        // barge-in: response.cancel + バッファクリア。エコー防止の先行ミュートはアプリ側の責務
-        // （../session-lifecycle.md「barge-in の実装型」参照）。
         socket.send(JSON.stringify({ type: 'response.cancel' }))
         socket.send(JSON.stringify({ type: 'input_audio_buffer.clear' }))
+        if (opts?.itemId !== undefined && opts?.audioEndMs !== undefined) {
+          socket.send(
+            JSON.stringify({
+              type: 'conversation.item.truncate',
+              item_id: opts.itemId,
+              content_index: 0,
+              audio_end_ms: opts.audioEndMs,
+            })
+          )
+        }
       },
       async close(): Promise<void> {
         sessionClosed = true

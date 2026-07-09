@@ -108,9 +108,11 @@ Stateful WebSocket のみ（WebRTC 経路なし）。
 - `rate_limits.updated`（OpenAI）に相当する Gemini 側イベントのフィールド詳細
 - OpenAI / Gemini 両者の WebSocket クローズコード仕様（`references/templates/adapter-gemini-live.ts` の
   `mapGeminiCloseEvent` は保守的な推測実装であり、正確な仕様確認前提で見直すこと）
-- Gemini Live が `interrupted` フラグ通知時にサーバ側で進行中の response を自動キャンセルする保証
-  （`references/templates/adapter-gemini-live.ts` の `capabilities().bargeIn` を保守的に `false` と
-  している根拠。アプリ側での明示 `interrupt()` 呼び出しを前提とした設計にしてある）
+- Gemini Live のクライアント起動応答キャンセル（clientCancel）の公式な実装方法。`interrupted` フラグ
+  自体はサーバ側が自動的に進行中の response を打ち切ったことの通知として一次情報で確認できているため
+  `references/templates/adapter-gemini-live.ts` の `capabilities().bargeIn.serverAuto` は `true` と
+  している。一方、アプリ側から能動的に応答をキャンセルする公式 API は未確認のため `clientCancel` は
+  `false` とし、`interrupt()` は `kind: 'unsupported'` の `RealtimeVoiceError` を投げる実装にしてある
 - Gemini Live の transcript イベントの正確なフィールド名（`inputTranscription`/`outputTranscription`
   を想定して `references/templates/adapter-gemini-live.ts` に実装したが、命名・`final` 判定条件
   （`turnComplete` との同期保証）とも一次情報での検証が未了）

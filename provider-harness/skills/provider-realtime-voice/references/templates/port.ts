@@ -147,9 +147,14 @@ export class RealtimeVoiceError extends Error {
 
 // ===== capabilities（ダックタイピング撲滅） =====
 export const RealtimeCapabilitiesSchema = z.object({
-  // barge-in（ユーザ発話によるAI応答の割り込み）に対応するか。OpenAI: true / Gemini Live: 未対応の
-  // 実装実績あり（interrupted フラグはあるがサーバ側自動キャンセルではなくアプリ側実装が前提）。
-  bargeIn: z.boolean(),
+  // barge-in（ユーザ発話によるAI応答の割り込み）対応を二軸で公開する。サーバ自動 barge-in と
+  // クライアント起動の応答キャンセルは別の能力であり、単一 boolean に丸めるとどちらの意味か
+  // 判別できなくなるため分離した（../port.md「barge-in capability の二軸分離」参照）。
+  // - serverAuto: サーバ側が自動でユーザ発話を検出し進行中の応答を打ち切るか
+  //   （OpenAI: VAD 有効時に自動キャンセル。Gemini: serverContent.interrupted フラグで通知）
+  // - clientCancel: アプリ側から能動的に応答キャンセルを要求できる公式な手段があるか
+  //   （OpenAI: response.cancel が対応。Gemini: 一次情報で確認できる公式手段が無い）
+  bargeIn: z.object({ serverAuto: z.boolean(), clientCancel: z.boolean() }),
   serverVad: z.boolean(),
   // 素通し可能な直接リレー音声フォーマット（例: 'g711_ulaw'）。空配列は「常にコーデック変換が必要」を
   // 意味する（AudioCodecPort 参照）。
@@ -194,7 +199,11 @@ export interface RealtimeVoiceSession {
   sendToolResult(callId: string, result: unknown): void
   // barge-in の明示トリガー。VAD がサーバ側で自動検出しないプロバイダ・ローカル VAD 構成のために
   // アプリ側から能動的に呼べる経路として用意する（../session-lifecycle.md「barge-in の実装型」参照）。
-  interrupt(): void
+  // clientCancel 非対応のプロバイダ（capabilities().bargeIn.clientCancel === false）は
+  // RealtimeVoiceError（kind: 'unsupported'）を投げてよい。opts は clientCancel 対応プロバイダ
+  // （OpenAI 等）向けの追加コンテキストで、itemId・audioEndMs を両方指定すると
+  // conversation.item.truncate 相当のコンテキスト整合処理を追加送出できる（../port.md「H4」参照）。
+  interrupt(opts?: { itemId?: string; audioEndMs?: number }): void
   close(): Promise<void>
 }
 

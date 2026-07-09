@@ -38,9 +38,11 @@ volatile（環境依存）だが、「指数バックオフ + 上限回数」と
    再生を止める）。
 2. 同時に **先行ミュート**（エコー防止）を行う。AI 音声がまだスピーカーから再生中の間にマイクへ回り込む
    のを防ぐため、`speech.started` から実際に無音になるまでの間、入力音声の送信を一時止めるか無視する。
-3. `RealtimeVoiceSession.interrupt()` を呼び、進行中の応答をキャンセルする（OpenAI: `response.cancel` +
-   `input_audio_buffer.clear`。Gemini: 明示キャンセルAPIが無いため `activityEnd` で入力ターンを区切り、
-   アプリ側の再生キュークリアが実質的な役割を担う）。
+3. `capabilities().bargeIn.clientCancel` が true なら `RealtimeVoiceSession.interrupt()` を呼び、進行中の
+   応答をキャンセルする（OpenAI: `response.cancel` + `input_audio_buffer.clear`、再生済み位置が分かる場合は
+   `interrupt({ itemId, audioEndMs })` で `conversation.item.truncate` も送りコンテキスト整合を保つ）。
+   Gemini は clientCancel 非対応（`unsupported`）— サーバ自動 barge-in（`serverContent.interrupted`）に任せ、
+   アプリ側は再生キューの即クリアだけを行う。
 
 エコー減衰後の `input_audio_buffer.clear`（OpenAI）をタイミングよく送るには、AI音声の再生完了通知
 （`response.done`）を待ってから実行する設計が安全（voice-agent の `responseDoneHandler` の実装意図を

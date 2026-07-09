@@ -200,10 +200,10 @@
     },
     {
       "name": "provider-harness",
-      "description": "外部プロバイダ統合（OpenAI/Gemini/画像生成/音声認識/認証基盤等）を新規実装・設計するときの設計原則と型の供給元。メタスキル（ユースケース中心ポート設計・Pin+Verify・アダプタ契約テスト・escape hatch・エラー分類正準8種）とドメインスキル provider-image-gen（TypeScript雛形・鮮度付きモデルカタログ）、/provider-harvest による実装知見の還流コマンドを提供。「プロバイダ統合」「マルチプロバイダ対応」「画像生成をアプリに組み込む」で発動。スキルの自動書き換えはせず提案のみ。",
+      "description": "外部プロバイダ統合（OpenAI/Gemini/画像生成/リアルタイム音声/音声認識/認証基盤等）を新規実装・設計するときの設計原則と型の供給元。メタスキル（ユースケース中心ポート設計・Pin+Verify・アダプタ契約テスト・escape hatch・エラー分類正準8種・ドメイン誕生パイプライン）とドメインスキル provider-image-gen / provider-realtime-voice（TypeScript雛形・鮮度付きモデルカタログ）、/provider-harvest による実装知見の還流コマンドを提供。「プロバイダ統合」「マルチプロバイダ対応」「画像生成をアプリに組み込む」「リアルタイム音声」「音声エージェント」で発動。スキルの自動書き換えはせず提案のみ。",
       "source": "./provider-harness",
       "strict": false,
-      "version": "0.1.1",
+      "version": "0.2.0",
       "category": "developer-tools",
       "keywords": [
         "provider",
@@ -216,7 +216,11 @@
         "プロバイダ統合",
         "マルチプロバイダ",
         "画像生成",
-        "契約テスト"
+        "契約テスト",
+        "realtime",
+        "voice",
+        "リアルタイム音声",
+        "音声エージェント"
       ]
     }
   ]

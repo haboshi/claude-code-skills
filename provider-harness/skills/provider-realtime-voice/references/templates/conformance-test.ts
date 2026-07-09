@@ -20,6 +20,7 @@ import { EventEmitter } from 'node:events'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { GeminiLiveAdapter, geminiDownsampleCodec } from './adapter-gemini-live'
 import { OpenAIRealtimeAdapter } from './adapter-openai-realtime'
+import { RealtimeVoiceError } from './port'
 import type { RealtimeEvent, RealtimeSessionConfig, RealtimeSocket, RealtimeSocketFactory, RealtimeVoiceSession } from './port'
 
 // ===== RealtimeSocket モック =====
@@ -206,7 +207,8 @@ function runCommonConformanceTests(
           ? new OpenAIRealtimeAdapter({ apiKey: 'k', socketFactory: makeFactory().factory })
           : new GeminiLiveAdapter({ apiKey: 'k', socketFactory: makeFactory().factory })
       const caps = adapter.capabilities()
-      expect(typeof caps.bargeIn).toBe('boolean')
+      expect(typeof caps.bargeIn.serverAuto).toBe('boolean')
+      expect(typeof caps.bargeIn.clientCancel).toBe('boolean')
       expect(typeof caps.serverVad).toBe('boolean')
       expect(Array.isArray(caps.directRelayFormats)).toBe(true)
       expect(typeof caps.sessionResumption).toBe('boolean')
@@ -414,6 +416,33 @@ describe('openai アダプタ固有: interrupt()', () => {
   })
 })
 
+describe('openai アダプタ固有: interrupt() の conversation.item.truncate 送出（H4）', () => {
+  it('opts 省略時は truncate を送らない（cancel + clear のみ）', async () => {
+    const { session, socket } = await openOpenAIReadySession()
+    const before = socket.sent.length
+    session.interrupt()
+    const sentTypes = socket.sent.slice(before).map((raw) => (JSON.parse(raw) as { type: string }).type)
+    expect(sentTypes).not.toContain('conversation.item.truncate')
+  })
+
+  it('itemId と audioEndMs を両方指定すると conversation.item.truncate を追加送出する', async () => {
+    const { session, socket } = await openOpenAIReadySession()
+    const before = socket.sent.length
+    session.interrupt({ itemId: 'item-1', audioEndMs: 1200 })
+    const sent = socket.sent.slice(before).map((raw) => JSON.parse(raw) as Record<string, unknown>)
+    const truncate = sent.find((m) => m['type'] === 'conversation.item.truncate')
+    expect(truncate).toMatchObject({ item_id: 'item-1', content_index: 0, audio_end_ms: 1200 })
+  })
+
+  it('itemId のみ（audioEndMs 省略）では truncate を送らない', async () => {
+    const { session, socket } = await openOpenAIReadySession()
+    const before = socket.sent.length
+    session.interrupt({ itemId: 'item-1' })
+    const sentTypes = socket.sent.slice(before).map((raw) => (JSON.parse(raw) as { type: string }).type)
+    expect(sentTypes).not.toContain('conversation.item.truncate')
+  })
+})
+
 describe('openai アダプタ固有: VAD 設定の配線', () => {
   it('semantic_vad を指定すると session.update に turn_detection として反映される', async () => {
     const { factory, sockets } = makeFactory()
@@ -494,12 +523,57 @@ describe('gemini アダプタ固有: transcription 配線（H3）', () => {
 })
 
 describe('gemini アダプタ固有: capabilities の非対称性', () => {
-  it('sessionResumption は true、bargeIn は false（OpenAI との非対称の実例）', () => {
+  it('sessionResumption は true、bargeIn は serverAuto=true/clientCancel=false（OpenAI との非対称の実例）', () => {
     const adapter = new GeminiLiveAdapter({ apiKey: 'k', socketFactory: makeFactory().factory })
     const caps = adapter.capabilities()
     expect(caps.sessionResumption).toBe(true)
-    expect(caps.bargeIn).toBe(false)
+    expect(caps.bargeIn).toEqual({ serverAuto: true, clientCancel: false })
     expect(caps.directRelayFormats).toEqual([])
+  })
+})
+
+describe('gemini アダプタ固有: interrupt() は clientCancel 非対応（誤実装だった activityEnd の撤去）', () => {
+  it('interrupt() は kind: unsupported の RealtimeVoiceError を投げる', async () => {
+    const { session, socket } = await openGeminiReadySession()
+    const before = socket.sent.length
+    let thrown: unknown
+    try {
+      session.interrupt()
+    } catch (err) {
+      thrown = err
+    }
+    expect(thrown).toBeInstanceOf(RealtimeVoiceError)
+    expect((thrown as RealtimeVoiceError).kind).toBe('unsupported')
+    // activityEnd 等、誤った疑似対応のメッセージは一切送出しない。
+    expect(socket.sent.length).toBe(before)
+  })
+})
+
+describe('gemini アダプタ固有: sendToolResult() の name 補完・非オブジェクト結果のラップ', () => {
+  it('tool.call で受け取った name を functionResponses に含める', async () => {
+    const { session, socket } = await openGeminiReadySession()
+    await nextEvent(session) // session.ready を読み捨て
+    emitGeminiToolCall(socket, 'call-1', 'get_weather')
+    await nextEvent(session) // tool.call を読み捨て
+    const before = socket.sent.length
+    session.sendToolResult('call-1', { ok: true })
+    const sent = JSON.parse(socket.sent[before]!) as {
+      toolResponse: { functionResponses: Array<{ id: string; name: string; response: unknown }> }
+    }
+    expect(sent.toolResponse.functionResponses[0]?.id).toBe('call-1')
+    expect(sent.toolResponse.functionResponses[0]?.name).toBe('get_weather')
+    expect(sent.toolResponse.functionResponses[0]?.response).toEqual({ ok: true })
+  })
+
+  it('非オブジェクトの結果は { result } に包んで送出する', async () => {
+    const { session, socket } = await openGeminiReadySession()
+    await nextEvent(session)
+    emitGeminiToolCall(socket, 'call-2', 'get_temperature')
+    await nextEvent(session)
+    const before = socket.sent.length
+    session.sendToolResult('call-2', 42)
+    const sent = JSON.parse(socket.sent[before]!) as { toolResponse: { functionResponses: Array<{ response: unknown }> } }
+    expect(sent.toolResponse.functionResponses[0]?.response).toEqual({ result: 42 })
   })
 })
 

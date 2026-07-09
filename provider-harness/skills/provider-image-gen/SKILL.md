@@ -45,7 +45,7 @@ interface ImageGenPort {
 - **モデルIDは内部名経由**（`OPENAI_MODEL_MAP` / `GEMINI_MODEL_MAP`）でマッピングし、呼び出しコードに直書きしない。値は `references/model-catalog.md` を正とする
 - **`providerOptions` で非ポータブル機能をパススルー**する（例: Gemini の参照画像は `providerOptions.gemini.referenceImages`、1K/2K/4K解像度や21:9等は `providerOptions.gemini.imageConfig`、OpenAI の `quality` 等は `providerOptions.openai`）。実際にリクエストへマージする配線まで実装してあり、共通の `aspect`/`size` と衝突する場合は providerOptions 側が優先される。使用箇所には「非ポータブル」であることのコメントを必ず付ける
 - **transport を注入できる構造**にしてあり、実 API を叩かずに契約テストできる
-- **capabilities() は実際に配線された機能だけを true にする**（例: OpenAI の `editing` は注入された transport が `edit` を実装しているかで動的に決まる。Gemini は `n>1` を明示的に `unsupported` として拒否する）
+- **capabilities() は実際に配線された機能だけを true にする**（例: OpenAI の `editing` は注入された transport が `edit` を実装しているかで動的に決まる。Gemini は `n>1` を明示的に `unsupported` として拒否し、`capabilities().maxImagesPerCall` でも1枚上限を事前に公開する）
 
 ## 鮮度ゲート（能動）
 
@@ -61,7 +61,7 @@ interface ImageGenPort {
 - エラー分類のマッピング（5xx→transient・429→retryable・タイムアウト→timeout 等）
 - `capabilities()` の形状
 
-を同一スイートで検証する。加えて `withFallback()` decorator の経路テスト（フェイルオーバー・quota/contentブロック時の非リトライ・editing が常に false になること）、`unsupported` の経路テスト（OpenAI に透過背景指定・Gemini の `edit()` / `n>1` 呼び出し、いずれも `capabilities()` で false/非対応の機能を実際に要求した場合）、および `providerOptions` の配線確認テスト（モック transport が実際に受け取ったリクエスト内容を検証し、`quality` 等の追加パラメータや `imageConfig` の上書きが本当にマージされているか）も含む。
+を同一スイートで検証する。加えて `withFallback()` decorator の経路テスト（フェイルオーバー・quota/contentブロック時の非リトライ・editing が常に false になること・`capabilities()`/`isConfigured()` による呼び出し前の事前スキップ・全プロバイダ非対応/未構成時の集約エラー・`ImageGenError` でない生例外の既定フェイルオーバー・成功結果への `providerName` 伝播）、`unsupported` の経路テスト（OpenAI に透過背景指定・Gemini の `edit()` / `n>1` 呼び出し、いずれも `capabilities()` で false/非対応の機能を実際に要求した場合）、および `providerOptions` の配線確認テスト（モック transport が実際に受け取ったリクエスト内容を検証し、`quality` 等の追加パラメータや `imageConfig` の上書きが本当にマージされているか）も含む。
 
 **共通スイートの限界**: このスイートが証明するのは「ポータブルな面（全アダプタ共通の契約）」だけである。`providerOptions` 経由の非ポータブル機能（Gemini の参照画像合成、OpenAI の `quality` 指定等）は、この共通スイートではカバーされない。各アダプタ固有のテストで別途検証すること。「共通スイートが緑 = 全機能が保証された」と誤解しないこと。
 

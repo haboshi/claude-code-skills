@@ -1,6 +1,6 @@
 {
   "name": "provider-harness",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "OpenAI/Gemini/音声認識/認証基盤など外部プロバイダ統合を新規実装・設計するときに最初に読む設計原則の供給元。ユースケース中心のポート設計、Pin+Verify、アダプタ契約テスト、escape hatch の型を提供する。",
   "author": {
     "name": "haboshi",

@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Claude Code用スキルコレクション",
-    "version": "0.7.0",
+    "version": "0.8.0",
     "homepage": "https://github.com/haboshi/claude-code-skills"
   },
   "plugins": [
@@ -196,6 +196,27 @@
         "運用改善",
         "ログ分析",
         "失敗分析"
+      ]
+    },
+    {
+      "name": "provider-harness",
+      "description": "外部プロバイダ統合（OpenAI/Gemini/画像生成/音声認識/認証基盤等）を新規実装・設計するときの設計原則と型の供給元。メタスキル（ユースケース中心ポート設計・Pin+Verify・アダプタ契約テスト・escape hatch・エラー分類正準8種）とドメインスキル provider-image-gen（TypeScript雛形・鮮度付きモデルカタログ）、/provider-harvest による実装知見の還流コマンドを提供。「プロバイダ統合」「マルチプロバイダ対応」「画像生成をアプリに組み込む」で発動。スキルの自動書き換えはせず提案のみ。",
+      "source": "./provider-harness",
+      "strict": false,
+      "version": "0.1.0",
+      "category": "developer-tools",
+      "keywords": [
+        "provider",
+        "integration",
+        "openai",
+        "gemini",
+        "multi-provider",
+        "fallback",
+        "contract-testing",
+        "プロバイダ統合",
+        "マルチプロバイダ",
+        "画像生成",
+        "契約テスト"
       ]
     }
   ]

@@ -46,6 +46,8 @@ function runCommonContractTests(
       expect(result.images.length).toBeGreaterThan(0)
       expect(result.images[0].mimeType).toBeTruthy()
       expect(result.images[0].data).toBeInstanceOf(Uint8Array)
+      // providerName: 成功結果からどのプロバイダが生成したか観測できること（port.ts 参照）。
+      expect(result.providerName).toBe(name)
     })
 
     it('エラー分類: 5xx は transient かつ retryable', async () => {
@@ -259,6 +261,168 @@ describe('withFallback decorator', () => {
     }
     const combined = withFallback([primaryWithEditing])
     expect(combined.capabilities().editing).toBe(false)
+  })
+
+  it('primary が ImageGenError でない生の Error を投げると、リトライされず即座に secondary へフェイルオーバーする（P5-5）', async () => {
+    let primaryCallCount = 0
+    const primary: ImageGenPort = {
+      generate: () => {
+        primaryCallCount++
+        return Promise.reject(new Error('mapping漏れの想定外エラー'))
+      },
+      capabilities: () => baseCapabilities,
+    }
+    const secondary: ImageGenPort = { generate: () => Promise.resolve(fakeImage()), capabilities: () => baseCapabilities }
+
+    const combined = withFallback([primary, secondary])
+    const result = await combined.generate({ prompt: 'test prompt' })
+    expect(result.images.length).toBe(1)
+    expect(primaryCallCount).toBe(1) // retryable:false 扱いのためリトライされていないこと
+  })
+
+  it('providerName: フェイルオーバー後の成功結果に secondary の providerName が伝播する', async () => {
+    const primary: ImageGenPort = {
+      generate: () =>
+        Promise.reject(
+          new ImageGenError({ kind: 'transient', message: 'primary down', providerName: 'primary', retryable: false, failoverable: true })
+        ),
+      capabilities: () => baseCapabilities,
+    }
+    const secondary: ImageGenPort = {
+      generate: () => Promise.resolve({ ...fakeImage(), providerName: 'secondary' }),
+      capabilities: () => baseCapabilities,
+    }
+
+    const combined = withFallback([primary, secondary])
+    const result = await combined.generate({ prompt: 'test prompt' })
+    expect(result.providerName).toBe('secondary')
+  })
+})
+
+// capabilities() ベースの事前スキップ（P1-1）。実プロバイダを呼ぶ前に入力との適合を判定し、
+// 満たせないプロバイダは呼ばずにスキップする（fallback-resilience.md「呼び出し前のプロバイダ選別」）。
+describe('withFallback decorator: capabilities() による事前スキップ', () => {
+  it('n=4 の入力では maxImagesPerCall=1 の Gemini は呼ばれず、OpenAI だけが呼ばれる', async () => {
+    let geminiCallCount = 0
+    // isConfigured() が実行環境の OPENAI_API_KEY/GEMINI_API_KEY に左右されないよう、
+    // mock transport に加えてダミーの apiKey を明示して構成済み扱いに固定する。
+    const openai = new OpenAIImageAdapter({
+      apiKey: 'test-key',
+      transport: { generate: () => Promise.resolve({ data: [{ b64_json: toBase64([1, 2, 3]) }] }) },
+    })
+    const gemini = new GeminiImageAdapter({
+      apiKey: 'test-key',
+      transport: {
+        generateContent: () => {
+          geminiCallCount++
+          return Promise.resolve({
+            candidates: [{ content: { parts: [{ inlineData: { data: toBase64([1, 2, 3]), mimeType: 'image/png' } }] } }],
+          })
+        },
+      },
+    })
+    expect(gemini.capabilities().maxImagesPerCall).toBe(1)
+
+    const combined = withFallback([openai, gemini])
+    const result = await combined.generate({ prompt: 'test prompt', n: 4 })
+    expect(result.images.length).toBeGreaterThan(0)
+    expect(geminiCallCount).toBe(0) // 事前スキップされ、unsupported を実行時に投げてチェーンを止めない
+  })
+
+  it('候補プロバイダ全てが事前スキップされた場合は unsupported の集約エラーを投げる（除外理由が capability 不適合のみのケース）', async () => {
+    // apiKey を明示し isConfigured() を構成済み固定にする。除外理由を capability 不適合（n>maxImagesPerCall）
+    // だけにすることで、MEDIUM-1 のエラー種別投げ分け（unsupported vs auth）を厳密に検証する。
+    const gemini = new GeminiImageAdapter({
+      apiKey: 'test-key',
+      transport: { generateContent: () => Promise.resolve({ candidates: [] }) },
+    })
+    const combined = withFallback([gemini])
+    await expect(combined.generate({ prompt: 'test prompt', n: 4 })).rejects.toMatchObject({ kind: 'unsupported' })
+  })
+
+  it('除外理由が isConfigured() のみの場合は auth の集約エラーを投げる（MEDIUM-1）', async () => {
+    const primary: ImageGenPort = {
+      generate: () => Promise.resolve(fakeImage()),
+      capabilities: () => baseCapabilities,
+      isConfigured: () => false,
+    }
+    const combined = withFallback([primary])
+    await expect(combined.generate({ prompt: 'test prompt' })).rejects.toMatchObject({ kind: 'auth' })
+  })
+})
+
+// isConfigured() ベースの事前スキップ（P1-6）。未構成（API キー無し）のプロバイダは auth エラー
+// （failoverable:false）でチェーン全体を止めがちなため、構成済みかを事前確認してから呼ぶ。
+describe('withFallback decorator: isConfigured() による事前スキップ', () => {
+  it('isConfigured() が false のプロバイダは呼ばれず、次のプロバイダにフォールバックする', async () => {
+    let primaryCallCount = 0
+    const primary: ImageGenPort = {
+      generate: () => {
+        primaryCallCount++
+        return Promise.resolve(fakeImage())
+      },
+      capabilities: () => baseCapabilities,
+      isConfigured: () => false,
+    }
+    const secondary: ImageGenPort = { generate: () => Promise.resolve(fakeImage()), capabilities: () => baseCapabilities }
+
+    const combined = withFallback([primary, secondary])
+    const result = await combined.generate({ prompt: 'test prompt' })
+    expect(result.images.length).toBe(1)
+    expect(primaryCallCount).toBe(0) // 未構成プロバイダは呼ばれない
+  })
+
+  it('isConfigured() を実装しないプロバイダは常に構成済み扱いになる', async () => {
+    let primaryCallCount = 0
+    const primary: ImageGenPort = {
+      generate: () => {
+        primaryCallCount++
+        return Promise.resolve(fakeImage())
+      },
+      capabilities: () => baseCapabilities,
+    }
+    const combined = withFallback([primary])
+    await combined.generate({ prompt: 'test prompt' })
+    expect(primaryCallCount).toBe(1)
+  })
+})
+
+// 透過背景要求の事前スキップ（MEDIUM-3a）。port.md「透過背景要求の横断的な検出」の設計判断を検証する。
+describe('withFallback decorator: 透過背景要求の事前スキップ', () => {
+  it('透過背景要求時、capabilities().transparentBackground=false のプロバイダは呼ばれず unsupported を返す', async () => {
+    let callCount = 0
+    const opaqueOnlyProvider: ImageGenPort = {
+      generate: () => {
+        callCount++
+        return Promise.resolve(fakeImage())
+      },
+      capabilities: () => ({ ...baseCapabilities, transparentBackground: false }),
+    }
+    const combined = withFallback([opaqueOnlyProvider])
+    await expect(
+      combined.generate({ prompt: 'test prompt', providerOptions: { openai: { background: 'transparent' } } })
+    ).rejects.toMatchObject({ kind: 'unsupported' })
+    expect(callCount).toBe(0) // 事前スキップされ、generate() は一度も呼ばれない
+  })
+})
+
+// canHandle の注入による上書き（MEDIUM-3b）。既定判定では事前スキップされる入力でも、
+// 呼び出し側が canHandle を渡せば候補に残せることを確認する。
+describe('withFallback decorator: canHandle の注入による上書き', () => {
+  it('canHandle を注入すると既定の capability 判定を上書きできる', async () => {
+    let callCount = 0
+    const provider: ImageGenPort = {
+      generate: () => {
+        callCount++
+        return Promise.resolve(fakeImage())
+      },
+      // maxImagesPerCall:1 のため既定判定では n=4 はスキップされるはずの構成。
+      capabilities: () => ({ ...baseCapabilities, maxImagesPerCall: 1 }),
+    }
+    const combined = withFallback([provider], { canHandle: () => true })
+    const result = await combined.generate({ prompt: 'test prompt', n: 4 })
+    expect(result.images.length).toBe(1)
+    expect(callCount).toBe(1) // canHandle の上書きにより事前スキップされず呼ばれる
   })
 })
 

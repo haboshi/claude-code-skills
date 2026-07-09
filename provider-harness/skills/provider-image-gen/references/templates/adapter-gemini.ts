@@ -82,7 +82,9 @@ function toGenImageResult(response: GeminiGenerateContentResponse): GenImageResu
       failoverable: true,
     })
   }
-  return GenImageResultSchema.parse({ images, providerRaw: response })
+  // providerName: withFallback() 経由のフェイルオーバー後も呼び出し側が実際の生成元を観測できるようにする
+  // （port.ts の GenImageResultSchema.providerName 参照）。
+  return GenImageResultSchema.parse({ images, providerRaw: response, providerName: 'gemini' })
 }
 
 // クライアント/サーバのタイムアウト検出。ステータスコードを持たない場合があるため
@@ -134,6 +136,7 @@ function mapGeminiError(err: unknown): ImageGenError {
 export class GeminiImageAdapter implements ImageGenPort {
   private readonly transport: GeminiImagesTransport
   private readonly modelId: string
+  private readonly apiKey?: string
 
   constructor(
     opts: {
@@ -145,6 +148,15 @@ export class GeminiImageAdapter implements ImageGenPort {
     const internalModel = opts.internalModel ?? 'general-purpose'
     this.modelId = GEMINI_MODEL_MAP[internalModel]
     this.transport = opts.transport ?? createDefaultTransport(opts.apiKey)
+    this.apiKey = opts.apiKey
+  }
+
+  // API キー（コンストラクタ引数または環境変数）の有無だけを呼び出し時に確認する。値自体は読み取るが
+  // 返却・ログはしない。withFallback() の事前スキップに使われる（fallback-resilience.md 参照）。
+  // 構築時ではなく呼び出し時に process.env を読むのは、構築後に環境変数が設定される構成
+  // （dotenv の遅延ロード等）で isConfigured() が恒久的に false のまま固定されるのを防ぐため（LOW-1）。
+  isConfigured(): boolean {
+    return Boolean(this.apiKey ?? process.env.GEMINI_API_KEY)
   }
 
   async generate(rawInput: GenImageInput): Promise<GenImageResult> {
@@ -218,6 +230,9 @@ export class GeminiImageAdapter implements ImageGenPort {
       editing: false,
       referenceImages: { supported: true, max: 14 },
       aspectRatios: ['1:1', '16:9', '9:16', '4:3', '3:4'],
+      // 本テンプレートは n>1 を明示的に unsupported として拒否する（generate() 冒頭参照）。
+      // withFallback() の事前スキップがこの上限を実行前に判定できるよう capabilities() でも公開する。
+      maxImagesPerCall: 1,
       // 解像度は 1K/2K/4K の離散選択でアスペクト比とは別軸のため、ここでは表現しない。
       maxResolutionPx: undefined,
     }

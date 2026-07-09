@@ -32,6 +32,14 @@ interface ProductThumbnailGenerator {
 
 `templates/adapter-openai.ts` の `OPENAI_MODEL_MAP` と `templates/adapter-gemini.ts` の `GEMINI_MODEL_MAP` が、安定した内部名（`general-purpose` 等）から具体モデルIDへのマッピング層になっている。呼び出しコードはモデルIDを直接指定しない。マッピングの値そのものは `model-catalog.md` を正とする（`durable-vs-volatile.md` でいう volatile な情報のため）。
 
+## 成功時にも providerName を残す
+
+`ImageGenError` は失敗時に `providerName` を持つが、`GenImageResult`（成功時の戻り値）には元々この情報がなく非対称だった。`withFallback()` 経由でフェイルオーバーが発生した場合、呼び出し側は「実際にどのプロバイダが生成したか」を型レベルで確認できず、フォールバックによる品質劣化（プロンプト解釈やパラメータの違いなど）が暗黙になっていた。`GenImageResultSchema` に `providerName: z.string().optional()` を追加し、各アダプタが自身の名前（`'openai'` / `'gemini'`）を設定することで、`withFallback()` の戻り値からどのプロバイダが実際に応答したかを観測できるようにしている（`fallback-resilience.md` の「フェイルオーバー時の入力再交渉」も参照）。
+
+## 透過背景要求の横断的な検出（意図的な設計判断）
+
+`withFallback()` の事前スキップ判定（`templates/port.ts` の `wantsTransparentBackground()`）は、`providerOptions` のどの名前空間（`openai` / `gemini`）に `background: 'transparent'` があっても「透過背景が要求された」とみなす。本来 `providerOptions.openai` は OpenAI アダプタ宛て、`providerOptions.gemini` は Gemini アダプタ宛てという名前空間分離の原則（上記「capabilities() でプロバイダ非対称性を正直に公開する」節）からは外れる横断読みだが、これは意図的な判断である。厳密に「候補プロバイダの namespace だけ見る」実装にすると、例えば `providerOptions.openai.background: 'transparent'` を指定したまま OpenAI が失敗して Gemini にフォールバックした場合、Gemini 向けの事前スキップ判定がこの要求を検出できず、透過を要求したのに非透過画像を黙って返してしまう。逆に横断読みにすると、無関係な namespace の値によって本来対応可能なプロバイダまで誤ってスキップされるリスクがあるが、「頼んだものと違う結果を黙って返す」事故の方が「安全側に倒してスキップし過ぎる」より深刻と判断し、横断読みを採用している。
+
 ## プロンプトはアダプタ側に閉じ込める
 
 `templates/adapter-openai.ts` / `templates/adapter-gemini.ts` の `buildPrompt()` がその置き場所。現状は素通しの実装だが、モデル固有の言い回し調整が必要になったらこの関数の中だけを変更すればよい。ポートのシグネチャ（`GenImageInput.prompt: string`）自体は変更不要になる設計にしている。

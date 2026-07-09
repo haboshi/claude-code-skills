@@ -31,3 +31,20 @@ subprocess fan-out はコマンドラインツールとしての `image-creator`
 - アダプタ自体はプロバイダ1つの呼び出しにだけ責務を持てる（単一責任）
 - フォールバックの優先順位・リトライ回数はアプリ側の構成（`withFallback([primary, secondary], opts)`）で決められる
 - `templates/contract-test.ts` の「フォールバック decorator の経路テスト」で、プロバイダ実装と独立してフォールバック挙動だけを検証できる
+
+## ImageGenError でない生の例外の既定動作
+
+アダプタのエラーマッピング（`mapOpenAIError()` / `mapGeminiError()`）に漏れがあった場合、`ImageGenError` でない生の例外が `withFallback()` に届くことがある。この場合の既定動作は `retryable:false`（同一プロバイダ内リトライはしない）/ `failoverable:true`（次のプロバイダへは進む）である。未分類の例外を安全側でリトライしない一方、マッピング漏れ1件でチェーン全体を無条件に止めないための意図的な非対称性で、`templates/port.ts` の `withFallback()` docstring と `templates/contract-test.ts` の経路テストで明文化している。
+
+## 呼び出し前のプロバイダ選別（事前スキップ）
+
+`withFallback()` は各プロバイダを実際に呼ぶ前に、そのプロバイダが入力を処理できる見込みがあるかを2段階でふるいにかける。実行時エラーで落ちるより速く、無駄な課金・レート消費も避けられる。
+
+- **capabilities() ベースの適合判定**: 入力が `n`（`capabilities().maxImagesPerCall` 超過）や透過背景要求（`capabilities().transparentBackground: false`）など、`ImageGenCapabilities` で判定可能な条件を満たせないプロバイダはスキップする。既定判定に加えて `canHandle?: (input, caps) => boolean` を注入すれば呼び出し側の要件で上書きできる。実例: `n=4` の入力で `OpenAIImageAdapter` → `GeminiImageAdapter` の順にフォールバック設定した場合、旧実装では `GeminiImageAdapter` が `n>1` を実行時に `unsupported`（`failoverable: false`）として投げてチェーン全体が死んでいた。事前スキップにより `capabilities().maxImagesPerCall === 1` の Gemini は呼ばれる前に除外され、この問題が起きない。
+- **isConfigured() ベースの構成確認**: `ImageGenPort` は任意メソッド `isConfigured?(): boolean` を持てる。API キー等が未設定のプロバイダは `auth` エラー（`failoverable: false`）を実行時に投げてチェーン全体を止めがちなため、`withFallback()` は `isConfigured() === false` を返すプロバイダを事前に除外する（メソッド自体を実装していないプロバイダは常に構成済み扱いとする）。
+
+両方の選別を経てなお候補が0件の場合、`withFallback()` は `kind: 'unsupported'` の `ImageGenError` を集約して投げる（個々のプロバイダを呼ばずに失敗が確定するため、実行時エラーより高速に検出できる）。
+
+## フェイルオーバー時の入力再交渉
+
+フォールバック先プロバイダはポータブル入力（`aspect` 等）を同一条件で満たせるとは限らない。各アダプタが自身の変換マップ（`aspect→size` 等）で入力を解釈するのが正しい構造であり、フォールバック層で入力を書き換えない。ただし品質パラメータを暗黙に落とすフォールバックは「ユーザーが求めたものと違う結果を静かに返す」ことになるため、`providerName`（`GenImageResult` に追加。`port.md` 参照）で観測可能にするか、呼び出し側が拒否できるようにする。

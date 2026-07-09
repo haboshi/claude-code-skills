@@ -114,7 +114,9 @@ function toGenImageResult(response: { data?: Array<{ b64_json?: string; url?: st
     }
     return { data: Buffer.from(item.b64_json, 'base64'), mimeType: 'image/png' }
   })
-  return GenImageResultSchema.parse({ images, providerRaw: response })
+  // providerName: withFallback() 経由のフェイルオーバー後も呼び出し側が実際の生成元を観測できるようにする
+  // （port.ts の GenImageResultSchema.providerName 参照）。
+  return GenImageResultSchema.parse({ images, providerRaw: response, providerName: 'openai' })
 }
 
 // クライアント/サーバのタイムアウト検出。ステータスコードを持たない場合があるため
@@ -191,6 +193,7 @@ function mapOpenAIError(err: unknown): ImageGenError {
 export class OpenAIImageAdapter implements ImageGenPort {
   private readonly transport: OpenAIImagesTransport
   private readonly modelId: string
+  private readonly apiKey?: string
 
   constructor(
     opts: {
@@ -202,6 +205,15 @@ export class OpenAIImageAdapter implements ImageGenPort {
     const internalModel = opts.internalModel ?? 'general-purpose'
     this.modelId = OPENAI_MODEL_MAP[internalModel]
     this.transport = opts.transport ?? createDefaultTransport(opts.apiKey)
+    this.apiKey = opts.apiKey
+  }
+
+  // API キー（コンストラクタ引数または環境変数）の有無だけを呼び出し時に確認する。値自体は読み取るが
+  // 返却・ログはしない。withFallback() の事前スキップに使われる（fallback-resilience.md 参照）。
+  // 構築時ではなく呼び出し時に process.env を読むのは、構築後に環境変数が設定される構成
+  // （dotenv の遅延ロード等）で isConfigured() が恒久的に false のまま固定されるのを防ぐため（LOW-1）。
+  isConfigured(): boolean {
+    return Boolean(this.apiKey ?? process.env.OPENAI_API_KEY)
   }
 
   async generate(rawInput: GenImageInput): Promise<GenImageResult> {

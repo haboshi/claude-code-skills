@@ -52,6 +52,7 @@ OpenAI の ephemeral key 発行エンドポイント（WebRTC 経路用）は、
 GA 移行の実録として以下の破壊的変更があった。
 
 - `modalities` → `output_modalities`
+- `input_audio_noise_reduction` → `session.audio.input.noise_reduction`（noise reduction 設定の GA 改称）
 - `temperature` パラメータの削除
 - `session.type` の必須化
 - イベント名の変更（例: `response.output_audio.delta` は旧 Beta の別名から改称されている）

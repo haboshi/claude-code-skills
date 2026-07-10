@@ -55,3 +55,6 @@ volatile（環境依存）だが、「指数バックオフ + 上限回数」と
 | `semantic_vad`（OpenAI のみ） | 発話の意味的な区切りまで待ちたい（相槌で誤って区切られたくない）場合。`eagerness` で早さと精度のトレードオフを調整する |
 | `server_vad` | 単純な無音検出で十分な場合。プロバイダ間で最も互換性が高い（OpenAI/Gemini 両方が対応） |
 | `local`（ローカル VAD、例: Silero） | クライアント側で発話区間を確定させてから送信量を絞りたい場合、または VAD ロジック自体をプロバイダ非依存にしたい場合。この方式では `speech.started`/`speech.stopped` イベントはプロバイダから届かないため、アプリ側が別途 `RealtimeVoiceSession` に通知する経路を設計する必要がある（本ポートはサーバ側 VAD イベントの受信のみを定義する。`templates/port.ts` の `VadConfigSchema` コメント参照） |
+
+方式を選んだ後のパラメータ値の決定（`eagerness` / `threshold` / `silence_duration_ms` 等の既定値と
+利用シーン別の初期値・barge-in 誤爆対策の順序）は `tuning-guide.md` を参照。

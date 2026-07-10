@@ -519,6 +519,27 @@ if [ "$(calls)" = "2" ]; then
   ok "T25h 同内容コミット+完了主張への差し替えは再評価（same-contentで素通りしない）"
 else bad "T25h" "calls=$(calls) codex=$(state_of $S | jq -r '.last_eval.codex')"; fi
 
+# --- T25j: 過去ターンの checkout が reflog に残っていても、HEAD が動いていなければ
+#          navigation と誤判定しない（差し戻し状態と停滞カウンタが毎ターン消えない） ---
+S=s25j
+git -C "$REPO" checkout -q -b stale-nav   # reflog の直近を checkout: にする
+out=$(startjson $S | run_start)
+echo "work" >> "$REPO/base.txt"           # 以降 git 操作はしない（HEADは動かない）
+export FAKE_CODEX_OUTPUT="BLOCK: 未完成です
+base.txt:1 — 問題 — 期待"
+reset_calls
+out=$(stopjson $S "完了しました" | run_gate)
+[ "$(calls)" = "2" ] || bad "T25j-precond" "初回評価なし calls=$(calls)"
+# 同一 diff で再停止 → 過去の checkout に引きずられず、キャッシュされた再ブロックになるはず
+reset_calls
+out=$(stopjson $S "完了しました" true | run_gate)
+if printf '%s' "$out" | jq -e '.decision=="block"' >/dev/null 2>&1 && [ "$(calls)" = "0" ] && \
+   [ "$(state_of $S | jq -r '.last_eval.codex')" = "cached" ]; then
+  ok "T25j 古いcheckout reflogでnavigation誤判定しない（BLOCK状態を維持）"
+else bad "T25j" "calls=$(calls) codex=$(state_of $S | jq -r '.last_eval.codex') out=$out"; fi
+export FAKE_CODEX_OUTPUT="ALLOW: ok"
+git -C "$REPO" checkout -q -- . 2>/dev/null; git -C "$REPO" checkout -q main; git -C "$REPO" branch -q -D stale-nav 2>/dev/null
+
 # --- T25i: コミットゼロの新規リポジトリでも初回コミットが評価される ---
 UREPO="$WORK/unborn"
 mkdir -p "$UREPO"; git -C "$UREPO" init -q -b main 2>/dev/null || git -C "$UREPO" init -q

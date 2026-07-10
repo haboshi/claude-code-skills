@@ -99,12 +99,26 @@ case "$last_reflog" in
 esac
 # reflog が使えない環境では、ブランチ名の変化を移動とみなす（保守的）
 if [ -z "$last_reflog" ] && [ -n "$ST_BRANCH" ] && [ "$ST_BRANCH" != "$current_br" ]; then nav=1; fi
+# `reflog -1` は「最後の HEAD 更新」であって「今ターンの操作」ではない。
+# HEAD も branch も動いていないなら、それは過去ターンのエントリなので移動ではない
+# （そう扱わないと、数ターン前の checkout のせいで毎ターン state がリセットされ、
+#  差し戻しの再提示・停滞カウンタ・同一内容スキップがすべて失われる）。
+head_moved=0
+[ -n "$ST_EVAL_BASE" ] && [ "$ST_EVAL_BASE" != "$current_head" ] && head_moved=1
+branch_changed=0
+[ -n "$ST_BRANCH" ] && [ "$ST_BRANCH" != "$current_br" ] && branch_changed=1
+if [ "$head_moved" -eq 0 ] && [ "$branch_changed" -eq 0 ]; then nav=0; fi
 
 if [ "$nav" -eq 1 ] && [ -n "$ST_PROJECT" ]; then
   # 移動そのものはこのターンの「作業」ではない。ベースラインを現在地へ引き直す。
   # 未コミットの変更があればそれは実作業なので、HEAD 基準で評価を続ける。
   if [ -n "$ST_EVAL_BASE" ] && [ "$ST_EVAL_BASE" != "$current_head" ]; then
     note "HEAD の移動を検出（${last_reflog%%:*}）。ベースラインを再設定します"
+  fi
+  # 未解消の差し戻しが「移動」で消える場合は必ず記録する（stash / reset で
+  # 指摘を回避できてしまう経路を transcript から事後検証できるようにする）
+  if [ "$ST_LAST_VERDICT" = "BLOCK" ]; then
+    note "警告: 未解消の差し戻しがあるまま HEAD が移動しました（${last_reflog%%:*}）。指摘は解消されていません: $(printf '%s' "$ST_LAST_REASON" | head -c 300)"
   fi
   ST_BASELINE_HEAD="$current_head"; ST_EVAL_BASE="$current_head"
   ST_ALLOWED_SIG=""; ST_LAST_HASH=""; ST_LAST_VERDICT=""; ST_BLOCK_COUNT=0

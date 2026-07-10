@@ -128,6 +128,11 @@ function buildSessionUpdate(config: RealtimeSessionConfig): Record<string, unkno
       // 旧モデルに default true を暗黙送出するとセッション切断を招いた実録があるため、
       // 明示指定時のみ送出する（../drift-landmines.md 参照）。
       ...(config.parallelToolCalls !== undefined && { parallel_tool_calls: config.parallelToolCalls }),
+      // reasoning は世代ゲートされたノブ（gpt-realtime-2 以降のみ存在。gpt-realtime-1.5 等の
+      // 非 reasoning モデルには送らない）。parallel_tool_calls と同じ原則で、明示指定時のみ送出する
+      // （../drift-landmines.md「世代ゲートされた能力ノブ」参照）。5段階の使い分けは
+      // ../model-catalog.md「reasoning effort の選び方」を参照。
+      ...(config.reasoningEffort !== undefined && { reasoning: { effort: config.reasoningEffort } }),
       // 非ポータブル上書き。escape-hatch.md に従い openai 名前空間のみを読む。
       ...openaiOptions,
     },
@@ -244,6 +249,8 @@ export class OpenAIRealtimeAdapter implements RealtimeVoicePort {
       serverVad: true,
       directRelayFormats: ['g711_ulaw', 'g711_alaw'],
       parallelToolCalls: true,
+      // gpt-realtime-2.1 の session.reasoning.effort 5段階（../model-catalog.md 参照）。
+      reasoningEffortLevels: ['minimal', 'low', 'medium', 'high', 'xhigh'],
       // OpenAI に resumption 機能なし（ドキュメント横断確認済み。../model-catalog.md 参照）。
       sessionResumption: false,
       maxSessionDurationMs: 60 * 60 * 1000,

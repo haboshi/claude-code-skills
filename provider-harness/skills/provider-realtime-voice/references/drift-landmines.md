@@ -17,6 +17,23 @@ voice-agent の実装履歴・model-catalog.md の検証過程で見つかった
 設定フィールドを追加する際は、「モデルによって対応状況が違うパラメータを暗黙 default で送らない」を
 一般原則として踏襲すること。
 
+## 世代ゲートされた能力ノブ（reasoning.effort / thinkingConfig）も暗黙送出しない
+
+上記 `parallel_tool_calls` と同型の地雷が reasoning 系ノブにもある。
+
+- OpenAI の `session.reasoning.effort` は reasoning 対応世代（gpt-realtime-2 以降）にのみ存在する。
+  非 reasoning モデル（`gpt-realtime-1.5` / `gpt-realtime-mini` 等）を使うセッションに送った場合の
+  挙動は未検証であり、"Unsupported option" 系の拒否を招く前提で扱う
+- Gemini は**同一プロバイダ内でも世代で形状が違う**: `gemini-3.1-flash-live` 系は
+  `thinkingConfig.thinkingLevel`（enum）、`gemini-2.5-flash-native-audio` 系は
+  `thinkingConfig.thinkingBudget`（トークン数）。世代を跨いでモデルIDを差し替えると、同じ
+  thinkingConfig が invalid になりうる
+
+`templates/` の両アダプタは `config.reasoningEffort !== undefined` の場合のみ wire に載せる
+（暗黙 default 禁止）。プロバイダ非対称（xhigh は OpenAI のみ）は `capabilities().reasoningEffortLevels`
+で公開し、非対応レベルは黙って丸めずに `unsupported` で拒否する。一般原則はメタスキルの
+`escape-hatch.md`「escape hatch からの昇格」を参照。
+
 ## build-time env inline でモデルID凍結 → 400
 
 環境変数からモデルIDを読む構成（`process.env.OPENAI_REALTIME_MODEL`）で、ビルドツールが環境変数を

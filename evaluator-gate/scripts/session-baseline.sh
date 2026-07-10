@@ -39,6 +39,7 @@ fi
 
 head=$(git -C "$project" rev-parse HEAD 2>/dev/null || echo "")
 hash=$(compute_diff_hash "$project")
+branch=$(current_branch "$project")
 # baseline_head = eval_base = セッション開始時の HEAD。verdict は未評価（空）。
-state_write "$session_id" "$project" "$head" "$head" "$hash" "" "" "" 0 "baseline" "baseline" 0 || true
+state_write "$session_id" "$project" "$head" "$head" "$hash" "" "" "" 0 "baseline" "baseline" 0 "$branch" "" || true
 exit 0

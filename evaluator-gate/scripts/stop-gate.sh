@@ -72,12 +72,24 @@ trap 'session_lock_release "$session_id"' EXIT
 current_hash=$(compute_diff_hash "$project")
 current_head=$(git -C "$project" rev-parse HEAD 2>/dev/null || echo "")
 current_claim=$(claim_hash "$last_msg")
+current_br=$(current_branch "$project")
 state_load "$session_id"
 
 # セッションが別プロジェクトに移動した場合は state を持ち越さない（block_count/hash の混線防止）
 if [ -n "$ST_PROJECT" ] && [ "$ST_PROJECT" != "$project" ]; then
   ST_LAST_HASH=""; ST_LAST_VERDICT=""; ST_LAST_REASON=""; ST_BLOCK_COUNT=0
-  ST_BASELINE_HEAD="$current_head"; ST_EVAL_BASE="$current_head"; ST_UPDATED_EPOCH=0; ST_LAST_CLAIM_HASH=""
+  ST_BASELINE_HEAD="$current_head"; ST_EVAL_BASE="$current_head"; ST_UPDATED_EPOCH=0
+  ST_LAST_CLAIM_HASH=""; ST_ALLOWED_SIG=""; ST_BRANCH="$current_br"
+fi
+
+# ブランチ切替を検出したらベースラインを引き直す。
+# 引かないと「baseline の子孫にある既存 feature ブランチ」へ切替えた瞬間、そのブランチの
+# 全コミットが今回の作業として評価され、セッション外の作業を誤ブロックする。
+if [ -n "$ST_BRANCH" ] && [ "$ST_BRANCH" != "$current_br" ]; then
+  note "ブランチ切替を検出（${ST_BRANCH} → ${current_br}）。ベースラインを再設定し、このターンは評価しません"
+  state_write "$session_id" "$project" "$current_head" "$current_head" "$current_hash" "$current_claim" \
+              "ALLOW" "" 0 "branch-switch" "branch-switch" 0 "$current_br" ""
+  exit 0
 fi
 
 if [ "$current_hash" = "$ST_LAST_HASH" ]; then
@@ -87,14 +99,15 @@ if [ "$current_hash" = "$ST_LAST_HASH" ]; then
       # block_count は「同一 diff での停滞回数」。上限で警告つき許可に縮退（stuck loop 対策）。
       # diff が変われば評価パスで 1 から数え直す（セッション累積上限ではない）。
       if [ "$ST_BLOCK_COUNT" -ge "$MAX_BLOCKS" ]; then
+        # 縮退での許可は「受理」ではないので allowed_sig は記録しない
         state_write "$session_id" "$project" "$ST_BASELINE_HEAD" "$current_head" "$current_hash" "$current_claim" \
-                    "ALLOW" "" "$ST_BLOCK_COUNT" "capped" "capped" 0
+                    "ALLOW" "" "$ST_BLOCK_COUNT" "capped" "capped" 0 "$current_br" "$ST_ALLOWED_SIG"
         emit_warn_allow "evaluator-gate: 同一の変更に対する差し戻しが上限（${MAX_BLOCKS}回）に到達したため許可に縮退しました。未解消の指摘: $ST_LAST_REASON"
       fi
       nb=$((ST_BLOCK_COUNT + 1))
       # eval_base は前進させない（未検証のコミットを取り残さないため）
       state_write "$session_id" "$project" "$ST_BASELINE_HEAD" "$ST_EVAL_BASE" "$current_hash" "$current_claim" \
-                  "BLOCK" "$ST_LAST_REASON" "$nb" "cached" "cached" 0 || {
+                  "BLOCK" "$ST_LAST_REASON" "$nb" "cached" "cached" 0 "$current_br" "$ST_ALLOWED_SIG" || {
         note "state 保存に失敗したため fail-open（再ブロックを中止）"
         exit 0
       }
@@ -109,7 +122,7 @@ if [ "$current_hash" = "$ST_LAST_HASH" ]; then
       # 変更なし。ただし「同じ diff のまま完了主張だけを差し替えた」場合は再評価する
       # （前回 ALLOW が "WIP です" に対する ALLOW で、今回 "全部完了・テスト通過" に化けるのを防ぐ）
       if [ "$current_claim" != "$ST_LAST_CLAIM_HASH" ] && is_completion_claim "$last_msg"; then
-        : # フォールスルーして再評価
+        force_eval=1   # 内容は同じでも主張が変わったので同一内容スキップを飛ばす
       else
         exit 0
       fi
@@ -124,21 +137,43 @@ fi
 # 起点が取れない場合（ベースライン未記録＝セッション途中で導入、amend/rebase で到達不能）は、
 # 作業ツリーが汚れていれば HEAD 基準、クリーンなら評価対象なしとして通過する。
 base_ref=""
+head_reachable=0
 for cand in "$ST_EVAL_BASE" "$ST_BASELINE_HEAD"; do
   [ -n "$cand" ] || continue
-  [ "$cand" = "$current_head" ] && break   # コミットなし → 作業ツリー基準（HEAD）で足りる
+  if [ "$cand" = "$current_head" ]; then
+    head_reachable=1; break   # コミットなし → 作業ツリー基準（HEAD）で足りる
+  fi
   if git -C "$project" merge-base --is-ancestor "$cand" "$current_head" 2>/dev/null; then
-    base_ref="$cand"; break
+    base_ref="$cand"; head_reachable=1; break
   fi
 done
 
 tree_dirty=1
 [ -z "$(git -C "$project" status --porcelain 2>/dev/null | head -1)" ] && tree_dirty=0
 
+# 履歴書き換え（amend / rebase / reset）で起点が到達不能になった場合。
+# 黙って ALLOW にすると、そのターンの実作業が無評価で受理されてしまう。
+# 正しい範囲は復元できないので、評価せずに「検証できなかった」ことを可視化して通す。
+if [ -z "$base_ref" ] && [ "$head_reachable" -eq 0 ] && [ -n "${ST_EVAL_BASE}${ST_BASELINE_HEAD}" ]; then
+  state_write "$session_id" "$project" "$current_head" "$current_head" "$current_hash" "$current_claim" \
+              "ALLOW" "" 0 "rewritten" "rewritten" 0 "$current_br" ""
+  emit_warn_allow "evaluator-gate: 履歴の書き換え（amend/rebase/reset）を検出したため、このターンの変更は検証できませんでした。ベースラインを現在の HEAD に再設定します。"
+fi
+
 if [ "$tree_dirty" -eq 0 ] && [ -z "$base_ref" ]; then
-  # クリーン & 評価すべきコミット範囲なし（会話のみ、または起点不明）→ 無音通過
+  # クリーン & 評価すべきコミット範囲なし（会話のみ、または起点未記録）→ 無音通過
   state_write "$session_id" "$project" "${ST_BASELINE_HEAD:-$current_head}" "$current_head" \
-              "$current_hash" "$current_claim" "ALLOW" "" 0 "clean" "clean" 0
+              "$current_hash" "$current_claim" "ALLOW" "" 0 "clean" "clean" 0 "$current_br" "$ST_ALLOWED_SIG"
+  exit 0
+fi
+
+# 既に ALLOW された内容と「変更内容そのもの」が同一なら再評価しない。
+# （dirty のまま ALLOW → そのままコミット、で同じ差分を二度評価するのを防ぐ）
+# ただし完了主張が差し替わって再評価に来た場合（force_eval）は、内容が同じでも評価する。
+change_sig=$(compute_change_sig "$project" "${base_ref:-HEAD}")
+if [ "${force_eval:-0}" -eq 0 ] && [ -n "$ST_ALLOWED_SIG" ] && [ "$change_sig" = "$ST_ALLOWED_SIG" ]; then
+  state_write "$session_id" "$project" "${ST_BASELINE_HEAD:-$current_head}" "$current_head" \
+              "$current_hash" "$current_claim" "ALLOW" "" 0 "same-content" "same-content" 0 "$current_br" "$ST_ALLOWED_SIG"
   exit 0
 fi
 
@@ -204,7 +239,8 @@ if [ "$v_c" = "BLOCK" ] || [ "$v_g" = "BLOCK" ]; then
   fi
   # state 保存が失敗した場合は再ブロックループを止められないため fail-open に倒す
   if state_write "$session_id" "$project" "${ST_BASELINE_HEAD:-$current_head}" "$keep_base" \
-                 "$current_hash" "$current_claim" "BLOCK" "$reason" "$nb" "$v_c" "$v_g" "$dur"; then
+                 "$current_hash" "$current_claim" "BLOCK" "$reason" "$nb" "$v_c" "$v_g" "$dur" \
+                 "$current_br" "$ST_ALLOWED_SIG"; then
     emit_block "外部評価者が完了主張を差し戻しました:
 $reason"
   else
@@ -212,14 +248,20 @@ $reason"
     emit_warn_allow "evaluator-gate: 評価は BLOCK でしたが内部状態を保存できないため許可に縮退しました。指摘: $(printf '%s' "$reason" | head -c 1500)"
   fi
 elif [ "$v_c" = "ALLOW" ] || [ "$v_g" = "ALLOW" ]; then
-  # 受理: eval_base を現 HEAD へ前進させ、停滞カウンタをリセット
+  # 受理: eval_base を現 HEAD へ前進させ、停滞カウンタをリセットする。
+  # 受理内容の署名は「新しい eval_base（= 現 HEAD）から見た差分」で取る。
+  # こうすると、その未コミット差分をそのままコミットした次の停止で署名が一致し、
+  # 同じ内容を二度評価しない（基準を base_ref にすると commit で署名がずれる）。
+  accepted_sig=$(compute_change_sig "$project" "$current_head")
   state_write "$session_id" "$project" "${ST_BASELINE_HEAD:-$current_head}" "$current_head" \
-              "$current_hash" "$current_claim" "ALLOW" "" 0 "$v_c" "$v_g" "$dur"
+              "$current_hash" "$current_claim" "ALLOW" "" 0 "$v_c" "$v_g" "$dur" "$current_br" "$accepted_sig" || \
+    note "state 保存に失敗しました（次の停止で再評価されます）"
   exit 0
 else
   note "Codex/Grok とも利用不可のため fail-open（許可）。codex login status / grok login を確認してください。10分後の停止から再評価します"
   # eval_base は前進させない（復旧後に同じ範囲を再評価できるようにする）
   state_write "$session_id" "$project" "${ST_BASELINE_HEAD:-$current_head}" "$keep_base" \
-              "$current_hash" "$current_claim" "UNAVAILABLE" "" "$ST_BLOCK_COUNT" "unavailable" "unavailable" "$dur"
+              "$current_hash" "$current_claim" "UNAVAILABLE" "" "$ST_BLOCK_COUNT" "unavailable" "unavailable" "$dur" \
+              "$current_br" "$ST_ALLOWED_SIG" || note "state 保存に失敗しました"
   exit 0
 fi

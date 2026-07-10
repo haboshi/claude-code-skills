@@ -73,6 +73,7 @@ state_load() {
   sf=$(state_file "$1")
   ST_LAST_HASH=""; ST_LAST_VERDICT=""; ST_LAST_REASON=""; ST_BLOCK_COUNT=0
   ST_PROJECT=""; ST_UPDATED_EPOCH=0; ST_BASELINE_HEAD=""; ST_EVAL_BASE=""; ST_LAST_CLAIM_HASH=""
+  ST_BRANCH=""; ST_ALLOWED_SIG=""
   [ -f "$sf" ] || return 0
   ST_LAST_HASH=$(jq -r '.last_diff_hash // ""' "$sf" 2>/dev/null || echo "")
   ST_LAST_VERDICT=$(jq -r '.last_verdict // ""' "$sf" 2>/dev/null || echo "")
@@ -83,12 +84,14 @@ state_load() {
   ST_BASELINE_HEAD=$(jq -r '.baseline_head // ""' "$sf" 2>/dev/null || echo "")
   ST_EVAL_BASE=$(jq -r '.eval_base // ""' "$sf" 2>/dev/null || echo "")
   ST_LAST_CLAIM_HASH=$(jq -r '.last_claim_hash // ""' "$sf" 2>/dev/null || echo "")
+  ST_BRANCH=$(jq -r '.branch // ""' "$sf" 2>/dev/null || echo "")
+  ST_ALLOWED_SIG=$(jq -r '.allowed_sig // ""' "$sf" 2>/dev/null || echo "")
   case "$ST_BLOCK_COUNT" in ''|*[!0-9]*) ST_BLOCK_COUNT=0 ;; esac
   case "$ST_UPDATED_EPOCH" in ''|*[!0-9]*) ST_UPDATED_EPOCH=0 ;; esac
 }
 
 # 引数: session project baseline_head eval_base diff_hash claim_hash verdict reason
-#       block_count codex_v grok_v duration_s
+#       block_count codex_v grok_v duration_s branch allowed_sig
 # 戻り値: 保存成功 0 / 失敗 非ゼロ（呼び出し側は BLOCK 前に必ず成功確認する）
 state_write() {
   local sf tmpf
@@ -97,9 +100,10 @@ state_write() {
   jq -n --arg project "$2" --arg bh "$3" --arg eb "$4" --arg hash "$5" --arg ch "$6" \
         --arg verdict "$7" --arg reason "$8" --argjson bc "${9:-0}" \
         --arg cv "${10:-}" --arg gv "${11:-}" --argjson dur "${12:-0}" \
+        --arg br "${13:-}" --arg sig "${14:-}" \
         --arg ts "$(now_iso)" --argjson ep "$(date +%s)" \
-    '{schema:2, project:$project, baseline_head:$bh, eval_base:$eb,
-      last_diff_hash:$hash, last_claim_hash:$ch,
+    '{schema:3, project:$project, baseline_head:$bh, eval_base:$eb, branch:$br,
+      last_diff_hash:$hash, last_claim_hash:$ch, allowed_sig:$sig,
       last_verdict:(if $verdict=="" then null else $verdict end),
       last_reason:$reason, block_count:$bc,
       last_eval:{ts:$ts, codex:$cv, grok:$gv, duration_s:$dur},
@@ -111,15 +115,66 @@ state_write() {
 claim_hash() { printf '%s' "$1" | shasum -a 256 | cut -d' ' -f1; }
 
 # 完了・検証を主張する文面か（同一 diff でもこれが新たに現れたら再評価する）
+# 判定は「広めに拾う」側に倒す（見逃すとゲートを素通りされるが、拾いすぎても再評価するだけ）
 is_completion_claim() {
-  printf '%s' "$1" | grep -qiE '完了|完成|実装しました|修正しました|対応しました|テスト.*(通|パス|成功)|全件パス|done|completed|finished|all tests? pass|tests? (are )?passing|verified'
+  printf '%s' "$1" | grep -qiE '完了|完成|実装しました|修正しました|対応しました|できました|終わりました|テスト.*(通|パス|成功|green)|全件パス|問題ありません|正常に動作|リリース(可能|できます)|出荷可能|マージ可能|done|completed|finished|ready to (ship|merge)|all tests? (pass|green)|tests? (are )?(passing|green)|verified|working (correctly|as expected)'
+}
+
+# base（起点）から現在の作業ツリーまでの「変更内容そのもの」の署名。
+# 同じ内容が ALLOW 済みなら、コミットしただけの再停止で再評価しないために使う。
+#
+# 表現は「パス:作業ツリーの内容ハッシュ」の正規形にする。diff テキストを直接ハッシュすると、
+# untracked のファイルがコミットされて tracked に変わった瞬間に表現が変わり、
+# 内容が同一でも署名が一致しなくなる（＝受理済みの内容を二度評価してしまう）。
+compute_change_sig() {
+  local project base f
+  project="$1"; base="${2:-HEAD}"
+  {
+    git -C "$project" diff --name-only -z "$base" 2>/dev/null | \
+    while IFS= read -r -d '' f; do
+      if [ -f "$project/$f" ] && [ ! -L "$project/$f" ]; then
+        printf '%s:%s\n' "$f" "$(git -C "$project" hash-object -- "$f" 2>/dev/null || echo unhashable)"
+      else
+        printf 'deleted:%s\n' "$f"
+      fi
+    done
+    git -C "$project" ls-files --others --exclude-standard -z 2>/dev/null | \
+    while IFS= read -r -d '' f; do
+      [ -L "$project/$f" ] && continue
+      [ -f "$project/$f" ] || continue
+      printf '%s:%s\n' "$f" "$(git -C "$project" hash-object -- "$f" 2>/dev/null || echo unhashable)"
+    done
+  } | sort | shasum -a 256 | cut -d' ' -f1
+}
+
+# 現在のブランチ名（detached は固定文字列）
+current_branch() {
+  git -C "$1" symbolic-ref --quiet --short HEAD 2>/dev/null || printf 'DETACHED'
 }
 
 # セッション単位の排他ロック（同一セッションの多重 Stop で評価が交錯するのを防ぐ）
-# 取得できなければ非ゼロ（呼び出し側は fail-open で通過する）
+# 取得できなければ非ゼロ（呼び出し側は fail-open で通過する）。
+# フックが強制終了（hook timeout の SIGKILL）されると trap が走らずロックが残るため、
+# 10 分より古いロックは stale として回収する。さもないとそのセッションのゲートが
+# 恒久的に無効化されてしまう（静かに機能しなくなるのが最悪）。
 session_lock_acquire() {
+  local ld age lock_epoch waited=0 max_wait="${EVALUATOR_GATE_LOCK_WAIT:-20}"
   ensure_dirs
-  mkdir "$GATE_STATE_DIR/$1.lock" 2>/dev/null
+  ld="$GATE_STATE_DIR/$1.lock"
+  while :; do
+    mkdir "$ld" 2>/dev/null && return 0
+    lock_epoch=$(stat -f%m "$ld" 2>/dev/null || stat -c%Y "$ld" 2>/dev/null || echo 0)
+    age=$(( $(date +%s) - lock_epoch ))
+    if [ "$age" -gt 600 ]; then
+      note "stale なロックを回収します（${age}秒経過）"
+      rmdir "$ld" 2>/dev/null || return 1
+      continue
+    fi
+    # 先行する評価の完了を短時間だけ待つ（無条件に評価を捨てない）
+    [ "$waited" -ge "$max_wait" ] && return 1
+    sleep 1
+    waited=$((waited + 1))
+  done
 }
 session_lock_release() { rmdir "$GATE_STATE_DIR/$1.lock" 2>/dev/null || true; }
 
@@ -174,16 +229,23 @@ validate_session_id() {
   return 0
 }
 
-# センチネル偽装の無害化: 信頼しないデータからセンチネル文字列を除去（in-place）
+# センチネル偽装の無害化: 信頼しないデータからセンチネル文字列を除去。
+# 失敗したら非ゼロ（呼び出し側は「無害化できないなら外部送信しない」= fail-closed）
 scrub_sentinels() {
-  sed -i '' \
+  local f tmpf
+  f="$1"
+  [ -f "$f" ] || return 0
+  tmpf="$f.scrub.$$"
+  sed \
     -e 's/BUILDER_MESSAGE_BEGIN/[SENTINEL-REDACTED]/g' \
     -e 's/BUILDER_MESSAGE_END/[SENTINEL-REDACTED]/g' \
     -e 's/DIFF_BEGIN/[SENTINEL-REDACTED]/g' \
     -e 's/DIFF_END/[SENTINEL-REDACTED]/g' \
     -e 's/DATA_BEGIN/[SENTINEL-REDACTED]/g' \
     -e 's/DATA_END/[SENTINEL-REDACTED]/g' \
-    "$1" 2>/dev/null || true
+    "$f" > "$tmpf" 2>/dev/null || { rm -f "$tmpf"; return 1; }
+  mv "$tmpf" "$f" 2>/dev/null || { rm -f "$tmpf"; return 1; }
+  return 0
 }
 
 # === 機微パスの単一ソース（tracked/untracked で必ず同じ集合を使う） ===
@@ -207,15 +269,21 @@ sensitive_pathspecs() {
 # secret 漏洩防止: 機微パスの内容を evidence（外部モデルへ送るプロンプト）に載せない
 # 大文字小文字を区別しない（Secrets.swift / .ENV 等のすり抜け防止）
 is_sensitive_path() {
-  local lp base g
+  local lp base g rc=1 glob_was_off=1
   lp=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
   base="${lp##*/}"
+  # $SENSITIVE_GLOBS の展開でカレントディレクトリのファイル名に置換されるのを防ぐ
+  # （例: PWD に .env.example があると `.env*` が実ファイル名へ化けて除外集合が変質する）
+  case "$-" in *f*) glob_was_off=0 ;; esac
+  set -f
   for g in $SENSITIVE_GLOBS; do
     # shellcheck disable=SC2254
-    case "$base" in $g) return 0 ;; esac
-    case "$lp" in $g|*/$g) return 0 ;; esac
+    case "$base" in $g) rc=0; break ;; esac
+    # shellcheck disable=SC2254
+    case "$lp" in $g|*/$g) rc=0; break ;; esac
   done
-  return 1
+  [ "$glob_was_off" -eq 1 ] && set +f
+  return $rc
 }
 
 # 高信号 secret の内容ベース redact（best-effort・名前フィルタの補完）。
@@ -223,18 +291,19 @@ is_sensitive_path() {
 # 外部モデルへ送る前にマスクする。正規表現なので完全ではない（SKILL.md に明記）。
 # 重要: 失敗したら非ゼロを返す（呼び出し側は「redact できないなら外部送信しない」= fail-closed）。
 redact_secrets() {
-  local f tmpf
+  local f tmpf K
   f="$1"
   [ -f "$f" ] || return 0
   tmpf="$f.redact.$$"
+  # 秘密を示すキー名（BSD sed -E は (?i) 非対応のため文字クラスで大小を吸収）
+  K='([Pp][Aa][Ss][Ss][Ww][Oo]?[Rr]?[Dd]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn]|[Aa][Pp][Ii][_-]?[Kk][Ee][Yy]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]|[Pp][Aa][Ss][Ss][Pp][Hh][Rr][Aa][Ss][Ee])[A-Za-z_]*'
   # PEM ブロックは BEGIN..END の本文ごと落とす（1行目だけ潰しても鍵本体が残るため）
-  # 値の引用符（" ' `）と JSON 形式（"password":"x"）も剥がしてからマスクする
+  # 値は「引用符あり（空白を含みうる）」→「引用符なし」の順にマスクする
   LC_ALL=C sed -E \
     -e '/-----BEGIN[[:space:]][A-Z ]*(PRIVATE KEY|CERTIFICATE)-----/,/-----END[[:space:]][A-Z ]*(PRIVATE KEY|CERTIFICATE)-----/c\
 [REDACTED-PEM-BLOCK]' \
     -e 's/sk-[A-Za-z0-9_-]{12,}/[REDACTED-APIKEY]/g' \
-    -e 's/AKIA[0-9A-Z]{16}/[REDACTED-AWS]/g' \
-    -e 's/ASIA[0-9A-Z]{16}/[REDACTED-AWS]/g' \
+    -e 's/(AKIA|ASIA)[0-9A-Z]{16}/[REDACTED-AWS]/g' \
     -e 's/xox[baprse]-[A-Za-z0-9-]{10,}/[REDACTED-SLACK]/g' \
     -e 's/github_pat_[A-Za-z0-9_]{20,}/[REDACTED-GH]/g' \
     -e 's/gh[pousr]_[A-Za-z0-9]{20,}/[REDACTED-GH]/g' \
@@ -243,11 +312,10 @@ redact_secrets() {
     -e 's/eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}/[REDACTED-JWT]/g' \
     -e 's/[Bb]earer[[:space:]]+[A-Za-z0-9._-]{20,}/[REDACTED-BEARER]/g' \
     -e 's#(://[^:@/[:space:]]+:)[^@/[:space:]]+@#\1[REDACTED]@#g' \
-    -e 's/([Pp][Aa][Ss][Ss][Ww][Oo]?[Rr]?[Dd][A-Za-z_]*"?[[:space:]]*[:=][[:space:]]*)("|'"'"'|`)?[^[:space:]"'"'"'`,;}]+("|'"'"'|`)?/\1[REDACTED]/g' \
-    -e 's/([Ss][Ee][Cc][Rr][Ee][Tt][A-Za-z_]*"?[[:space:]]*[:=][[:space:]]*)("|'"'"'|`)?[^[:space:]"'"'"'`,;}]+("|'"'"'|`)?/\1[REDACTED]/g' \
-    -e 's/([Tt][Oo][Kk][Ee][Nn][A-Za-z_]*"?[[:space:]]*[:=][[:space:]]*)("|'"'"'|`)?[^[:space:]"'"'"'`,;}]+("|'"'"'|`)?/\1[REDACTED]/g' \
-    -e 's/([Aa][Pp][Ii][_-]?[Kk][Ee][Yy][A-Za-z_]*"?[[:space:]]*[:=][[:space:]]*)("|'"'"'|`)?[^[:space:]"'"'"'`,;}]+("|'"'"'|`)?/\1[REDACTED]/g' \
-    -e 's/([Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll][A-Za-z_]*"?[[:space:]]*[:=][[:space:]]*)("|'"'"'|`)?[^[:space:]"'"'"'`,;}]+("|'"'"'|`)?/\1[REDACTED]/g' \
+    -e "s/([\"']?${K}[\"']?[[:space:]]*[:=][[:space:]]*\")[^\"]*\"/\1[REDACTED]\"/g" \
+    -e "s/([\"']?${K}[\"']?[[:space:]]*[:=][[:space:]]*')[^']*'/\1[REDACTED]'/g" \
+    -e "s/([\"']?${K}[\"']?[[:space:]]*[:=][[:space:]]*\`)[^\`]*\`/\1[REDACTED]\`/g" \
+    -e "s/(${K}[[:space:]]*[:=][[:space:]]*)[^[:space:]\"'\`,;}]+/\1[REDACTED]/g" \
     "$f" > "$tmpf" 2>/dev/null || { rm -f "$tmpf"; return 1; }
   [ -s "$tmpf" ] || [ ! -s "$f" ] || { rm -f "$tmpf"; return 1; }
   mv "$tmpf" "$f" 2>/dev/null || { rm -f "$tmpf"; return 1; }
@@ -255,14 +323,14 @@ redact_secrets() {
 }
 
 # 信頼しないデータの無害化（センチネル除去 + secret redact）。
-# いずれかが失敗したら非ゼロ = 外部送信してはならない。
+# いずれかが失敗したら非ゼロ = 外部送信してはならない（fail-closed）。
 sanitize_evidence() {
-  local d rc=0
+  local d
   for d in "$@"; do
-    scrub_sentinels "$d"
-    redact_secrets "$d" || rc=1
+    scrub_sentinels "$d" || return 1
+    redact_secrets "$d" || return 1
   done
-  return $rc
+  return 0
 }
 
 # 引数: project last_msg_file workdir [base_ref]
@@ -276,12 +344,13 @@ build_evidence() {
   DIFF_ARGS="${base_ref:-HEAD}"
   # tracked diff にも機微パスの内容を含めない（名前は --stat に出るが値は出さない）
   # 除外集合は SENSITIVE_GLOBS（単一ソース）から生成し、位置パラメータに載せる
-  local IFS_SAVE="$IFS" specs
+  local IFS_SAVE="$IFS" specs glob_was_off=1
+  case "$-" in *f*) glob_was_off=0 ;; esac
   specs=$(sensitive_pathspecs)
   IFS=$'\n'
   set -f
   set -- $specs
-  set +f
+  [ "$glob_was_off" -eq 1 ] && set +f   # 呼び出し元の noglob 状態を壊さない
   IFS="$IFS_SAVE"
   mkdir -p "$wdir"
 
@@ -398,7 +467,12 @@ parse_verdict() {
       # いずれも UNAVAILABLE = fail-open 方向に倒す
       rlen=$(wc -c < "$rfile" | tr -d ' ')
       if [ "$rlen" -lt 20 ]; then echo UNAVAILABLE; return 0; fi
-      if ! grep -qE '—|[^[:space:]]+:[0-9]+' "$rfile"; then
+      # 構造化された指摘が最低1件必要:
+      #   (a) `path:123` 形式の位置参照を含む行、または
+      #   (b) `対象 — 問題 — 期待` のように em dash が2つ以上ある行
+      # 「場所は不明ですが品質が低い — 直してください」のような曖昧BLOCKは採用しない
+      if ! grep -qE '[^[:space:]]+:[0-9]+' "$rfile" && \
+         ! grep -qE '—[^—]*—' "$rfile"; then
         note "根拠が構造化されていない BLOCK のため採用しません（fail-open）"
         echo UNAVAILABLE; return 0
       fi

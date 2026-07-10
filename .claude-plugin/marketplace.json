@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Claude Code用スキルコレクション",
-    "version": "0.8.0",
+    "version": "0.9.0",
     "homepage": "https://github.com/haboshi/claude-code-skills"
   },
   "plugins": [
@@ -221,6 +221,26 @@
         "voice",
         "リアルタイム音声",
         "音声エージェント"
+      ]
+    },
+    {
+      "name": "evaluator-gate",
+      "description": "Stop フックでビルダー（Claude 本体）の完了主張を外部モデル評価者（Codex/Grok、いずれもサブスク認証・API 従量課金なし）が検証する完了ゲート。ビルダー≠評価者の分離（fresh context・別モデル系統）で「完了しました」の安易な着地を根拠つきで差し戻す。diff ハッシュによる決定論事前チェックで変更のないターンは LLM を起動しない。per-project opt-in（既定 OFF）。「完了ゲート」「評価ゲート」「エバリュエーター」「差し戻し」「外部評価者」で発動。/evaluator-gate で切替、/evaluate でオンデマンド所見評価。",
+      "source": "./evaluator-gate",
+      "strict": false,
+      "version": "0.1.0",
+      "category": "developer-tools",
+      "keywords": [
+        "stop-hook",
+        "completion-gate",
+        "evaluator",
+        "codex",
+        "grok",
+        "builder-evaluator-separation",
+        "完了ゲート",
+        "外部評価",
+        "差し戻し",
+        "エバリュエーター"
       ]
     }
   ]

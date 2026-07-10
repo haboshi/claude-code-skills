@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c '\"${CLAUDE_PLUGIN_ROOT}/scripts/session-baseline.sh\"'",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c '\"${CLAUDE_PLUGIN_ROOT}/scripts/stop-gate.sh\"'",
+            "timeout": 300
+          }
+        ]
+      }
+    ]
+  }
+}

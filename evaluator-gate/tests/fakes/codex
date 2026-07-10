@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# テスト用 fake codex: 引数から -o <file> を拾い、FAKE_CODEX_OUTPUT を書く。
+# stdin（プロンプト）は FAKE_CALL_LOG_DIR/last-prompt.txt に保存（evidence 内容の検証用）
+out=""
+prev=""
+for a in "$@"; do
+  if [ "$prev" = "-o" ]; then out="$a"; fi
+  prev="$a"
+done
+logdir="${FAKE_CALL_LOG_DIR:-/tmp}"
+mkdir -p "$logdir" 2>/dev/null || true
+cat > "$logdir/last-prompt.txt" 2>/dev/null || cat > /dev/null
+echo "codex called" >> "$logdir/fake-calls.log"
+if [ -n "$out" ]; then printf '%s\n' "${FAKE_CODEX_OUTPUT:-ALLOW: ok}" > "$out"; fi
+exit "${FAKE_CODEX_RC:-0}"

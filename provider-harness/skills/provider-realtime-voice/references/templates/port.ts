@@ -50,6 +50,7 @@ export type NormalizedToolCall = z.infer<typeof NormalizedToolCallSchema>
 // OpenAI: semantic_vad（eagerness 4段階） / server_vad（threshold 等）。Gemini: automaticActivityDetection
 // (server_vad 相当) / 手動 activityStart・End。ローカル VAD（Silero 等）は手動発火のため server_vad と
 // 同じ形にはならず、mode:'local' を独立させてある（../session-lifecycle.md「VAD 3方式の選び方」参照）。
+// 各パラメータの既定値と利用シーン別の初期値は ../tuning-guide.md 参照。
 export const VadConfigSchema = z.discriminatedUnion('mode', [
   z.object({ mode: z.literal('semantic_vad'), eagerness: z.enum(['low', 'medium', 'high', 'auto']) }),
   z.object({

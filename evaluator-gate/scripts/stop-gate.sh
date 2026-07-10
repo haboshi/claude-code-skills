@@ -82,14 +82,37 @@ if [ -n "$ST_PROJECT" ] && [ "$ST_PROJECT" != "$project" ]; then
   ST_LAST_CLAIM_HASH=""; ST_ALLOWED_SIG=""; ST_BRANCH="$current_br"
 fi
 
-# ブランチ切替を検出したらベースラインを引き直す。
-# 引かないと「baseline の子孫にある既存 feature ブランチ」へ切替えた瞬間、そのブランチの
-# 全コミットが今回の作業として評価され、セッション外の作業を誤ブロックする。
-if [ -n "$ST_BRANCH" ] && [ "$ST_BRANCH" != "$current_br" ]; then
-  note "ブランチ切替を検出（${ST_BRANCH} → ${current_br}）。ベースラインを再設定し、このターンは評価しません"
-  state_write "$session_id" "$project" "$current_head" "$current_head" "$current_hash" "$current_claim" \
-              "ALLOW" "" 0 "branch-switch" "branch-switch" 0 "$current_br" ""
-  exit 0
+# 完了主張が差し替わったか（同一内容でも再評価すべきか）を先に判定する。
+# 「WIP です」で ALLOW → 内容そのままコミット → 「全部完了・テスト通過」に化ける、を防ぐ。
+force_eval=0
+if [ "$current_claim" != "$ST_LAST_CLAIM_HASH" ] && is_completion_claim "$last_msg"; then
+  force_eval=1
+fi
+
+# HEAD の移動が「作業（commit）」か「移動（checkout/reset/rebase/merge）」かを reflog で見分ける。
+# ブランチ名の比較だけだと、`checkout -b feature` して実装・コミットしたターンまで
+# 「切替」とみなして無評価で受理してしまう（reflog の直近エントリは commit なので区別できる）。
+nav=0
+last_reflog=$(git -C "$project" reflog -1 --format='%gs' HEAD 2>/dev/null || echo "")
+case "$last_reflog" in
+  checkout:*|reset:*|rebase*|merge*|clone:*|pull:*) nav=1 ;;
+esac
+# reflog が使えない環境では、ブランチ名の変化を移動とみなす（保守的）
+if [ -z "$last_reflog" ] && [ -n "$ST_BRANCH" ] && [ "$ST_BRANCH" != "$current_br" ]; then nav=1; fi
+
+if [ "$nav" -eq 1 ] && [ -n "$ST_PROJECT" ]; then
+  # 移動そのものはこのターンの「作業」ではない。ベースラインを現在地へ引き直す。
+  # 未コミットの変更があればそれは実作業なので、HEAD 基準で評価を続ける。
+  if [ -n "$ST_EVAL_BASE" ] && [ "$ST_EVAL_BASE" != "$current_head" ]; then
+    note "HEAD の移動を検出（${last_reflog%%:*}）。ベースラインを再設定します"
+  fi
+  ST_BASELINE_HEAD="$current_head"; ST_EVAL_BASE="$current_head"
+  ST_ALLOWED_SIG=""; ST_LAST_HASH=""; ST_LAST_VERDICT=""; ST_BLOCK_COUNT=0
+  if [ -z "$(git -C "$project" status --porcelain 2>/dev/null | head -1)" ]; then
+    state_write "$session_id" "$project" "$current_head" "$current_head" "$current_hash" "$current_claim" \
+                "ALLOW" "" 0 "navigation" "navigation" 0 "$current_br" ""
+    exit 0
+  fi
 fi
 
 if [ "$current_hash" = "$ST_LAST_HASH" ]; then
@@ -119,13 +142,8 @@ if [ "$current_hash" = "$ST_LAST_HASH" ]; then
       # フォールスルー: 同一 diff だが再評価する（eval_base は前進していないので範囲は保たれる）
       ;;
     *)
-      # 変更なし。ただし「同じ diff のまま完了主張だけを差し替えた」場合は再評価する
-      # （前回 ALLOW が "WIP です" に対する ALLOW で、今回 "全部完了・テスト通過" に化けるのを防ぐ）
-      if [ "$current_claim" != "$ST_LAST_CLAIM_HASH" ] && is_completion_claim "$last_msg"; then
-        force_eval=1   # 内容は同じでも主張が変わったので同一内容スキップを飛ばす
-      else
-        exit 0
-      fi
+      # 変更なし。完了主張が差し替わった場合（force_eval）だけ再評価する
+      [ "$force_eval" -eq 1 ] || exit 0
       ;;
   esac
 fi
@@ -136,6 +154,7 @@ fi
 # base は ALLOW のときだけ current_head へ前進する（BLOCK/UNAVAILABLE では据え置き）。
 # 起点が取れない場合（ベースライン未記録＝セッション途中で導入、amend/rebase で到達不能）は、
 # 作業ツリーが汚れていれば HEAD 基準、クリーンなら評価対象なしとして通過する。
+EMPTY_TREE=4b825dc642cb6eb9a060e54bf8d69288fbee4904
 base_ref=""
 head_reachable=0
 for cand in "$ST_EVAL_BASE" "$ST_BASELINE_HEAD"; do
@@ -148,6 +167,13 @@ for cand in "$ST_EVAL_BASE" "$ST_BASELINE_HEAD"; do
   fi
 done
 
+# コミットが1つも無いリポジトリでセッションを開始し、このターンで最初のコミットをした場合。
+# ベースラインが空なので通常の起点が取れない。空ツリーを起点にして root commit を評価する。
+if [ -z "$base_ref" ] && [ "$head_reachable" -eq 0 ] && [ -n "$ST_PROJECT" ] && \
+   [ -z "$ST_BASELINE_HEAD" ] && [ -z "$ST_EVAL_BASE" ] && [ -n "$current_head" ]; then
+  base_ref="$EMPTY_TREE"; head_reachable=1
+fi
+
 tree_dirty=1
 [ -z "$(git -C "$project" status --porcelain 2>/dev/null | head -1)" ] && tree_dirty=0
 
@@ -158,6 +184,19 @@ if [ -z "$base_ref" ] && [ "$head_reachable" -eq 0 ] && [ -n "${ST_EVAL_BASE}${S
   state_write "$session_id" "$project" "$current_head" "$current_head" "$current_hash" "$current_claim" \
               "ALLOW" "" 0 "rewritten" "rewritten" 0 "$current_br" ""
   emit_warn_allow "evaluator-gate: 履歴の書き換え（amend/rebase/reset）を検出したため、このターンの変更は検証できませんでした。ベースラインを現在の HEAD に再設定します。"
+fi
+
+# 起点から HEAD までのコミット数が異常に多い場合は、このターンの作業ではない履歴を
+# 巻き込んでいる可能性が高い（同一ターン内で既存ブランチへ切替えてコミットした等）。
+# 誤ブロックを避けるため、評価せずベースラインを引き直して可視化する。
+if [ -n "$base_ref" ] && [ "$base_ref" != "$EMPTY_TREE" ]; then
+  ncommits=$(git -C "$project" rev-list --count "$base_ref..$current_head" 2>/dev/null || echo 0)
+  case "$ncommits" in ''|*[!0-9]*) ncommits=0 ;; esac
+  if [ "$ncommits" -gt "${EVALUATOR_GATE_MAX_COMMITS:-50}" ]; then
+    state_write "$session_id" "$project" "$current_head" "$current_head" "$current_hash" "$current_claim" \
+                "ALLOW" "" 0 "range-too-large" "range-too-large" 0 "$current_br" ""
+    emit_warn_allow "evaluator-gate: 起点から ${ncommits} 件のコミットがあり、このターンの作業範囲を特定できないため評価をスキップしました。ベースラインを現在の HEAD に再設定します。"
+  fi
 fi
 
 if [ "$tree_dirty" -eq 0 ] && [ -z "$base_ref" ]; then
@@ -184,6 +223,8 @@ trap '[ "${EVALUATOR_GATE_KEEP_TMP:-0}" = "1" ] || rm -rf "$wdir"; session_lock_
 
 printf '%s' "$last_msg" > "$wdir/last_msg_raw.txt"
 build_evidence "$project" "$wdir/last_msg_raw.txt" "$wdir" "$base_ref"
+# 生の完了主張を残さない（評価者は cwd 配下のファイルを読める）
+rm -f "$wdir/last_msg_raw.txt"
 
 # 外部送信前の無害化（センチネル除去 + secret redact）。
 # 失敗したら「redact できない内容を外部に送らない」= 評価せず fail-open する。

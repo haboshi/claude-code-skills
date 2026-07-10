@@ -126,23 +126,33 @@ is_completion_claim() {
 # 表現は「パス:作業ツリーの内容ハッシュ」の正規形にする。diff テキストを直接ハッシュすると、
 # untracked のファイルがコミットされて tracked に変わった瞬間に表現が変わり、
 # 内容が同一でも署名が一致しなくなる（＝受理済みの内容を二度評価してしまう）。
+# 1 パス分の署名レコード。パス名はハッシュ化するため、改行を含む名前でもレコードが壊れない。
+# symlink は target を、通常ファイルは blob ハッシュと mode を含める。
+sig_record() {
+  local project p fp ph
+  project="$1"; p="$2"; fp="$project/$p"
+  ph=$(printf '%s' "$p" | shasum -a 256 | cut -d' ' -f1)
+  if [ -L "$fp" ]; then
+    printf '%s:symlink:%s\n' "$ph" "$(readlink "$fp" 2>/dev/null | shasum -a 256 | cut -d' ' -f1)"
+  elif [ -f "$fp" ]; then
+    printf '%s:file:%s:%s\n' "$ph" \
+      "$(git -C "$project" hash-object -- "$p" 2>/dev/null || echo unhashable)" \
+      "$(stat -f%Lp "$fp" 2>/dev/null || stat -c%a "$fp" 2>/dev/null || echo '')"
+  else
+    printf '%s:deleted\n' "$ph"
+  fi
+}
+
 compute_change_sig() {
   local project base f
   project="$1"; base="${2:-HEAD}"
   {
     git -C "$project" diff --name-only -z "$base" 2>/dev/null | \
-    while IFS= read -r -d '' f; do
-      if [ -f "$project/$f" ] && [ ! -L "$project/$f" ]; then
-        printf '%s:%s\n' "$f" "$(git -C "$project" hash-object -- "$f" 2>/dev/null || echo unhashable)"
-      else
-        printf 'deleted:%s\n' "$f"
-      fi
-    done
+    while IFS= read -r -d '' f; do sig_record "$project" "$f"; done
     git -C "$project" ls-files --others --exclude-standard -z 2>/dev/null | \
     while IFS= read -r -d '' f; do
-      [ -L "$project/$f" ] && continue
-      [ -f "$project/$f" ] || continue
-      printf '%s:%s\n' "$f" "$(git -C "$project" hash-object -- "$f" 2>/dev/null || echo unhashable)"
+      [ -e "$project/$f" ] || [ -L "$project/$f" ] || continue
+      sig_record "$project" "$f"
     done
   } | sort | shasum -a 256 | cut -d' ' -f1
 }
@@ -159,6 +169,9 @@ current_branch() {
 # 恒久的に無効化されてしまう（静かに機能しなくなるのが最悪）。
 session_lock_acquire() {
   local ld age lock_epoch waited=0 max_wait="${EVALUATOR_GATE_LOCK_WAIT:-20}"
+  # 非数値・過大な値で無制限待ちにならないよう検証する（フック全体は 300 秒予算）
+  case "$max_wait" in ''|*[!0-9]*) max_wait=20 ;; esac
+  [ "$max_wait" -gt 60 ] && max_wait=60
   ensure_dirs
   ld="$GATE_STATE_DIR/$1.lock"
   while :; do
@@ -416,6 +429,11 @@ build_evidence() {
     printf '\n[TRUNCATED: evidence size cap 48KB]\n' >> "$wdir/excerpt.txt.cap"
     mv "$wdir/excerpt.txt.cap" "$wdir/excerpt.txt"
   fi
+
+  # 未 redact の中間ファイルを残さない。
+  # 評価者の read-only サンドボックスは「書き込み」を禁じるだけで読み取りは防げないため、
+  # 生 diff がディスクに残っているとサニタイズを迂回して読まれうる。
+  rm -f "$tracked"
 }
 
 # cat + 末尾改行の保証（改行なしで終わるデータが次の境界行と連結するのを防ぐ）

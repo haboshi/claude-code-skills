@@ -19,6 +19,7 @@ trap 'rm -rf "$wdir"' EXIT
 
 printf '%s' "（/evaluate によるオンデマンド評価。ビルダーの完了主張はありません。現在の作業状態そのものを評価してください）" > "$wdir/last_msg_raw.txt"
 build_evidence "$project" "$wdir/last_msg_raw.txt" "$wdir"
+rm -f "$wdir/last_msg_raw.txt"
 printf '%s\n' "You may not modify anything; judge only from the evidence in this prompt." > "$wdir/tool_note.txt"
 if [ -n "$focus" ]; then
   printf 'Additional focus requested by the user: %s\n' "$focus" > "$wdir/focus.txt"

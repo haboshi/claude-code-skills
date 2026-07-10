@@ -5,7 +5,14 @@ set -u
 
 TESTS_DIR=$(cd "$(dirname "$0")" && pwd)
 PLUG=$(cd "$TESTS_DIR/.." && pwd)
-WORK=$(mktemp -d "${TMPDIR:-/tmp}/evaluator-gate-tests.XXXXXX")
+
+# セットアップ失敗を「PASS」にしないための fail-fast
+die() { echo "SETUP FAILED: $*" >&2; exit 2; }
+command -v jq >/dev/null 2>&1 || die "jq が必要です"
+command -v git >/dev/null 2>&1 || die "git が必要です"
+
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/evaluator-gate-tests.XXXXXX") || die "mktemp"
+[ -d "$WORK" ] && [ -w "$WORK" ] || die "作業ディレクトリを作成できません"
 trap 'rm -rf "$WORK"' EXIT
 
 export EVALUATOR_GATE_HOME="$WORK/gatehome"
@@ -17,12 +24,13 @@ chmod +x "$TESTS_DIR/fakes/codex" "$TESTS_DIR/fakes/grok"
 mkdir -p "$FAKE_CALL_LOG_DIR"
 
 REPO="$WORK/testrepo"
-mkdir -p "$REPO"
-git -C "$REPO" init -q
-git -C "$REPO" config user.email "test@example.com"
+mkdir -p "$REPO" || die "repo dir"
+git -C "$REPO" init -q -b main 2>/dev/null || git -C "$REPO" init -q || die "git init"
+git -C "$REPO" config user.email "test@example.com" || die "git config"
 git -C "$REPO" config user.name "test"
 echo "base" > "$REPO/base.txt"
-git -C "$REPO" add -A && git -C "$REPO" commit -qm init
+git -C "$REPO" add -A && git -C "$REPO" commit -qm init || die "初期コミットに失敗"
+git -C "$REPO" rev-parse HEAD >/dev/null 2>&1 || die "HEAD がない"
 
 PASS=0; FAIL=0
 ok()  { PASS=$((PASS+1)); echo "PASS: $1"; }
@@ -139,7 +147,8 @@ out=$(stopjson $S "新規ファイルを追加して実装しました" | run_ga
 [ "$(calls)" = "2" ] || bad "T8c-precond" "初回評価が走っていない"
 reset_calls
 git -C "$REPO" add -A >/dev/null; git -C "$REPO" commit -qm "commit fresh" >/dev/null
-out=$(stopjson $S "コミットしました。完了です。" | run_gate)
+# 完了主張を含まない文面にする（含めると force_eval で再評価されるのが正しい挙動 — T25h 参照）
+out=$(stopjson $S "コミットしました" | run_gate)
 if [ "$(calls)" = "0" ] && [ "$(state_of $S | jq -r '.last_eval.codex')" = "same-content" ]; then
   ok "T8c untracked→tracked遷移でも受理済み内容は再評価しない"
 else bad "T8c" "calls=$(calls) codex=$(state_of $S | jq -r '.last_eval.codex')"; fi
@@ -448,20 +457,84 @@ if printf '%s' "$out" | jq -e '.systemMessage' >/dev/null 2>&1 && \
   ok "T25d amend検出時は黙って受理せず警告つき許可"
 else bad "T25d" "out=$out calls=$(calls)"; fi
 
-# --- T25e: ブランチ切替では既存ブランチの履歴を今回の作業として評価しない ---
+# --- T25e: 既存ブランチへの checkout（navigation）は履歴を評価しない ---
 S=s25e
 git -C "$REPO" checkout -q -b feature-x
 printf 'feature work\n' > "$REPO/feature.txt"
 git -C "$REPO" add -A >/dev/null; git -C "$REPO" commit -qm "feature commit" >/dev/null
 git -C "$REPO" checkout -q -
 out=$(startjson $S | run_start)   # main 上でベースライン
-git -C "$REPO" checkout -q feature-x   # baseline の子孫ブランチへ切替
+git -C "$REPO" checkout -q feature-x   # baseline の子孫の既存ブランチへ切替（clean）
 reset_calls
 out=$(stopjson $S "ブランチを切り替えました" | run_gate)
-if [ "$(calls)" = "0" ] && [ "$(state_of $S | jq -r '.last_eval.codex')" = "branch-switch" ]; then
-  ok "T25e ブランチ切替時は既存履歴を評価せずベースライン再設定"
+if [ "$(calls)" = "0" ] && [ "$(state_of $S | jq -r '.last_eval.codex')" = "navigation" ]; then
+  ok "T25e 既存ブランチへのcheckoutは履歴を評価せずベースライン再設定"
 else bad "T25e" "calls=$(calls) codex=$(state_of $S | jq -r '.last_eval.codex')"; fi
-git -C "$REPO" checkout -q -; git -C "$REPO" branch -q -D feature-x
+git -C "$REPO" checkout -q main; git -C "$REPO" branch -q -D feature-x
+
+# --- T25f: checkout -b して実装・コミットしたターンは「移動」ではなく作業として評価される ---
+S=s25f
+out=$(startjson $S | run_start)
+git -C "$REPO" checkout -q -b feature-y
+printf 'export function g(){ /* TODO */ }\n' > "$REPO/newbranch.js"
+git -C "$REPO" add -A >/dev/null; git -C "$REPO" commit -qm "work on new branch" >/dev/null
+export FAKE_CODEX_OUTPUT="BLOCK: 未実装のままです
+newbranch.js:1 — TODO 残置 — 実装を完了させる"
+reset_calls
+out=$(stopjson $S "新ブランチで実装してコミットしました" | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
+if printf '%s' "$out" | jq -e '.decision=="block"' >/dev/null 2>&1 && [ "$(calls)" = "2" ] && \
+   grep -q "newbranch.js" "$(promptf)"; then
+  ok "T25f checkout -b + commit は作業として評価される（無評価受理しない）"
+else bad "T25f" "calls=$(calls) out=$out"; fi
+export FAKE_CODEX_OUTPUT="ALLOW: ok"
+git -C "$REPO" checkout -q main; git -C "$REPO" branch -q -D feature-y 2>/dev/null
+
+# --- T25g: 評価者の cwd に未 redact の生ファイルを残さない ---
+S=s25g
+printf 'const K="sk-proj-RAWCANARY-abcdefghijk";\n' >> "$REPO/base.txt"
+reset_calls
+out=$(stopjson $S "完了しました。キーは sk-live-RAWMSGCANARY-9999 です" | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
+W=$(find "$EVALUATOR_GATE_HOME/tmp" -maxdepth 1 -type d -name "$S.*" | head -1)
+raw_leak=0
+if [ -n "$W" ]; then
+  [ -e "$W/last_msg_raw.txt" ] && raw_leak=1
+  [ -e "$W/tracked.diff" ] && raw_leak=1
+  grep -rqE "RAWCANARY|RAWMSGCANARY" "$W" 2>/dev/null && raw_leak=1
+fi
+if [ "$(calls)" = "2" ] && [ "$raw_leak" = "0" ]; then
+  ok "T25g 評価者cwdに未redactの生ファイル・canaryを残さない"
+else bad "T25g" "calls=$(calls) leak=$raw_leak files=$(ls "$W" 2>/dev/null | tr '\n' ' ')"; fi
+
+# --- T25h: WIP で ALLOW → 内容そのままコミット → 完了主張に差し替え、で再評価される ---
+S=s25h
+out=$(startjson $S | run_start)
+echo "wip body" > "$REPO/wip.txt"
+reset_calls
+out=$(stopjson $S "作業の途中経過です" | run_gate)
+[ "$(calls)" = "2" ] || bad "T25h-precond" "初回評価なし"
+git -C "$REPO" add -A >/dev/null; git -C "$REPO" commit -qm "commit wip as-is" >/dev/null
+reset_calls
+out=$(stopjson $S "全テストがパスし、完全に実装完了しました" | run_gate)
+if [ "$(calls)" = "2" ]; then
+  ok "T25h 同内容コミット+完了主張への差し替えは再評価（same-contentで素通りしない）"
+else bad "T25h" "calls=$(calls) codex=$(state_of $S | jq -r '.last_eval.codex')"; fi
+
+# --- T25i: コミットゼロの新規リポジトリでも初回コミットが評価される ---
+UREPO="$WORK/unborn"
+mkdir -p "$UREPO"; git -C "$UREPO" init -q -b main 2>/dev/null || git -C "$UREPO" init -q
+git -C "$UREPO" config user.email t@t; git -C "$UREPO" config user.name t
+(cd "$UREPO" && bash "$PLUG/scripts/gate-config.sh" on >/dev/null)
+jq -n --arg s ub --arg c "$UREPO" '{session_id:$s, cwd:$c, hook_event_name:"SessionStart", source:"startup"}' | run_start
+printf 'export function h(){ /* TODO */ }\n' > "$UREPO/root.js"
+git -C "$UREPO" add -A >/dev/null; git -C "$UREPO" commit -qm "root commit" >/dev/null
+export FAKE_CODEX_OUTPUT="BLOCK: 初回コミットに未実装
+root.js:1 — TODO 残置 — 実装を完了させる"
+reset_calls
+out=$(jq -n --arg s ub --arg c "$UREPO" '{session_id:$s, cwd:$c, hook_event_name:"Stop", stop_hook_active:false, last_assistant_message:"実装してコミットしました"}' | run_gate)
+if printf '%s' "$out" | jq -e '.decision=="block"' >/dev/null 2>&1 && [ "$(calls)" = "2" ]; then
+  ok "T25i コミットゼロのリポジトリでも初回コミットを評価"
+else bad "T25i" "calls=$(calls) out=$out"; fi
+export FAKE_CODEX_OUTPUT="ALLOW: ok"
 
 # --- T25b: stale ロック（フック強制終了の残骸）は回収され、ゲートが復活する ---
 echo "stale" >> "$REPO/base.txt"

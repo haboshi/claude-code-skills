@@ -286,13 +286,28 @@ if grep -rls '"stopReviewGate": *true' "$HOME/.claude/plugins/data/codex-openai-
 fi
 
 t0=$(date +%s)
-# cwd は evidence ディレクトリ（$wdir）を渡す: 評価者にリポジトリ本体の読取をさせない
-bash "$SCRIPT_DIR/run-evaluator.sh" codex "$wdir/prompt.md" "$wdir/out-codex.txt" "$wdir" "$EV_TIMEOUT" "$wdir/log-codex.txt" &
-pid_c=$!
-bash "$SCRIPT_DIR/run-evaluator.sh" grok "$wdir/prompt.md" "$wdir/out-grok.txt" "$wdir" "$EV_TIMEOUT" "$wdir/log-grok.txt" &
-pid_g=$!
-wait "$pid_c"; rc_c=$?
-wait "$pid_g"; rc_g=$?
+# cwd は evidence ディレクトリ（$wdir）を渡す: 評価者にリポジトリ本体の読取をさせない。
+# EVALUATOR_GATE_PROJECT で sandbox プロファイルの read-deny 対象（リポジトリ本体）を伝える
+export EVALUATOR_GATE_PROJECT="$project"
+if sandbox_available; then
+  # 読取隔離あり: sandbox 下の codex は grok と「同時起動」すると os error 1 で落ちるため、
+  # 順次に実行する（両評価者とも実測 20-40 秒なので順次でも予算内）。各タイムアウトは
+  # 合計がフック予算（300秒）に収まるよう短縮する。
+  seq_to="$EV_TIMEOUT"
+  [ "$seq_to" -gt 130 ] && seq_to=130
+  bash "$SCRIPT_DIR/run-evaluator.sh" codex "$wdir/prompt.md" "$wdir/out-codex.txt" "$wdir" "$seq_to" "$wdir/log-codex.txt"
+  rc_c=$?
+  bash "$SCRIPT_DIR/run-evaluator.sh" grok "$wdir/prompt.md" "$wdir/out-grok.txt" "$wdir" "$seq_to" "$wdir/log-grok.txt"
+  rc_g=$?
+else
+  # 読取隔離なし（Linux 等）: 従来どおり並列で実行する
+  bash "$SCRIPT_DIR/run-evaluator.sh" codex "$wdir/prompt.md" "$wdir/out-codex.txt" "$wdir" "$EV_TIMEOUT" "$wdir/log-codex.txt" &
+  pid_c=$!
+  bash "$SCRIPT_DIR/run-evaluator.sh" grok "$wdir/prompt.md" "$wdir/out-grok.txt" "$wdir" "$EV_TIMEOUT" "$wdir/log-grok.txt" &
+  pid_g=$!
+  wait "$pid_c"; rc_c=$?
+  wait "$pid_g"; rc_g=$?
+fi
 t1=$(date +%s); dur=$((t1 - t0))
 
 v_c=$(parse_verdict "$wdir/out-codex.txt" "$rc_c" "$wdir/reason-codex.txt")

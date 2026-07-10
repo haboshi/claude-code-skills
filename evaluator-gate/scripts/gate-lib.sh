@@ -24,6 +24,41 @@ resolve_project_root() {
   git -C "$1" rev-parse --show-toplevel 2>/dev/null
 }
 
+# 実パス（symlink 解決後）。macOS の sandbox は実パスで評価するため必須。
+real_path() {
+  ( cd "$1" 2>/dev/null && pwd -P ) 2>/dev/null || printf '%s' "$1"
+}
+
+# macOS の sandbox-exec 用プロファイルを生成する。
+# 方針: allow default（評価者 CLI を壊さない）+ 機密パスの読取を deny。
+#  - リポジトリ本体を deny → 評価者はサニタイズ済み evidence（GATE_TMP 配下）しか読めない
+#  - $HOME の典型的な機密（~/.ssh, ~/.aws, ~/.gnupg, ~/.netrc, ~/.npmrc 等）を deny
+# deny default 方式は評価者ランタイムの全依存を列挙する必要があり壊れやすいので採らない。
+# 引数: profile_out_file project_real_path
+write_sandbox_profile() {
+  local outf project
+  outf="$1"; project="$2"
+  {
+    printf '(version 1)\n'
+    printf '(allow default)\n'
+    [ -n "$project" ] && printf '(deny file-read* file-read-metadata (subpath "%s"))\n' "$project"
+    for d in .ssh .aws .gnupg .kube .docker .config/gcloud .npmrc .netrc .git-credentials; do
+      printf '(deny file-read* file-read-metadata (subpath "%s"))\n' "$HOME/$d"
+    done
+  } > "$outf" 2>/dev/null
+}
+
+# sandbox-exec による読取隔離を使うか。
+# opt-in（EVALUATOR_GATE_SANDBOX=1）でのみ有効。既定は無効。
+# 理由: sandbox-exec 隔離は単独実行では完全に機能する（リポジトリ本体・$HOME 機密の読取を
+# OS レベルで遮断）が、Stop フック実運用経路では codex CLI が os error 1 で不安定になる
+# 現象があり原因未特定。既定では従来の担保（プロンプト指示 + cwd=evidence + grok --deny Read
+# + 生ファイル削除）で運用し、OS レベル隔離が必要な場合に明示的に有効化する。
+sandbox_available() {
+  [ "${EVALUATOR_GATE_SANDBOX:-0}" = "1" ] || return 1
+  command -v sandbox-exec >/dev/null 2>&1
+}
+
 # 引数: project 絶対パス → enabled=true なら 0
 is_enabled() {
   [ -f "$GATE_CONFIG" ] || return 1

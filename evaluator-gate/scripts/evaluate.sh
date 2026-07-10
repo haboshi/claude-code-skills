@@ -36,7 +36,9 @@ render_template "$PLUGIN_ROOT/prompts/advisory.md" "$wdir/prompt.md" \
   "$wdir/tool_note.txt" "$wdir/msg.txt" "$wdir/summary.txt" "$wdir/excerpt.txt" "$wdir/focus.txt"
 
 EV_TIMEOUT="${EVALUATOR_GATE_EVAL_TIMEOUT:-240}"
+[ "$EV_TIMEOUT" -gt 240 ] 2>/dev/null && EV_TIMEOUT=240
 # cwd は evidence ディレクトリ: 評価者にリポジトリ本体の読取をさせない（stop-gate.sh と同方針）
+export EVALUATOR_GATE_PROJECT="$project"
 bash "$SCRIPT_DIR/run-evaluator.sh" codex "$wdir/prompt.md" "$wdir/out-codex.txt" "$wdir" "$EV_TIMEOUT" "$wdir/log-codex.txt" &
 pid_c=$!
 bash "$SCRIPT_DIR/run-evaluator.sh" grok "$wdir/prompt.md" "$wdir/out-grok.txt" "$wdir" "$EV_TIMEOUT" "$wdir/log-grok.txt" &

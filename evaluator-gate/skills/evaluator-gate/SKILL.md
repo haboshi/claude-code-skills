@@ -102,9 +102,11 @@ Stop 発火
   4. *痕跡を残さない* — evidence 一時ファイルは umask 077 で作成し**評価後に即削除**（`EVALUATOR_GATE_KEEP_TMP=1` でデバッグ保持）。
   5. *実行バイナリの検証* — 毎 Stop で起動する grok バイナリは、自分または root の所有かつ group/other 書込不可であることを確認してから実行する。
 
+  5.5. *OS レベルの読取隔離（opt-in）* — `EVALUATOR_GATE_SANDBOX=1` を設定すると、macOS の `sandbox-exec` で評価者を包み、**リポジトリ本体と `$HOME` の機密（`~/.ssh` `~/.aws` `~/.gnupg` `~/.kube` `~/.docker` `~/.config/gcloud` `~/.npmrc` `~/.netrc` `~/.git-credentials`）の読取を OS レベルで遮断**する。実測で、sandbox なしでは Codex がリポジトリ内の秘密ファイルを読めたのに対し、sandbox ありでは `Operation not permitted` となることを確認済み。
+
   **それでも防げないもの**:
   - 上記パターンに合致しない形式の secret（独自形式のトークン、平文の顧客データ等）。
-  - **評価者の読取そのものは OS レベルで封じられない**。Grok は `--deny Read` で拒否できるが、**Codex CLI の `-s read-only` は「書き込み禁止」であってファイル読取は許可される**。プロンプトで「evidence だけで判断せよ」と指示し、作業ディレクトリにサニタイズ済みのファイルしか置かないことで担保しているが、評価者がリポジトリ本体や `$HOME` を読むことを強制的に阻止する仕組みは無い（真の隔離にはコンテナ／`sandbox-exec` が必要）。
+  - **既定では評価者の読取は OS レベルで封じられない**。Grok は `--deny Read` で拒否できるが、**Codex CLI の `-s read-only` は「書き込み禁止」であってファイル読取は許可される**。既定ではプロンプト指示・cwd=evidence・生ファイル削除で担保している。
 
   したがって **「無条件に全プロジェクトで有効化してよい」ものではない**。機密性の高いリポジトリではゲートを OFF のままにすること（既定 OFF）。
 - **自己免除は紳士協定**: OMC モード state や `/evaluator-gate off`・`EVALUATOR_GATE_BYPASS` は、ビルダー自身が技術的には操作できてしまう（Stop フックというアーキテクチャの本質的限界。強制セキュリティコントロールではない）。スキップ時は stderr に理由を記録するので、transcript から事後検証は可能。
@@ -122,6 +124,8 @@ Stop 発火
 - **ブロックが不当だと思ったら**: `/evaluate` で advisory の所見を取り、人間が判断する。緊急脱出は環境変数 `EVALUATOR_GATE_BYPASS=1`（人間専用）。
 - **state をリセットしたい**: `rm ~/.claude/evaluator-gate/state/<session_id>.json`。
 - **評価が遅い**: `EVALUATOR_GATE_EVAL_TIMEOUT`（秒、既定240）と `EVALUATOR_GATE_CODEX_EFFORT`（既定 medium）で調整。モデルは `EVALUATOR_GATE_CODEX_MODEL` / `EVALUATOR_GATE_GROK_MODEL`（既定 grok-4.5）で上書き可能。
+- **OS レベル読取隔離を使いたい**: `EVALUATOR_GATE_SANDBOX=1`（macOS のみ）。有効時は評価者を `sandbox-exec` で包み、順次実行に切り替える（sandbox 下の Codex は並列起動で不安定なため）。
+  **既知の問題**: sandbox 有効時、Stop フック経由で起動された Codex が `Error: Operation not permitted (os error 1)` で即座に落ちることがある（`run-evaluator.sh` を直接実行した場合は正常動作し、リポジトリ読取も正しく遮断される）。原因未特定。この場合は Grok 単独判定に縮退する（差し戻し機能自体は動作する）。両評価者を確実に使いたい場合は sandbox を無効（既定）のままにすること。
 
 ## 不変条件
 

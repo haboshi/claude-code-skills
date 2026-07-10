@@ -646,6 +646,53 @@ if [ "$fresh_calls" = "0" ] && [ "$stale_calls" = "2" ] && [ "$lock_left" = "0" 
 else bad "T25b" "fresh=$fresh_calls stale=$stale_calls lock_left=$lock_left"; fi
 rmdir "$EVALUATOR_GATE_HOME/state/s25b.lock" 2>/dev/null
 
+# --- T25o: sandbox プロファイルがリポジトリ本体と機密を read-deny する（実 sandbox-exec） ---
+if command -v sandbox-exec >/dev/null 2>&1; then
+  . "$PLUG/scripts/gate-lib.sh"
+  SBREPO=$(mktemp -d "$WORK/sbrepo.XXXXXX"); SBREPO_REAL=$(cd "$SBREPO" && pwd -P)
+  SBWD=$(mktemp -d "$WORK/sbwd.XXXXXX"); SBWD_REAL=$(cd "$SBWD" && pwd -P)
+  echo "SB-REPO-CANARY" > "$SBREPO/x.txt"; echo "evidence-ok" > "$SBWD/ev.txt"
+  write_sandbox_profile "$SBWD/.eg-sandbox.sb" "$SBREPO_REAL"
+  sb_ev=$(cd "$SBWD" && sandbox-exec -f "$SBWD/.eg-sandbox.sb" /bin/cat "$SBWD_REAL/ev.txt" 2>/dev/null)
+  sb_repo=$(cd "$SBWD" && sandbox-exec -f "$SBWD/.eg-sandbox.sb" /bin/cat "$SBREPO_REAL/x.txt" 2>&1)
+  sb_ssh=$(sandbox-exec -f "$SBWD/.eg-sandbox.sb" /bin/ls "$HOME/.ssh" 2>&1)
+  if [ "$sb_ev" = "evidence-ok" ] && echo "$sb_repo" | grep -q "not permitted" && \
+     echo "$sb_ssh" | grep -q "not permitted"; then
+    ok "T25o sandbox は evidence を許可しリポジトリ本体/~/.ssh を read-deny"
+  else bad "T25o" "ev=$sb_ev repo=$sb_repo"; fi
+else
+  ok "T25o sandbox-exec 不在のためスキップ（この環境では隔離なし）"
+fi
+
+# --- T25p: sandbox は既定で無効（両評価者が並列で動く）。opt-in で有効化できる ---
+if sandbox_available 2>/dev/null; then
+  bad "T25p" "EVALUATOR_GATE_SANDBOX 未設定なのに sandbox_available が真"
+else
+  ok "T25p sandbox は既定で無効（opt-in）"
+fi
+if command -v sandbox-exec >/dev/null 2>&1; then
+  if ( export EVALUATOR_GATE_SANDBOX=1; sandbox_available ); then
+    ok "T25q EVALUATOR_GATE_SANDBOX=1 で sandbox が有効化される"
+  else bad "T25q" "opt-in しても有効にならない"; fi
+else
+  ok "T25q sandbox-exec 不在のためスキップ"
+fi
+
+# --- T25r: sandbox opt-in 時は順次実行になり、両評価者が呼ばれプロファイルが生成される ---
+if command -v sandbox-exec >/dev/null 2>&1; then
+  S=s25r
+  echo "sandbox seq test" >> "$REPO/base.txt"
+  reset_calls
+  out=$(stopjson $S "完了しました" | EVALUATOR_GATE_SANDBOX=1 EVALUATOR_GATE_KEEP_TMP=1 run_gate)
+  W=$(find "$EVALUATOR_GATE_HOME/tmp" -maxdepth 1 -type d -name "$S.*" | head -1)
+  prof_count=$(find "$W" -name ".eg-sandbox.sb" 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$(calls)" = "2" ] && [ "$prof_count" -ge 1 ]; then
+    ok "T25r sandbox opt-in でも両評価者が呼ばれプロファイルが生成される"
+  else bad "T25r" "calls=$(calls) profiles=$prof_count"; fi
+else
+  ok "T25r sandbox-exec 不在のためスキップ"
+fi
+
 # --- T26: off で完全無音に戻る ---
 (cd "$REPO" && bash "$PLUG/scripts/gate-config.sh" off >/dev/null)
 echo "after off" >> "$REPO/base.txt"

@@ -1,6 +1,6 @@
 ---
 name: provider-realtime-voice
-description: リアルタイム音声会話（OpenAI Realtime API / Gemini Live API）の統合をアプリに実装・設計するときのポート定義・アダプタ雛形・conformance テスト・モデルカタログの供給元。TypeScript(Zod/vitest)。セッション+イベントストリーム型ポート、barge-in、VAD 3方式、音声コーデック分離を扱う。設計原則そのものは provider-harness メタスキルを参照する。単発のテキスト読み上げ（一方向TTS）は tts プラグインを使い、本スキルは双方向のリアルタイム音声「対話」統合が対象。「リアルタイム音声」「音声会話 統合」「Realtime API」「Gemini Live」「音声エージェント」「electron/ブラウザで音声対話」「アプリに音声通話機能を組み込む」「電話ボット」「コールセンターAI」「Twilio 音声連携」で発動。
+description: リアルタイム音声会話（OpenAI Realtime API / Gemini Live API）の統合をアプリに実装・設計するときのポート定義・アダプタ雛形・conformance テスト・モデルカタログの供給元。TypeScript(Zod/vitest)。セッション+イベントストリーム型ポート、barge-in、VAD 3方式、reasoning effort（gpt-realtime-2.1 の reasoning.effort / Gemini の thinkingLevel）、音声コーデック分離を扱う。設計原則そのものは provider-harness メタスキルを参照する。単発のテキスト読み上げ（一方向TTS）は tts プラグインを使い、本スキルは双方向のリアルタイム音声「対話」統合が対象。「リアルタイム音声」「音声会話 統合」「Realtime API」「Gemini Live」「音声エージェント」「electron/ブラウザで音声対話」「アプリに音声通話機能を組み込む」「電話ボット」「コールセンターAI」「Twilio 音声連携」で発動。
 ---
 
 # provider-realtime-voice — リアルタイム音声プロバイダ統合ドメインスキル
@@ -72,8 +72,15 @@ interface RealtimeVoiceSession {
 `speech.started` の正常系イベントとして表現する（`references/port.md`「二層エラーにした理由」参照）。
 
 `RealtimeCapabilities` は `bargeIn` / `serverVad` / `directRelayFormats`（例: `g711_ulaw` の素通し可否）/
-`parallelToolCalls` / `sessionResumption` 等でプロバイダ非対称性を正直に公開する。ダックタイピング
-（`if (provider.type === 'openai-realtime')` のような分岐）を撲滅するための型である。
+`parallelToolCalls` / `reasoningEffortLevels` / `sessionResumption` 等でプロバイダ非対称性を正直に公開する。
+ダックタイピング（`if (provider.type === 'openai-realtime')` のような分岐）を撲滅するための型である。
+
+`reasoningEffort`（`minimal`〜`xhigh` の5段階）は、OpenAI `reasoning.effort` と Gemini `thinkingLevel` が
+「レイテンシと知能のトレードオフ」として両プロバイダに対称化したため、providerOptions 素通しから
+正規化フィールドへ昇格させた面（メタスキル `escape-hatch.md`「escape hatch からの昇格」の実例）。
+値の集合は非対称（xhigh は OpenAI のみ）なので、対応レベルは `capabilities().reasoningEffortLevels` で
+公開し、非対応レベルは黙って丸めずに `unsupported` で拒否する。世代ゲートされたノブのため
+明示指定時のみ wire に送出する（`references/drift-landmines.md` 参照）。
 
 コーデック変換は `AudioCodecPort`（`toCanonical`/`fromCanonical`）として別ポートに分離してある。
 正準フォーマットは PCM16 16kHz。WebRTC 経路ではブラウザが Opus/SDP でコーデックを抽象化するため
@@ -94,6 +101,10 @@ interface RealtimeVoiceSession {
 - **プロバイダ固有イベントは `handleXxxEvent()` に閉じ込め**、正規化しきれないものは `raw` へ逃がす
 - **VAD 設定は `VadConfig`（`semantic_vad` / `server_vad` / `local` の3方式）を受け取り、プロバイダの
   wire フォーマットへアダプタ内で変換する**（`references/session-lifecycle.md`「VAD 3方式の選び方」参照）
+- **`reasoningEffort` は明示指定時のみ wire に載せる**: OpenAI は `session.reasoning.effort`、Gemini は
+  `generationConfig.thinkingConfig.thinkingLevel` へ写像する。Gemini は xhigh 非対応のため接続前に
+  `unsupported`（failoverable）で拒否する。5段階の使い分けは `references/model-catalog.md`
+  「reasoning.effort の指定と選び方」参照
 - **barge-in は二軸（`bargeIn.serverAuto` / `bargeIn.clientCancel`）で符号化する**: 両プロバイダとも
   サーバ VAD による自動割り込みは対応。クライアント起動の明示キャンセル `interrupt()` は OpenAI のみ
   （`response.cancel` + `input_audio_buffer.clear`、再生位置が分かる場合は `conversation.item.truncate` 併用を
@@ -126,9 +137,9 @@ fetch-db MCP（OpenAI 公式ドキュメントは Cloudflare Bot Management で 
 - `capabilities()` が `RealtimeCapabilities` の形状を満たすこと
 
 を同一スイートで検証する。加えて各アダプタ固有のテスト（OpenAI: エラー分類マッピング・raw escape
-hatch・`interrupt()` の wire メッセージ・VAD 設定の配線。Gemini: 24kHz→16kHz ダウンサンプルの正確性・
-tools 非正規化の配線・`sessionResumption`/`bargeIn` の非対称性・`interrupted` が正常系イベントとして
-届くこと）も含む。
+hatch・`interrupt()` の wire メッセージ・VAD 設定の配線・`reasoningEffort` の配線。Gemini: 24kHz→16kHz
+ダウンサンプルの正確性・tools 非正規化の配線・`thinkingLevel` への写像と xhigh の `unsupported` 拒否・
+`sessionResumption`/`bargeIn` の非対称性・`interrupted` が正常系イベントとして届くこと）も含む。
 
 **共通スイートの限界**: 実 WebSocket 接続を張る Pin+Verify テストは、本テンプレートには含めていない。
 image-gen の REST API と異なり、実 WS ハンドシェイク+セッションライフサイクル全体を模擬する必要があり、

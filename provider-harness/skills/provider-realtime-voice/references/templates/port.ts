@@ -81,6 +81,17 @@ export const TranscriptionConfigSchema = z.union([
 ])
 export type TranscriptionConfig = z.infer<typeof TranscriptionConfigSchema>
 
+// ===== reasoning effort（escape hatch から正規化フィールドへ昇格した実例） =====
+// OpenAI Realtime（gpt-realtime-2 以降）は session.reasoning.effort（minimal/low/medium/high/xhigh）、
+// Gemini Live（gemini-3.1-flash-live 系）は thinkingConfig.thinkingLevel（minimal/low/medium/high）を
+// 持ち、「レイテンシと知能のトレードオフ」という同一の意味論が両プロバイダに存在するようになった
+// （../model-catalog.md 参照）。片方にしかなかった時代は providerOptions 素通しが正しかったが、
+// 対称化した面は正規化する（provider-harness メタスキル escape-hatch.md「escape hatch からの昇格」参照）。
+// 値の集合は非対称（xhigh は OpenAI のみ）。対応レベルは capabilities().reasoningEffortLevels で公開し、
+// 非対応レベルを渡されたアダプタは open() 時に kind: 'unsupported' を投げる（黙って丸めない）。
+export const ReasoningEffortSchema = z.enum(['minimal', 'low', 'medium', 'high', 'xhigh'])
+export type ReasoningEffort = z.infer<typeof ReasoningEffortSchema>
+
 export const RealtimeSessionConfigSchema = z.object({
   instructions: z.string().optional(),
   voice: z.string().optional(),
@@ -91,6 +102,10 @@ export const RealtimeSessionConfigSchema = z.object({
   // session.update で暗黙 default を送ると旧モデルでセッション切断を招いた実録がある
   // （../drift-landmines.md 参照）。明示指定時のみアダプタから送出すること。
   parallelToolCalls: z.boolean().optional(),
+  // reasoning のノブ。世代ゲートされたパラメータ（reasoning 非対応の旧世代モデルには存在しない）
+  // のため、parallelToolCalls と同じく明示指定時のみアダプタから送出する
+  // （../drift-landmines.md「世代ゲートされた能力ノブ」参照）。
+  reasoningEffort: ReasoningEffortSchema.optional(),
   // open() が session.ready に到達するまでのタイムアウト（ms）。既定 10000ms。
   // 正準 timeout 種は本来 request/response の応答遅延を想定した分類だが、「セッション確立自体が
   // 完了しない」という接続確立フェーズの遅延にも同じ意味論（retryable: 一時的な遅延の可能性が
@@ -160,6 +175,10 @@ export const RealtimeCapabilitiesSchema = z.object({
   // 意味する（AudioCodecPort 参照）。
   directRelayFormats: z.array(z.string()),
   parallelToolCalls: z.boolean(),
+  // 対応する reasoning effort レベル。空配列 = reasoning ノブなし（directRelayFormats と同じ
+  // 「空 = 非対応」の規約）。値の集合がプロバイダ非対称（xhigh は OpenAI のみ）なため、boolean で
+  // なくレベル配列で公開する。アダプタは未掲載のレベルを渡されたら open() で unsupported を投げる。
+  reasoningEffortLevels: z.array(ReasoningEffortSchema),
   // セッション再開（切断後に会話コンテキストを引き継いで再接続）。Gemini のみ対応（handle 方式）。
   sessionResumption: z.boolean(),
   maxSessionDurationMs: z.number().int().optional(),

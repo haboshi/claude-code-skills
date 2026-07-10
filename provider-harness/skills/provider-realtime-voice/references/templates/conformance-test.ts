@@ -211,6 +211,7 @@ function runCommonConformanceTests(
       expect(typeof caps.bargeIn.clientCancel).toBe('boolean')
       expect(typeof caps.serverVad).toBe('boolean')
       expect(Array.isArray(caps.directRelayFormats)).toBe(true)
+      expect(Array.isArray(caps.reasoningEffortLevels)).toBe(true)
       expect(typeof caps.sessionResumption).toBe('boolean')
     })
   })
@@ -443,6 +444,37 @@ describe('openai アダプタ固有: interrupt() の conversation.item.truncate 
   })
 })
 
+describe('openai アダプタ固有: reasoningEffort 配線（世代ゲートされたノブ）', () => {
+  it('reasoningEffort 指定時は session.update に reasoning.effort として反映される', async () => {
+    const { factory, sockets } = makeFactory()
+    const adapter = new OpenAIRealtimeAdapter({ apiKey: 'test-key', socketFactory: factory })
+    const sessionPromise = adapter.open({ reasoningEffort: 'low' })
+    await new Promise((r) => setTimeout(r, 10))
+    const socket = sockets[0]!
+    const sessionUpdate = JSON.parse(socket.sent[0]!) as { session: { reasoning?: { effort: string } } }
+    expect(sessionUpdate.session.reasoning?.effort).toBe('low')
+    socket.emit('message', JSON.stringify({ type: 'session.updated', session: {} }))
+    await sessionPromise
+  })
+
+  it('reasoningEffort 未指定では session.update に reasoning を含めない（暗黙 default 禁止）', async () => {
+    const { factory, sockets } = makeFactory()
+    const adapter = new OpenAIRealtimeAdapter({ apiKey: 'test-key', socketFactory: factory })
+    const sessionPromise = adapter.open({})
+    await new Promise((r) => setTimeout(r, 10))
+    const socket = sockets[0]!
+    const sessionUpdate = JSON.parse(socket.sent[0]!) as { session: { reasoning?: unknown } }
+    expect(sessionUpdate.session.reasoning).toBeUndefined()
+    socket.emit('message', JSON.stringify({ type: 'session.updated', session: {} }))
+    await sessionPromise
+  })
+
+  it('capabilities().reasoningEffortLevels は xhigh を含む5段階', () => {
+    const adapter = new OpenAIRealtimeAdapter({ apiKey: 'k', socketFactory: makeFactory().factory })
+    expect(adapter.capabilities().reasoningEffortLevels).toEqual(['minimal', 'low', 'medium', 'high', 'xhigh'])
+  })
+})
+
 describe('openai アダプタ固有: VAD 設定の配線', () => {
   it('semantic_vad を指定すると session.update に turn_detection として反映される', async () => {
     const { factory, sockets } = makeFactory()
@@ -519,6 +551,48 @@ describe('gemini アダプタ固有: transcription 配線（H3）', () => {
       expect(event.role).toBe('assistant')
       expect(event.text).toBe('hello')
     }
+  })
+})
+
+describe('gemini アダプタ固有: reasoningEffort 配線（thinkingLevel への写像と xhigh 拒否）', () => {
+  it('reasoningEffort 指定時は setup の generationConfig.thinkingConfig.thinkingLevel として反映される', async () => {
+    const { factory, sockets } = makeFactory()
+    const adapter = new GeminiLiveAdapter({ apiKey: 'test-key', socketFactory: factory })
+    const sessionPromise = adapter.open({ reasoningEffort: 'medium' })
+    await new Promise((r) => setTimeout(r, 10))
+    const socket = sockets[0]!
+    const setupMsg = JSON.parse(socket.sent[0]!) as { setup: { generationConfig: { thinkingConfig?: { thinkingLevel: string } } } }
+    expect(setupMsg.setup.generationConfig.thinkingConfig?.thinkingLevel).toBe('medium')
+    socket.emit('message', JSON.stringify({ setupComplete: {} }))
+    await sessionPromise
+  })
+
+  it('reasoningEffort 未指定では setup に thinkingConfig を含めない（暗黙 default 禁止）', async () => {
+    const { factory, sockets } = makeFactory()
+    const adapter = new GeminiLiveAdapter({ apiKey: 'test-key', socketFactory: factory })
+    const sessionPromise = adapter.open({})
+    await new Promise((r) => setTimeout(r, 10))
+    const socket = sockets[0]!
+    const setupMsg = JSON.parse(socket.sent[0]!) as { setup: { generationConfig: { thinkingConfig?: unknown } } }
+    expect(setupMsg.setup.generationConfig.thinkingConfig).toBeUndefined()
+    socket.emit('message', JSON.stringify({ setupComplete: {} }))
+    await sessionPromise
+  })
+
+  it('xhigh（非対応レベル）は接続前に unsupported かつ failoverable で reject する', async () => {
+    const { factory, sockets } = makeFactory()
+    const adapter = new GeminiLiveAdapter({ apiKey: 'test-key', socketFactory: factory })
+    await expect(adapter.open({ reasoningEffort: 'xhigh' })).rejects.toMatchObject({
+      kind: 'unsupported',
+      failoverable: true,
+    })
+    // 拒否は接続前に行われる（ソケットを一切張らない）。
+    expect(sockets.length).toBe(0)
+  })
+
+  it('capabilities().reasoningEffortLevels は xhigh を含まない4段階（OpenAI との非対称）', () => {
+    const adapter = new GeminiLiveAdapter({ apiKey: 'k', socketFactory: makeFactory().factory })
+    expect(adapter.capabilities().reasoningEffortLevels).toEqual(['minimal', 'low', 'medium', 'high'])
   })
 })
 

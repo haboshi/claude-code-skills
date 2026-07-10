@@ -86,6 +86,15 @@ function buildSetupMessage(config: RealtimeSessionConfig, modelId: string): Reco
         ...(config.voice && {
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: config.voice } } },
         }),
+        // reasoning ノブ。gemini-3.1-flash-live 系の thinkingLevel（minimal/low/medium/high）へ写像する。
+        // xhigh は open() 側で unsupported として拒否済み（capabilities().reasoningEffortLevels 参照）。
+        // 世代ゲートされたノブのため明示指定時のみ送出する（gemini-2.5 系は thinkingLevel でなく
+        // thinkingBudget を使う別形状。必要なら providerOptions.gemini 経由で渡す）。
+        // 生 setup メッセージ上の位置は speechConfig と同じ generationConfig 配下と推定して配線した
+        // （SDK レベルでは確認済みだが生ワイヤ位置は未検証。../model-catalog.md「未確認事項」参照）。
+        ...(config.reasoningEffort !== undefined && {
+          thinkingConfig: { thinkingLevel: config.reasoningEffort },
+        }),
       },
       ...(config.instructions && { systemInstruction: { parts: [{ text: config.instructions }] } }),
       // 意図的に非正規化。Gemini は { functionDeclarations: [...] } 形状のままプロバイダに渡す
@@ -225,6 +234,9 @@ export class GeminiLiveAdapter implements RealtimeVoicePort {
       // Gemini はレート交渉不可の固定フォーマットのため素通し不可（codec 必須。上記ファイル冒頭コメント参照）。
       directRelayFormats: [],
       parallelToolCalls: false,
+      // thinkingLevel の4段階（xhigh なし — OpenAI との非対称。../model-catalog.md 参照）。
+      // gemini-2.5 系（thinkingBudget 方式）は対象外で、providerOptions.gemini 経由で渡す。
+      reasoningEffortLevels: ['minimal', 'low', 'medium', 'high'],
       // handle 方式のセッション再開に対応（終了後2時間有効。../session-lifecycle.md 参照）。
       sessionResumption: true,
       // 音声のみ15分・音声+映像2分の非対称な上限があるため、より厳しい方を保守的に採用する。
@@ -233,6 +245,20 @@ export class GeminiLiveAdapter implements RealtimeVoicePort {
   }
 
   async open(config: RealtimeSessionConfig): Promise<RealtimeVoiceSession> {
+    // 非対応の reasoning レベル（xhigh）は接続前に unsupported で拒否する。黙って high に丸めると
+    // 「指定したつもりの品質が出ていない」事故が観測不能になるため、丸めずにエラーにする
+    // （port.ts「reasoning effort」節参照）。failoverable: true — 全レベル対応の OpenAI アダプタへ
+    // フェイルオーバーする余地がある。
+    if (config.reasoningEffort !== undefined && !this.capabilities().reasoningEffortLevels.includes(config.reasoningEffort)) {
+      throw new RealtimeVoiceError({
+        kind: 'unsupported',
+        message: `GeminiLiveAdapter は reasoningEffort '${config.reasoningEffort}' に対応していません（対応レベル: minimal/low/medium/high）`,
+        providerName: 'gemini',
+        retryable: false,
+        failoverable: true,
+      })
+    }
+
     const apiKey = this.apiKey ?? process.env.GEMINI_API_KEY
     if (!apiKey) {
       throw new RealtimeVoiceError({

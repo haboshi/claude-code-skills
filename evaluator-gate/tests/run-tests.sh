@@ -652,7 +652,7 @@ if command -v sandbox-exec >/dev/null 2>&1; then
   SBREPO=$(mktemp -d "$WORK/sbrepo.XXXXXX"); SBREPO_REAL=$(cd "$SBREPO" && pwd -P)
   SBWD=$(mktemp -d "$WORK/sbwd.XXXXXX"); SBWD_REAL=$(cd "$SBWD" && pwd -P)
   echo "SB-REPO-CANARY" > "$SBREPO/x.txt"; echo "evidence-ok" > "$SBWD/ev.txt"
-  write_sandbox_profile "$SBWD/.eg-sandbox.sb" "$SBREPO_REAL"
+  write_sandbox_profile "$SBWD/.eg-sandbox.sb" "$SBREPO_REAL" "$SBWD_REAL"
   sb_ev=$(cd "$SBWD" && sandbox-exec -f "$SBWD/.eg-sandbox.sb" /bin/cat "$SBWD_REAL/ev.txt" 2>/dev/null)
   sb_repo=$(cd "$SBWD" && sandbox-exec -f "$SBWD/.eg-sandbox.sb" /bin/cat "$SBREPO_REAL/x.txt" 2>&1)
   sb_ssh=$(sandbox-exec -f "$SBWD/.eg-sandbox.sb" /bin/ls "$HOME/.ssh" 2>&1)
@@ -660,8 +660,18 @@ if command -v sandbox-exec >/dev/null 2>&1; then
      echo "$sb_ssh" | grep -q "not permitted"; then
     ok "T25o sandbox は evidence を許可しリポジトリ本体/~/.ssh を read-deny"
   else bad "T25o" "ev=$sb_ev repo=$sb_repo"; fi
+
+  # 書き込み: 作業ディレクトリ配下は許可、それ以外（$HOME・リポジトリ）は拒否
+  sb_w_ok=$(cd "$SBWD" && sandbox-exec -f "$SBWD/.eg-sandbox.sb" /usr/bin/touch "$SBWD_REAL/w.txt" 2>&1; [ -f "$SBWD/w.txt" ] && echo written)
+  sb_w_home=$(sandbox-exec -f "$SBWD/.eg-sandbox.sb" /usr/bin/touch "$HOME/.eg-write-probe" 2>&1; [ -f "$HOME/.eg-write-probe" ] && echo written)
+  sb_w_repo=$(sandbox-exec -f "$SBWD/.eg-sandbox.sb" /usr/bin/touch "$SBREPO_REAL/w.txt" 2>&1; [ -f "$SBREPO/w.txt" ] && echo written)
+  rm -f "$HOME/.eg-write-probe"
+  if [ "$sb_w_ok" = "written" ] && [ "$sb_w_home" != "written" ] && [ "$sb_w_repo" != "written" ]; then
+    ok "T25o2 sandbox は作業ディレクトリ外への書込を拒否（\$HOME/リポジトリ）"
+  else bad "T25o2" "wd=$sb_w_ok home=$sb_w_home repo=$sb_w_repo"; fi
 else
   ok "T25o sandbox-exec 不在のためスキップ（この環境では隔離なし）"
+  ok "T25o2 sandbox-exec 不在のためスキップ"
 fi
 
 # --- T25p: sandbox は既定で無効（両評価者が並列で動く）。opt-in で有効化できる ---

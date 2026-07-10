@@ -30,17 +30,39 @@ real_path() {
 }
 
 # macOS の sandbox-exec 用プロファイルを生成する。
-# 方針: allow default（評価者 CLI を壊さない）+ 機密パスの読取を deny。
-#  - リポジトリ本体を deny → 評価者はサニタイズ済み evidence（GATE_TMP 配下）しか読めない
-#  - $HOME の典型的な機密（~/.ssh, ~/.aws, ~/.gnupg, ~/.netrc, ~/.npmrc 等）を deny
-# deny default 方式は評価者ランタイムの全依存を列挙する必要があり壊れやすいので採らない。
-# 引数: profile_out_file project_real_path
+# 方針: ベースは allow default（評価者 CLI のランタイム依存を全列挙する deny default は
+# 壊れやすい）だが、**書き込みは既定拒否**にして必要な場所だけ許可し、読取は
+# リポジトリ本体と $HOME の機密を拒否する。SBPL は「最後にマッチしたルールが勝つ」。
+#
+# 得られる性質（評価者は untrusted な diff / 完了主張を読むため、注入耐性が要る）:
+#  - リポジトリ本体を読めない → サニタイズ済み evidence 以外を外部に持ち出せない
+#  - $HOME の機密（~/.ssh 等）を読めない
+#  - 作業ディレクトリと評価者ランタイムの領域以外に書き込めない
+#  - 評価者 CLI 自身のサンドボックス（codex -s read-only）はそのまま併用する（多層防御）。
+#    入れ子の sandbox_apply が拒否されるため、モデル駆動のシェル実行も事実上できなくなる。
+#
+# ネットワークは許可のまま（評価者はサブスク認証で LLM プロバイダに接続する必要がある）。
+# process-exec も許可のまま（CLI が自身のバイナリ/ランタイムを起動するため）。
+#
+# 引数: profile_out_file project_real_path write_root_real_path
 write_sandbox_profile() {
-  local outf project
-  outf="$1"; project="$2"
+  local outf project write_root d
+  outf="$1"; project="$2"; write_root="${3:-}"
   {
     printf '(version 1)\n'
     printf '(allow default)\n'
+
+    printf '\n; --- 書き込み: 既定で拒否し、必要な場所だけ許可（後勝ち） ---\n'
+    printf '(deny file-write*)\n'
+    [ -n "$write_root" ] && printf '(allow file-write* (subpath "%s"))\n' "$write_root"
+    printf '(allow file-write* (subpath "/private/tmp"))\n'
+    printf '(allow file-write* (subpath "/private/var/folders"))\n'
+    printf '(allow file-write* (subpath "/dev"))\n'
+    for d in .codex .grok "Library/Caches"; do
+      printf '(allow file-write* (subpath "%s"))\n' "$HOME/$d"
+    done
+
+    printf '\n; --- 読み取り: リポジトリ本体と $HOME 機密を拒否 ---\n'
     [ -n "$project" ] && printf '(deny file-read* file-read-metadata (subpath "%s"))\n' "$project"
     for d in .ssh .aws .gnupg .kube .docker .config/gcloud .npmrc .netrc .git-credentials; do
       printf '(deny file-read* file-read-metadata (subpath "%s"))\n' "$HOME/$d"

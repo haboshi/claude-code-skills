@@ -24,17 +24,14 @@ fi
 run_cwd="$cwd/.run-$kind"
 mkdir -p "$run_cwd" 2>/dev/null || run_cwd="$cwd"
 
-# 読取隔離の適用範囲:
-#  - codex: sandbox-exec で包む（codex の read-only は読取を防がないため OS レベル隔離が必要）
-#  - grok:  sandbox-exec で包まない。理由は2つ:
-#     (1) grok は --deny Read でツール経由の読取を拒否済み（実測）で、evidence は prompt 同梱、
-#     (2) codex と grok の sandbox-exec を「ほぼ同時」に起動すると、片方（codex）が
-#         起動時に os error 1 で落ちる（sandbox 初期化の並行競合）。sandbox-exec を
-#         codex 1 インスタンスに限ることでこの競合を避ける。
+# 読取隔離（opt-in）。評価者は untrusted な diff / 完了主張を読むため、注入された評価者が
+# リポジトリ本体や $HOME 機密を読んだり、作業ディレクトリ外に書いたりできないようにする。
+# 評価者 CLI 自身のサンドボックス（codex -s read-only / grok --deny Read...）は併用する。
 EG_SANDBOX=()
-if [ "$kind" = "codex" ] && sandbox_available; then
+if sandbox_available; then
   sb_profile="$run_cwd/.eg-sandbox.sb"
-  write_sandbox_profile "$sb_profile" "$(real_path "${EVALUATOR_GATE_PROJECT:-}")"
+  write_sandbox_profile "$sb_profile" \
+    "$(real_path "${EVALUATOR_GATE_PROJECT:-}")" "$(real_path "$cwd")"
   if [ -s "$sb_profile" ]; then
     EG_SANDBOX=(sandbox-exec -f "$sb_profile")
   fi
@@ -46,26 +43,16 @@ case "$kind" in
     # env -u OPENAI_API_KEY: ChatGPT サブスク経路を強制（API 従量課金への転落防止）
     # プロンプトは stdin 渡し（引数クォート事故の回避）。-o: 最終メッセージのみをファイルへ
     #
-    # サンドボックスの二段構え:
-    #  - sandbox-exec が使える（EG_SANDBOX 非空）: 外側 sandbox-exec で read を遮断し、
-    #    codex 自身の seatbelt は無効化する（内側 seatbelt と二重になると os error 1 で落ちる）。
-    #    外側が「書込は allow default だが read は repo/機密を deny」なので、読取隔離はより強い。
-    #  - sandbox-exec が無い（Linux 等）: codex の -s read-only にフォールバック（書込のみ禁止）。
-    if [ "${#EG_SANDBOX[@]}" -gt 0 ]; then
-      run_with_timeout "$tsec" "${EG_SANDBOX[@]}" \
-        env -u OPENAI_API_KEY codex exec \
-        --dangerously-bypass-approvals-and-sandbox -C "$run_cwd" --skip-git-repo-check \
-        ${EVALUATOR_GATE_CODEX_MODEL:+-m "$EVALUATOR_GATE_CODEX_MODEL"} \
-        -c model_reasoning_effort="${EVALUATOR_GATE_CODEX_EFFORT:-medium}" \
-        -o "$outf" - < "$prompt" >> "$logf" 2>&1
-    else
-      run_with_timeout "$tsec" \
-        env -u OPENAI_API_KEY codex exec \
-        -s read-only -C "$run_cwd" --skip-git-repo-check \
-        ${EVALUATOR_GATE_CODEX_MODEL:+-m "$EVALUATOR_GATE_CODEX_MODEL"} \
-        -c model_reasoning_effort="${EVALUATOR_GATE_CODEX_EFFORT:-medium}" \
-        -o "$outf" - < "$prompt" >> "$logf" 2>&1
-    fi
+    # 多層防御: codex 自身の -s read-only（書込禁止・承認ゲート）は常に維持し、
+    # sandbox-exec が有効ならその外側で read/write をさらに絞る。
+    # 外側 sandbox 下では codex の入れ子 sandbox_apply が拒否されるため、
+    # モデル駆動のシェル実行も事実上できなくなる（プロンプト注入への耐性が上がる）。
+    run_with_timeout "$tsec" ${EG_SANDBOX[@]+"${EG_SANDBOX[@]}"} \
+      env -u OPENAI_API_KEY codex exec \
+      -s read-only -C "$run_cwd" --skip-git-repo-check \
+      ${EVALUATOR_GATE_CODEX_MODEL:+-m "$EVALUATOR_GATE_CODEX_MODEL"} \
+      -c model_reasoning_effort="${EVALUATOR_GATE_CODEX_EFFORT:-medium}" \
+      -o "$outf" - < "$prompt" >> "$logf" 2>&1
     exit $?
     ;;
   grok)

@@ -38,7 +38,7 @@ compute_diff_hash() {
   local project n
   project="$1"
   {
-    git -C "$project" rev-parse HEAD 2>/dev/null
+    git -C "$project" rev-parse --verify HEAD 2>/dev/null
     git -C "$project" diff HEAD --no-color 2>/dev/null
     git -C "$project" status --porcelain 2>/dev/null
     n=0
@@ -138,6 +138,10 @@ sig_record() {
     printf '%s:file:%s:%s\n' "$ph" \
       "$(git -C "$project" hash-object -- "$p" 2>/dev/null || echo unhashable)" \
       "$(stat -f%Lp "$fp" 2>/dev/null || stat -c%a "$fp" 2>/dev/null || echo '')"
+  elif [ -d "$fp" ]; then
+    # submodule（gitlink）は作業ツリー上ディレクトリなので、参照先の OID を署名に含める。
+    # そうしないと別リビジョンを指していても同一署名になり、same-content で素通りする
+    printf '%s:gitlink:%s\n' "$ph" "$(git -C "$fp" rev-parse --verify HEAD 2>/dev/null || echo none)"
   else
     printf '%s:deleted\n' "$ph"
   fi
@@ -169,9 +173,10 @@ current_branch() {
 # 恒久的に無効化されてしまう（静かに機能しなくなるのが最悪）。
 session_lock_acquire() {
   local ld age lock_epoch waited=0 max_wait="${EVALUATOR_GATE_LOCK_WAIT:-20}"
-  # 非数値・過大な値で無制限待ちにならないよう検証する（フック全体は 300 秒予算）
+  # 非数値・過大な値で無制限待ちにならないよう検証する。
+  # フック全体は 300 秒予算（ロック待ち 20 + 評価 240 + KILL 猶予 5 + 諸経費）
   case "$max_wait" in ''|*[!0-9]*) max_wait=20 ;; esac
-  [ "$max_wait" -gt 60 ] && max_wait=60
+  [ "$max_wait" -gt 20 ] && max_wait=20
   ensure_dirs
   ld="$GATE_STATE_DIR/$1.lock"
   while :; do
@@ -434,6 +439,8 @@ build_evidence() {
   # 評価者の read-only サンドボックスは「書き込み」を禁じるだけで読み取りは防げないため、
   # 生 diff がディスクに残っているとサニタイズを迂回して読まれうる。
   rm -f "$tracked"
+  [ -s "$wdir/excerpt.txt" ] || [ -s "$wdir/summary.txt" ] || return 1
+  return 0
 }
 
 # cat + 末尾改行の保証（改行なしで終わるデータが次の境界行と連結するのを防ぐ）

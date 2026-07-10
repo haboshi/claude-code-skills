@@ -467,17 +467,20 @@ out=$(startjson $S | run_start)   # main 上でベースライン
 git -C "$REPO" checkout -q feature-x   # baseline の子孫の既存ブランチへ切替（clean）
 reset_calls
 out=$(stopjson $S "ブランチを切り替えました" | run_gate)
-if [ "$(calls)" = "0" ] && [ "$(state_of $S | jq -r '.last_eval.codex')" = "navigation" ]; then
+# 移動なので評価者は起動せず、eval_base は切替先 HEAD に引き直される（履歴は評価しない）
+if [ "$(calls)" = "0" ] && [ -z "$out" ] && \
+   [ "$(state_of $S | jq -r '.eval_base')" = "$(git -C "$REPO" rev-parse HEAD)" ]; then
   ok "T25e 既存ブランチへのcheckoutは履歴を評価せずベースライン再設定"
-else bad "T25e" "calls=$(calls) codex=$(state_of $S | jq -r '.last_eval.codex')"; fi
+else bad "T25e" "calls=$(calls) out=$out eval_base=$(state_of $S | jq -r '.eval_base')"; fi
 git -C "$REPO" checkout -q main; git -C "$REPO" branch -q -D feature-x
 
 # --- T25f: checkout -b して実装・コミットしたターンは「移動」ではなく作業として評価される ---
 S=s25f
 out=$(startjson $S | run_start)
-git -C "$REPO" checkout -q -b feature-y
+git -C "$REPO" checkout -q -b feature-y || bad "T25f-setup" "checkout -b 失敗"
 printf 'export function g(){ /* TODO */ }\n' > "$REPO/newbranch.js"
-git -C "$REPO" add -A >/dev/null; git -C "$REPO" commit -qm "work on new branch" >/dev/null
+git -C "$REPO" add -A >/dev/null; git -C "$REPO" commit -qm "work on new branch" >/dev/null || bad "T25f-setup" "commit 失敗"
+[ -z "$(git -C "$REPO" status --porcelain)" ] || bad "T25f-setup" "コミット後もdirty"
 export FAKE_CODEX_OUTPUT="BLOCK: 未実装のままです
 newbranch.js:1 — TODO 残置 — 実装を完了させる"
 reset_calls
@@ -548,14 +551,82 @@ git -C "$UREPO" config user.email t@t; git -C "$UREPO" config user.name t
 jq -n --arg s ub --arg c "$UREPO" '{session_id:$s, cwd:$c, hook_event_name:"SessionStart", source:"startup"}' | run_start
 printf 'export function h(){ /* TODO */ }\n' > "$UREPO/root.js"
 git -C "$UREPO" add -A >/dev/null; git -C "$UREPO" commit -qm "root commit" >/dev/null
+git -C "$UREPO" rev-parse HEAD >/dev/null 2>&1 || bad "T25i-setup" "root commit 失敗"
 export FAKE_CODEX_OUTPUT="BLOCK: 初回コミットに未実装
 root.js:1 — TODO 残置 — 実装を完了させる"
 reset_calls
-out=$(jq -n --arg s ub --arg c "$UREPO" '{session_id:$s, cwd:$c, hook_event_name:"Stop", stop_hook_active:false, last_assistant_message:"実装してコミットしました"}' | run_gate)
-if printf '%s' "$out" | jq -e '.decision=="block"' >/dev/null 2>&1 && [ "$(calls)" = "2" ]; then
-  ok "T25i コミットゼロのリポジトリでも初回コミットを評価"
+out=$(jq -n --arg s ub --arg c "$UREPO" '{session_id:$s, cwd:$c, hook_event_name:"Stop", stop_hook_active:false, last_assistant_message:"実装してコミットしました"}' | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
+if printf '%s' "$out" | jq -e '.decision=="block"' >/dev/null 2>&1 && [ "$(calls)" = "2" ] && \
+   grep -q "root.js" "$(promptf)"; then
+  ok "T25i コミットゼロのリポジトリでも初回コミットを評価（証拠に root.js を含む）"
 else bad "T25i" "calls=$(calls) out=$out"; fi
 export FAKE_CODEX_OUTPUT="ALLOW: ok"
+
+# --- T25n: unborn で root commit 後に SessionStart が再発火しても初回コミットを取り逃さない ---
+UREPO2="$WORK/unborn2"
+mkdir -p "$UREPO2"; git -C "$UREPO2" init -q -b main 2>/dev/null || git -C "$UREPO2" init -q
+git -C "$UREPO2" config user.email t@t; git -C "$UREPO2" config user.name t
+(cd "$UREPO2" && bash "$PLUG/scripts/gate-config.sh" on >/dev/null)
+jq -n --arg s ub2 --arg c "$UREPO2" '{session_id:$s, cwd:$c, hook_event_name:"SessionStart", source:"startup"}' | run_start
+printf 'export function h(){ /* TODO */ }\n' > "$UREPO2/root.js"
+git -C "$UREPO2" add -A >/dev/null; git -C "$UREPO2" commit -qm "root" >/dev/null
+# resume / compact による SessionStart 再発火（baseline を root commit に上書きしてはいけない）
+jq -n --arg s ub2 --arg c "$UREPO2" '{session_id:$s, cwd:$c, hook_event_name:"SessionStart", source:"resume"}' | run_start
+export FAKE_CODEX_OUTPUT="BLOCK: 未実装
+root.js:1 — TODO — 実装する"
+reset_calls
+out=$(jq -n --arg s ub2 --arg c "$UREPO2" '{session_id:$s, cwd:$c, hook_event_name:"Stop", stop_hook_active:false, last_assistant_message:"実装してコミットしました"}' | run_gate)
+if printf '%s' "$out" | jq -e '.decision=="block"' >/dev/null 2>&1 && [ "$(calls)" = "2" ]; then
+  ok "T25n unbornでSessionStart再発火してもroot commitを評価"
+else bad "T25n" "calls=$(calls) out=$out"; fi
+export FAKE_CODEX_OUTPUT="ALLOW: ok"
+
+# --- T25k: BLOCK された commit の上で `git switch -c` しても差し戻しは解除されない ---
+S=s25k
+out=$(startjson $S | run_start)
+printf 'export function bad(){ /* TODO */ }\n' > "$REPO/evade.js"
+git -C "$REPO" add -A >/dev/null; git -C "$REPO" commit -qm "blocked work" >/dev/null
+export FAKE_CODEX_OUTPUT="BLOCK: 未実装のままコミット
+evade.js:1 — TODO 残置 — 実装を完了させる"
+out=$(stopjson $S "完了しました" | run_gate)
+printf '%s' "$out" | jq -e '.decision=="block"' >/dev/null 2>&1 || bad "T25k-precond" "初回BLOCKなし"
+git -C "$REPO" switch -q -c evade-branch 2>/dev/null || git -C "$REPO" checkout -q -b evade-branch
+reset_calls
+out=$(stopjson $S "完了しました" true | run_gate)
+if printf '%s' "$out" | jq -e '.decision=="block"' >/dev/null 2>&1 && [ "$(calls)" = "0" ]; then
+  ok "T25k BLOCK中の switch -c で差し戻しは解除されない（台帳を消さない）"
+else bad "T25k" "calls=$(calls) out=$out"; fi
+export FAKE_CODEX_OUTPUT="ALLOW: ok"
+git -C "$REPO" checkout -q main 2>/dev/null; git -C "$REPO" branch -q -D evade-branch 2>/dev/null
+
+# --- T25l: rebase/merge/pull/reset による取り込みは警告つき許可で可視化する ---
+S=s25l
+git -C "$REPO" checkout -q -b side 2>/dev/null
+printf 'side work\n' > "$REPO/side.txt"
+git -C "$REPO" add -A >/dev/null; git -C "$REPO" commit -qm "side commit" >/dev/null
+git -C "$REPO" checkout -q main
+out=$(startjson $S | run_start)
+git -C "$REPO" merge -q --no-edit side >/dev/null 2>&1
+reset_calls
+out=$(stopjson $S "マージしました" | run_gate)
+if printf '%s' "$out" | jq -e '.systemMessage' >/dev/null 2>&1 && \
+   printf '%s' "$out" | jq -r '.systemMessage' | grep -qE "rebase|merge|取り込み" && [ "$(calls)" = "0" ]; then
+  ok "T25l merge/rebase の取り込みは警告つき許可で可視化"
+else bad "T25l" "calls=$(calls) out=$out"; fi
+git -C "$REPO" branch -q -D side 2>/dev/null
+
+# --- T25m: 完了主張 → 別の完了主張（言い換え）では再評価しない（クォータループ防止） ---
+S=s25m
+out=$(startjson $S | run_start)
+echo "loop test" >> "$REPO/base.txt"
+reset_calls
+out=$(stopjson $S "実装が完了しました" | run_gate)
+[ "$(calls)" = "2" ] || bad "T25m-precond" "初回評価なし"
+reset_calls
+out=$(stopjson $S "すべて完成しました。テストも全件パスしています" | run_gate)
+if [ "$(calls)" = "0" ]; then
+  ok "T25m 完了主張の言い換えでは再評価しない（クォータループ防止）"
+else bad "T25m" "calls=$(calls)"; fi
 
 # --- T25b: stale ロック（フック強制終了の残骸）は回収され、ゲートが復活する ---
 echo "stale" >> "$REPO/base.txt"

@@ -32,12 +32,14 @@ ensure_dirs
 state_load "$session_id"
 
 # 既に state がある（resume / compact による SessionStart 再発火）場合は上書きしない。
-# eval_base を巻き戻すと、評価済みの変更を再評価してしまう。
-if [ -n "$ST_BASELINE_HEAD" ] && [ "$ST_PROJECT" = "$project" ]; then
+# eval_base を巻き戻すと評価済みの変更を再評価し、逆に前進させると未評価の変更を取り逃す。
+# 判定は「state が存在するか」で行う。baseline_head が空でも正当な状態（コミットゼロの
+# リポジトリでセッションを開始した場合）なので、それを「未記録」と誤認してはいけない。
+if [ -n "$ST_PROJECT" ] && [ "$ST_PROJECT" = "$project" ]; then
   exit 0
 fi
 
-head=$(git -C "$project" rev-parse HEAD 2>/dev/null || echo "")
+head=$(git -C "$project" rev-parse --verify HEAD 2>/dev/null || echo "")
 hash=$(compute_diff_hash "$project")
 branch=$(current_branch "$project")
 # baseline_head = eval_base = セッション開始時の HEAD。verdict は未評価（空）。

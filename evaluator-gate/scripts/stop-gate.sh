@@ -61,8 +61,9 @@ MAX_BLOCKS="${EVALUATOR_GATE_MAX_BLOCKS:-3}"
 case "$MAX_BLOCKS" in ''|*[!0-9]*) MAX_BLOCKS=3 ;; esac
 EV_TIMEOUT="${EVALUATOR_GATE_EVAL_TIMEOUT:-240}"
 case "$EV_TIMEOUT" in ''|*[!0-9]*) EV_TIMEOUT=240 ;; esac
-# フック全体の timeout（hooks.json: 300 秒）より手前で必ず切る
-[ "$EV_TIMEOUT" -gt 270 ] && EV_TIMEOUT=270
+# フック全体の timeout（hooks.json: 300 秒）に収める:
+# ロック待ち最大 20 + 評価 240 + TERM→KILL 猶予 5 + git/jq の諸経費 < 300
+[ "$EV_TIMEOUT" -gt 240 ] && EV_TIMEOUT=240
 
 # --- 同一セッションの多重 Stop を直列化（取れなければ fail-open で通過） ---
 session_lock_acquire "$session_id" || { note "他の Stop 評価が進行中のためスキップ"; exit 0; }
@@ -70,8 +71,13 @@ trap 'session_lock_release "$session_id"' EXIT
 
 # --- 決定論 diff ゲート（LLM を起動しない層） ---
 current_hash=$(compute_diff_hash "$project")
-current_head=$(git -C "$project" rev-parse HEAD 2>/dev/null || echo "")
-current_claim=$(claim_hash "$last_msg")
+current_head=$(git -C "$project" rev-parse --verify HEAD 2>/dev/null || echo "")
+# 完了主張かどうかを接頭辞に埋め込む（state のスキーマを増やさずに遷移を判定するため）
+if is_completion_claim "$last_msg"; then
+  current_claim="c:$(claim_hash "$last_msg")"
+else
+  current_claim="n:$(claim_hash "$last_msg")"
+fi
 current_br=$(current_branch "$project")
 state_load "$session_id"
 
@@ -84,18 +90,24 @@ fi
 
 # 完了主張が差し替わったか（同一内容でも再評価すべきか）を先に判定する。
 # 「WIP です」で ALLOW → 内容そのままコミット → 「全部完了・テスト通過」に化ける、を防ぐ。
+# ただし「完了主張 → 別の完了主張（言い換え）」では再評価しない。
+# さもないと文面を毎ターン変えるだけで無制限に評価者を起動できてしまう（クォータループ）。
 force_eval=0
-if [ "$current_claim" != "$ST_LAST_CLAIM_HASH" ] && is_completion_claim "$last_msg"; then
-  force_eval=1
+if [ "$current_claim" != "$ST_LAST_CLAIM_HASH" ]; then
+  case "$current_claim" in
+    c:*) case "$ST_LAST_CLAIM_HASH" in c:*) : ;; *) force_eval=1 ;; esac ;;
+  esac
 fi
 
 # HEAD の移動が「作業（commit）」か「移動（checkout/reset/rebase/merge）」かを reflog で見分ける。
 # ブランチ名の比較だけだと、`checkout -b feature` して実装・コミットしたターンまで
 # 「切替」とみなして無評価で受理してしまう（reflog の直近エントリは commit なので区別できる）。
 nav=0
+nav_kind=""
 last_reflog=$(git -C "$project" reflog -1 --format='%gs' HEAD 2>/dev/null || echo "")
 case "$last_reflog" in
-  checkout:*|reset:*|rebase*|merge*|clone:*|pull:*) nav=1 ;;
+  checkout:*|clone:*)          nav=1; nav_kind=checkout ;;
+  reset:*|rebase*|merge*|pull:*) nav=1; nav_kind=integrate ;;
 esac
 # reflog が使えない環境では、ブランチ名の変化を移動とみなす（保守的）
 if [ -z "$last_reflog" ] && [ -n "$ST_BRANCH" ] && [ "$ST_BRANCH" != "$current_br" ]; then nav=1; fi
@@ -109,24 +121,22 @@ branch_changed=0
 [ -n "$ST_BRANCH" ] && [ "$ST_BRANCH" != "$current_br" ] && branch_changed=1
 if [ "$head_moved" -eq 0 ] && [ "$branch_changed" -eq 0 ]; then nav=0; fi
 
+nav_warn=0
 if [ "$nav" -eq 1 ] && [ -n "$ST_PROJECT" ]; then
   # 移動そのものはこのターンの「作業」ではない。ベースラインを現在地へ引き直す。
-  # 未コミットの変更があればそれは実作業なので、HEAD 基準で評価を続ける。
+  # ただし **差し戻し台帳（last_diff_hash / last_verdict / block_count）は消さない**。
+  # 消すと「BLOCK された commit の上で `git switch -c evade` する」だけでゲートを抜けられる。
+  # 台帳を残せば、内容が変わっていない限り下の同一ハッシュ判定が再ブロックする。
   if [ -n "$ST_EVAL_BASE" ] && [ "$ST_EVAL_BASE" != "$current_head" ]; then
     note "HEAD の移動を検出（${last_reflog%%:*}）。ベースラインを再設定します"
   fi
-  # 未解消の差し戻しが「移動」で消える場合は必ず記録する（stash / reset で
-  # 指摘を回避できてしまう経路を transcript から事後検証できるようにする）
   if [ "$ST_LAST_VERDICT" = "BLOCK" ]; then
-    note "警告: 未解消の差し戻しがあるまま HEAD が移動しました（${last_reflog%%:*}）。指摘は解消されていません: $(printf '%s' "$ST_LAST_REASON" | head -c 300)"
+    note "警告: 未解消の差し戻しがあるまま HEAD が移動しました（${last_reflog%%:*}）: $(printf '%s' "$ST_LAST_REASON" | head -c 300)"
   fi
-  ST_BASELINE_HEAD="$current_head"; ST_EVAL_BASE="$current_head"
-  ST_ALLOWED_SIG=""; ST_LAST_HASH=""; ST_LAST_VERDICT=""; ST_BLOCK_COUNT=0
-  if [ -z "$(git -C "$project" status --porcelain 2>/dev/null | head -1)" ]; then
-    state_write "$session_id" "$project" "$current_head" "$current_head" "$current_hash" "$current_claim" \
-                "ALLOW" "" 0 "navigation" "navigation" 0 "$current_br" ""
-    exit 0
-  fi
+  ST_BASELINE_HEAD="$current_head"; ST_EVAL_BASE="$current_head"; ST_ALLOWED_SIG=""
+  # rebase / merge / pull / reset は他所の変更や競合解消を取り込む。評価はできないが、
+  # 「検証されなかった」ことを可視化する（単なる checkout は無音でよい）。
+  [ "$nav_kind" = "integrate" ] && nav_warn=1
 fi
 
 if [ "$current_hash" = "$ST_LAST_HASH" ]; then
@@ -168,7 +178,8 @@ fi
 # base は ALLOW のときだけ current_head へ前進する（BLOCK/UNAVAILABLE では据え置き）。
 # 起点が取れない場合（ベースライン未記録＝セッション途中で導入、amend/rebase で到達不能）は、
 # 作業ツリーが汚れていれば HEAD 基準、クリーンなら評価対象なしとして通過する。
-EMPTY_TREE=4b825dc642cb6eb9a060e54bf8d69288fbee4904
+# リポジトリの object-format に対応した空ツリー OID（SHA-1 / SHA-256 の両方で正しい）
+EMPTY_TREE=$(git -C "$project" hash-object -t tree /dev/null 2>/dev/null || echo "")
 base_ref=""
 head_reachable=0
 for cand in "$ST_EVAL_BASE" "$ST_BASELINE_HEAD"; do
@@ -184,7 +195,7 @@ done
 # コミットが1つも無いリポジトリでセッションを開始し、このターンで最初のコミットをした場合。
 # ベースラインが空なので通常の起点が取れない。空ツリーを起点にして root commit を評価する。
 if [ -z "$base_ref" ] && [ "$head_reachable" -eq 0 ] && [ -n "$ST_PROJECT" ] && \
-   [ -z "$ST_BASELINE_HEAD" ] && [ -z "$ST_EVAL_BASE" ] && [ -n "$current_head" ]; then
+   [ -z "$ST_BASELINE_HEAD" ] && [ -z "$ST_EVAL_BASE" ] && [ -n "$current_head" ] && [ -n "$EMPTY_TREE" ]; then
   base_ref="$EMPTY_TREE"; head_reachable=1
 fi
 
@@ -214,9 +225,12 @@ if [ -n "$base_ref" ] && [ "$base_ref" != "$EMPTY_TREE" ]; then
 fi
 
 if [ "$tree_dirty" -eq 0 ] && [ -z "$base_ref" ]; then
-  # クリーン & 評価すべきコミット範囲なし（会話のみ、または起点未記録）→ 無音通過
+  # クリーン & 評価すべきコミット範囲なし（会話のみ、移動、または起点未記録）
   state_write "$session_id" "$project" "${ST_BASELINE_HEAD:-$current_head}" "$current_head" \
               "$current_hash" "$current_claim" "ALLOW" "" 0 "clean" "clean" 0 "$current_br" "$ST_ALLOWED_SIG"
+  if [ "$nav_warn" -eq 1 ]; then
+    emit_warn_allow "evaluator-gate: rebase/merge/pull/reset による変更の取り込みを検出したため、このターンの内容は検証できませんでした。ベースラインを現在の HEAD に再設定します。"
+  fi
   exit 0
 fi
 
@@ -236,7 +250,10 @@ wdir=$(mktemp -d "$GATE_TMP_DIR/${session_id}.XXXXXX" 2>/dev/null) || { note "tm
 trap '[ "${EVALUATOR_GATE_KEEP_TMP:-0}" = "1" ] || rm -rf "$wdir"; session_lock_release "$session_id"' EXIT
 
 printf '%s' "$last_msg" > "$wdir/last_msg_raw.txt"
-build_evidence "$project" "$wdir/last_msg_raw.txt" "$wdir" "$base_ref"
+if ! build_evidence "$project" "$wdir/last_msg_raw.txt" "$wdir" "$base_ref"; then
+  note "evidence の生成に失敗したため評価をスキップします（fail-open）"
+  exit 0
+fi
 # 生の完了主張を残さない（評価者は cwd 配下のファイルを読める）
 rm -f "$wdir/last_msg_raw.txt"
 
@@ -247,9 +264,21 @@ if ! sanitize_evidence "$wdir/msg.txt" "$wdir/summary.txt" "$wdir/excerpt.txt"; 
   exit 0
 fi
 
+# 未 redact の中間ファイルが本当に消えたかを起動前に確認する（rm の失敗を見逃さない）。
+# 1つでも残っていれば、評価者の作業ディレクトリから読まれうるので起動しない。
+for raw in "$wdir/last_msg_raw.txt" "$wdir/tracked.diff"; do
+  if [ -e "$raw" ]; then
+    note "未 redact の中間ファイルを削除できませんでした（$raw）。外部送信せず評価をスキップします"
+    exit 0
+  fi
+done
+
 printf '%s\n' "You may not modify anything; judge only from the evidence in this prompt." > "$wdir/tool_note.txt"
-render_template "$PLUGIN_ROOT/prompts/stop-gate.md" "$wdir/prompt.md" \
-  "$wdir/tool_note.txt" "$wdir/msg.txt" "$wdir/summary.txt" "$wdir/excerpt.txt"
+if ! render_template "$PLUGIN_ROOT/prompts/stop-gate.md" "$wdir/prompt.md" \
+     "$wdir/tool_note.txt" "$wdir/msg.txt" "$wdir/summary.txt" "$wdir/excerpt.txt"; then
+  note "プロンプト生成に失敗したため評価をスキップします（fail-open）"
+  exit 0
+fi
 
 # codex 公式プラグインの stop-review-gate との二重発火に対する注意喚起（best-effort）
 if grep -rls '"stopReviewGate": *true' "$HOME/.claude/plugins/data/codex-openai-codex" >/dev/null 2>&1; then

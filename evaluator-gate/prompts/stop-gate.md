@@ -20,6 +20,14 @@ reason to block — judge intent from context.
 The builder AI has just claimed its turn is complete. Decide whether the evidence
 backs up the claim, or whether the work must be sent back.
 
+The diff below is CUMULATIVE: it compares the last state a reviewer accepted
+against the current working tree. Work that the builder added and then removed
+inside this window does not appear at all. So if the builder says "I removed the
+hardcoded key" or "I deleted that file", and the diff simply shows no such key
+and no such file, the claim is SATISFIED — do not block for a missing deletion
+line. Judge the RESULTING state of the code, not the narration of intermediate
+steps.
+
 Builder's final message (the claim):
 BUILDER_MESSAGE_BEGIN
 {{LAST_ASSISTANT_MESSAGE}}
@@ -35,12 +43,15 @@ DIFF_END
 </task>
 
 <output_contract>
-Your FIRST line must be exactly one of:
+Your first non-empty line must be exactly one of:
 - ALLOW: <short reason in Japanese>
 - BLOCK: <short reason in Japanese>
-Output nothing before that line. After a BLOCK line, list each finding on its own
+Output no prose before that line. After a BLOCK line, list each finding on its own
 line as `file:line — 問題 — 期待される状態`, citing concrete evidence from the
 diff above. Write findings in Japanese.
+
+A BLOCK with no structured finding (no `file:line` reference and no `—` separated
+finding line) is discarded as unusable — if you block, you must cite where.
 </output_contract>
 
 <decision_policy>
@@ -65,4 +76,8 @@ diff above. Write findings in Japanese.
      repository — do not flag imports of files that may already exist.)
 - If the excerpt is marked TRUNCATED, judge only what you can see. Do not block
   based on what might exist outside the excerpt.
+- Never block solely because a claimed removal/cleanup is not visible as a
+  deletion line: the diff is cumulative (see above), and secrets are redacted
+  from the evidence before you see it. Absence of the bad thing in the resulting
+  code is the evidence that it is gone.
 </decision_policy>

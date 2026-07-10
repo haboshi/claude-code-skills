@@ -19,11 +19,11 @@ trap 'rm -rf "$wdir"' EXIT
 
 printf '%s' "（/evaluate によるオンデマンド評価。ビルダーの完了主張はありません。現在の作業状態そのものを評価してください）" > "$wdir/last_msg_raw.txt"
 build_evidence "$project" "$wdir/last_msg_raw.txt" "$wdir"
-# 外部送信前の無害化（Stop ゲートと同一処理）
-for ef in msg summary excerpt; do
-  scrub_sentinels "$wdir/$ef.txt"
-  redact_secrets "$wdir/$ef.txt"
-done
+# 外部送信前の無害化（Stop ゲートと同一処理）。失敗したら送信しない
+if ! sanitize_evidence "$wdir/msg.txt" "$wdir/summary.txt" "$wdir/excerpt.txt"; then
+  echo "evidence の secret redact に失敗したため、外部送信を中止しました" >&2
+  exit 1
+fi
 printf '%s\n' "You may not modify anything; judge only from the evidence in this prompt." > "$wdir/tool_note.txt"
 if [ -n "$focus" ]; then
   printf 'Additional focus requested by the user: %s\n' "$focus" > "$wdir/focus.txt"

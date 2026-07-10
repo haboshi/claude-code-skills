@@ -63,41 +63,65 @@ compute_diff_hash() {
 
 state_file() { printf '%s/%s.json' "$GATE_STATE_DIR" "$1"; }
 
-# 引数: session_id → ST_LAST_HASH / ST_LAST_VERDICT / ST_LAST_REASON / ST_BLOCK_COUNT /
-#                     ST_LAST_HEAD / ST_PROJECT / ST_UPDATED_EPOCH を設定
+# state schema v2:
+#   baseline_head : セッション開始時（SessionStart フック）の HEAD。評価範囲の起点の初期値
+#   eval_base     : 「評価済みとして受理した」地点の HEAD。ALLOW のときだけ前進する。
+#                   BLOCK / UNAVAILABLE では前進させないため、未検証のコミットが取り残されない
+#   last_claim_hash : 直近に評価した完了主張のハッシュ（同一 diff での主張差し替え検知用）
 state_load() {
   local sf
   sf=$(state_file "$1")
-  ST_LAST_HASH=""; ST_LAST_VERDICT=""; ST_LAST_REASON=""; ST_BLOCK_COUNT=0; ST_LAST_HEAD=""
-  ST_PROJECT=""; ST_UPDATED_EPOCH=0
+  ST_LAST_HASH=""; ST_LAST_VERDICT=""; ST_LAST_REASON=""; ST_BLOCK_COUNT=0
+  ST_PROJECT=""; ST_UPDATED_EPOCH=0; ST_BASELINE_HEAD=""; ST_EVAL_BASE=""; ST_LAST_CLAIM_HASH=""
   [ -f "$sf" ] || return 0
   ST_LAST_HASH=$(jq -r '.last_diff_hash // ""' "$sf" 2>/dev/null || echo "")
   ST_LAST_VERDICT=$(jq -r '.last_verdict // ""' "$sf" 2>/dev/null || echo "")
   ST_LAST_REASON=$(jq -r '.last_reason // ""' "$sf" 2>/dev/null || echo "")
   ST_BLOCK_COUNT=$(jq -r '.block_count // 0' "$sf" 2>/dev/null || echo 0)
-  ST_LAST_HEAD=$(jq -r '.last_head // ""' "$sf" 2>/dev/null || echo "")
   ST_PROJECT=$(jq -r '.project // ""' "$sf" 2>/dev/null || echo "")
   ST_UPDATED_EPOCH=$(jq -r '.updated_epoch // 0' "$sf" 2>/dev/null || echo 0)
+  ST_BASELINE_HEAD=$(jq -r '.baseline_head // ""' "$sf" 2>/dev/null || echo "")
+  ST_EVAL_BASE=$(jq -r '.eval_base // ""' "$sf" 2>/dev/null || echo "")
+  ST_LAST_CLAIM_HASH=$(jq -r '.last_claim_hash // ""' "$sf" 2>/dev/null || echo "")
   case "$ST_BLOCK_COUNT" in ''|*[!0-9]*) ST_BLOCK_COUNT=0 ;; esac
   case "$ST_UPDATED_EPOCH" in ''|*[!0-9]*) ST_UPDATED_EPOCH=0 ;; esac
 }
 
-# 引数: session_id project hash verdict reason block_count codex_v grok_v duration_s [head]
+# 引数: session project baseline_head eval_base diff_hash claim_hash verdict reason
+#       block_count codex_v grok_v duration_s
 # 戻り値: 保存成功 0 / 失敗 非ゼロ（呼び出し側は BLOCK 前に必ず成功確認する）
-state_save() {
+state_write() {
   local sf tmpf
   sf=$(state_file "$1"); tmpf="$sf.tmp.$$"
   ensure_dirs
-  jq -n --arg project "$2" --arg hash "$3" --arg verdict "$4" --arg reason "$5" \
-        --argjson bc "$6" --arg cv "${7:-}" --arg gv "${8:-}" --argjson dur "${9:-0}" \
-        --arg head "${10:-}" --arg ts "$(now_iso)" --argjson ep "$(date +%s)" \
-    '{schema:1, project:$project, last_diff_hash:$hash,
+  jq -n --arg project "$2" --arg bh "$3" --arg eb "$4" --arg hash "$5" --arg ch "$6" \
+        --arg verdict "$7" --arg reason "$8" --argjson bc "${9:-0}" \
+        --arg cv "${10:-}" --arg gv "${11:-}" --argjson dur "${12:-0}" \
+        --arg ts "$(now_iso)" --argjson ep "$(date +%s)" \
+    '{schema:2, project:$project, baseline_head:$bh, eval_base:$eb,
+      last_diff_hash:$hash, last_claim_hash:$ch,
       last_verdict:(if $verdict=="" then null else $verdict end),
-      last_reason:$reason, block_count:$bc, last_head:$head,
+      last_reason:$reason, block_count:$bc,
       last_eval:{ts:$ts, codex:$cv, grok:$gv, duration_s:$dur},
       updated:$ts, updated_epoch:$ep}' \
     > "$tmpf" 2>/dev/null && mv "$tmpf" "$sf"
 }
+
+# 完了主張のハッシュ（同一 diff での主張差し替えを検知する）
+claim_hash() { printf '%s' "$1" | shasum -a 256 | cut -d' ' -f1; }
+
+# 完了・検証を主張する文面か（同一 diff でもこれが新たに現れたら再評価する）
+is_completion_claim() {
+  printf '%s' "$1" | grep -qiE '完了|完成|実装しました|修正しました|対応しました|テスト.*(通|パス|成功)|全件パス|done|completed|finished|all tests? pass|tests? (are )?passing|verified'
+}
+
+# セッション単位の排他ロック（同一セッションの多重 Stop で評価が交錯するのを防ぐ）
+# 取得できなければ非ゼロ（呼び出し側は fail-open で通過する）
+session_lock_acquire() {
+  ensure_dirs
+  mkdir "$GATE_STATE_DIR/$1.lock" 2>/dev/null
+}
+session_lock_release() { rmdir "$GATE_STATE_DIR/$1.lock" 2>/dev/null || true; }
 
 # 停止をブロックし reason を継続指示として注入（Stop フック公式契約）
 emit_block() {
@@ -197,35 +221,59 @@ is_sensitive_path() {
 # 高信号 secret の内容ベース redact（best-effort・名前フィルタの補完）。
 # 通常名のファイル（docker-compose.yml 等）やビルダーの完了主張に埋まった値を、
 # 外部モデルへ送る前にマスクする。正規表現なので完全ではない（SKILL.md に明記）。
+# 重要: 失敗したら非ゼロを返す（呼び出し側は「redact できないなら外部送信しない」= fail-closed）。
 redact_secrets() {
-  [ -f "$1" ] || return 0
-  LC_ALL=C sed -i '' -E \
+  local f tmpf
+  f="$1"
+  [ -f "$f" ] || return 0
+  tmpf="$f.redact.$$"
+  # PEM ブロックは BEGIN..END の本文ごと落とす（1行目だけ潰しても鍵本体が残るため）
+  # 値の引用符（" ' `）と JSON 形式（"password":"x"）も剥がしてからマスクする
+  LC_ALL=C sed -E \
+    -e '/-----BEGIN[[:space:]][A-Z ]*(PRIVATE KEY|CERTIFICATE)-----/,/-----END[[:space:]][A-Z ]*(PRIVATE KEY|CERTIFICATE)-----/c\
+[REDACTED-PEM-BLOCK]' \
     -e 's/sk-[A-Za-z0-9_-]{12,}/[REDACTED-APIKEY]/g' \
     -e 's/AKIA[0-9A-Z]{16}/[REDACTED-AWS]/g' \
-    -e 's/xox[baprs]-[A-Za-z0-9-]{10,}/[REDACTED-SLACK]/g' \
+    -e 's/ASIA[0-9A-Z]{16}/[REDACTED-AWS]/g' \
+    -e 's/xox[baprse]-[A-Za-z0-9-]{10,}/[REDACTED-SLACK]/g' \
+    -e 's/github_pat_[A-Za-z0-9_]{20,}/[REDACTED-GH]/g' \
     -e 's/gh[pousr]_[A-Za-z0-9]{20,}/[REDACTED-GH]/g' \
+    -e 's/npm_[A-Za-z0-9]{20,}/[REDACTED-NPM]/g' \
+    -e 's/AIza[A-Za-z0-9_-]{30,}/[REDACTED-GCP]/g' \
+    -e 's/eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}/[REDACTED-JWT]/g' \
     -e 's/[Bb]earer[[:space:]]+[A-Za-z0-9._-]{20,}/[REDACTED-BEARER]/g' \
     -e 's#(://[^:@/[:space:]]+:)[^@/[:space:]]+@#\1[REDACTED]@#g' \
-    -e 's/-----BEGIN[[:space:]][A-Z ]*PRIVATE KEY-----/[REDACTED-PRIVATE-KEY]/g' \
-    -e 's/([Pp][Aa][Ss][Ss][Ww][Oo]?[Rr]?[Dd][[:space:]]*[:=][[:space:]]*)[^[:space:]"'"'"',]+/\1[REDACTED]/g' \
-    -e 's/([Ss][Ee][Cc][Rr][Ee][Tt][A-Za-z_]*[[:space:]]*[:=][[:space:]]*)[^[:space:]"'"'"',]+/\1[REDACTED]/g' \
-    -e 's/([Tt][Oo][Kk][Ee][Nn][A-Za-z_]*[[:space:]]*[:=][[:space:]]*)[^[:space:]"'"'"',]+/\1[REDACTED]/g' \
-    -e 's/([Aa][Pp][Ii][_-]?[Kk][Ee][Yy][[:space:]]*[:=][[:space:]]*)[^[:space:]"'"'"',]+/\1[REDACTED]/g' \
-    "$1" 2>/dev/null || true
+    -e 's/([Pp][Aa][Ss][Ss][Ww][Oo]?[Rr]?[Dd][A-Za-z_]*"?[[:space:]]*[:=][[:space:]]*)("|'"'"'|`)?[^[:space:]"'"'"'`,;}]+("|'"'"'|`)?/\1[REDACTED]/g' \
+    -e 's/([Ss][Ee][Cc][Rr][Ee][Tt][A-Za-z_]*"?[[:space:]]*[:=][[:space:]]*)("|'"'"'|`)?[^[:space:]"'"'"'`,;}]+("|'"'"'|`)?/\1[REDACTED]/g' \
+    -e 's/([Tt][Oo][Kk][Ee][Nn][A-Za-z_]*"?[[:space:]]*[:=][[:space:]]*)("|'"'"'|`)?[^[:space:]"'"'"'`,;}]+("|'"'"'|`)?/\1[REDACTED]/g' \
+    -e 's/([Aa][Pp][Ii][_-]?[Kk][Ee][Yy][A-Za-z_]*"?[[:space:]]*[:=][[:space:]]*)("|'"'"'|`)?[^[:space:]"'"'"'`,;}]+("|'"'"'|`)?/\1[REDACTED]/g' \
+    -e 's/([Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll][A-Za-z_]*"?[[:space:]]*[:=][[:space:]]*)("|'"'"'|`)?[^[:space:]"'"'"'`,;}]+("|'"'"'|`)?/\1[REDACTED]/g' \
+    "$f" > "$tmpf" 2>/dev/null || { rm -f "$tmpf"; return 1; }
+  [ -s "$tmpf" ] || [ ! -s "$f" ] || { rm -f "$tmpf"; return 1; }
+  mv "$tmpf" "$f" 2>/dev/null || { rm -f "$tmpf"; return 1; }
+  return 0
+}
+
+# 信頼しないデータの無害化（センチネル除去 + secret redact）。
+# いずれかが失敗したら非ゼロ = 外部送信してはならない。
+sanitize_evidence() {
+  local d rc=0
+  for d in "$@"; do
+    scrub_sentinels "$d"
+    redact_secrets "$d" || rc=1
+  done
+  return $rc
 }
 
 # 引数: project last_msg_file workdir [base_ref]
-# base_ref なし: working tree の diff（HEAD 基準）+ untracked を証拠にする
-# base_ref あり: base_ref..HEAD のコミット範囲 diff を証拠にする（ターン内コミット済みの場合）
+# base_ref は diff の起点。`git diff <base_ref>` は「base_ref から現在の作業ツリーまで」を出すため、
+# ターン内のコミット済み変更と未コミット変更の両方が1つの証拠に含まれる。
+# 省略時は HEAD（＝作業ツリーの未コミット変更のみ）。untracked は常に追記する。
 # 生成物: workdir/{msg.txt, summary.txt, excerpt.txt}
 build_evidence() {
   local project msg_file wdir base_ref DIFF_ARGS msg_size untracked tracked dlines dsize esize
   project="$1"; msg_file="$2"; wdir="$3"; base_ref="${4:-}"
-  if [ -n "$base_ref" ]; then
-    DIFF_ARGS="$base_ref..HEAD"
-  else
-    DIFF_ARGS="HEAD"
-  fi
+  DIFF_ARGS="${base_ref:-HEAD}"
   # tracked diff にも機微パスの内容を含めない（名前は --stat に出るが値は出さない）
   # 除外集合は SENSITIVE_GLOBS（単一ソース）から生成し、位置パラメータに載せる
   local IFS_SAVE="$IFS" specs
@@ -245,17 +293,15 @@ build_evidence() {
     cp "$msg_file" "$wdir/msg.txt"
   fi
 
-  # サマリ: diff --stat + untracked 一覧（range モードでは untracked は対象外）
+  # サマリ: diff --stat + untracked 一覧
   {
     if [ -n "$base_ref" ]; then
-      printf '# Committed changes in this turn (%s):\n' "$DIFF_ARGS"
+      printf '# Changes in this turn (including commits), diffed against %s:\n' "$DIFF_ARGS"
     fi
     git -C "$project" diff "$DIFF_ARGS" --stat 2>/dev/null | tail -40
-    if [ -z "$base_ref" ]; then
-      untracked=$(git -C "$project" ls-files --others --exclude-standard 2>/dev/null | head -50)
-      if [ -n "$untracked" ]; then
-        printf '\n# New (untracked) files:\n%s\n' "$untracked"
-      fi
+    untracked=$(git -C "$project" ls-files --others --exclude-standard 2>/dev/null | head -50)
+    if [ -n "$untracked" ]; then
+      printf '\n# New (untracked) files:\n%s\n' "$untracked"
     fi
   } > "$wdir/summary.txt"
 
@@ -276,24 +322,22 @@ build_evidence() {
         git -C "$project" diff "$DIFF_ARGS" --no-color -- "$f" 2>/dev/null | head -120
       done
     fi
-    if [ -z "$base_ref" ]; then
-      # untracked ファイルの内容抜粋（テキストのみ・機微パス除外・先頭 5 ファイル・各 100 行）
-      git -C "$project" ls-files --others --exclude-standard -z 2>/dev/null | \
-      { shown=0
-        while IFS= read -r -d '' f; do
-          [ "$shown" -ge 5 ] && break
-          is_sensitive_path "$f" && continue
-          fp="$project/$f"
-          # symlink は参照先を読まない（無害な名前のリンクで任意ファイルを evidence に
-          # 引き込ませない — 外部モデルへの送信面を作らない）
-          [ -L "$fp" ] && continue
-          [ -f "$fp" ] || continue
-          grep -Iq . "$fp" 2>/dev/null || continue
-          printf '\n===== new file: %s (first 100 lines) =====\n' "$f"
-          head -100 "$fp"
-          shown=$((shown+1))
-        done; }
-    fi
+    # untracked ファイルの内容抜粋（テキストのみ・機微パス除外・先頭 5 ファイル・各 100 行）
+    git -C "$project" ls-files --others --exclude-standard -z 2>/dev/null | \
+    { shown=0
+      while IFS= read -r -d '' f; do
+        [ "$shown" -ge 5 ] && break
+        is_sensitive_path "$f" && continue
+        fp="$project/$f"
+        # symlink は参照先を読まない（無害な名前のリンクで任意ファイルを evidence に
+        # 引き込ませない — 外部モデルへの送信面を作らない）
+        [ -L "$fp" ] && continue
+        [ -f "$fp" ] || continue
+        grep -Iq . "$fp" 2>/dev/null || continue
+        printf '\n===== new file: %s (first 100 lines) =====\n' "$f"
+        head -100 "$fp"
+        shown=$((shown+1))
+      done; }
   } > "$wdir/excerpt.txt"
 
   # 全体キャップ 48KB
@@ -348,9 +392,16 @@ parse_verdict() {
         printf '%s\n' "${verdict_line#BLOCK:}"
         awk 'found {print} /^BLOCK:/ && !found {found=1}' "$outf" | head -40
       } | head -c 1800 > "$rfile"
-      # 根拠なし BLOCK の機械的最低ライン: 20 バイト未満の理由は判定不能扱い
+      # 根拠なし BLOCK は採用しない（幻覚由来の差し戻しを防ぐ）:
+      #  - 理由が 20 バイト未満
+      #  - 構造化された指摘（`file:line — 問題 — 期待` 形式の em dash 行、または file:line 参照）が皆無
+      # いずれも UNAVAILABLE = fail-open 方向に倒す
       rlen=$(wc -c < "$rfile" | tr -d ' ')
       if [ "$rlen" -lt 20 ]; then echo UNAVAILABLE; return 0; fi
+      if ! grep -qE '—|[^[:space:]]+:[0-9]+' "$rfile"; then
+        note "根拠が構造化されていない BLOCK のため採用しません（fail-open）"
+        echo UNAVAILABLE; return 0
+      fi
       echo BLOCK; return 0 ;;
     *) echo UNAVAILABLE; return 0 ;;
   esac

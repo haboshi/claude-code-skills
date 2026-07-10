@@ -34,16 +34,25 @@ case "$kind" in
     fi
     if [ -z "$GROK_BIN" ] || [ ! -x "$GROK_BIN" ]; then note "grok CLI 不在"; exit 127; fi
     # 毎 Stop で実行するバイナリなので、置き換えによる実行乗っ取りを避ける:
-    # 自分（または root）所有であり、group/other から書き込み可能でないことを確認する。
+    # 実体（symlink は解決後の target）が自分または root 所有で、group/other から
+    # 書き込み可能でないことを確認する。symlink 自体は 777 が普通なので必ず解決する。
     # stat が使えない環境ではチェックを省略する（best-effort な多層防御）
-    bin_owner=$(stat -f '%u' "$GROK_BIN" 2>/dev/null || stat -c '%u' "$GROK_BIN" 2>/dev/null || echo "")
-    bin_perm=$(stat -f '%Lp' "$GROK_BIN" 2>/dev/null || stat -c '%a' "$GROK_BIN" 2>/dev/null || echo "")
+    GROK_REAL="$GROK_BIN"
+    while [ -L "$GROK_REAL" ]; do
+      link_target=$(readlink "$GROK_REAL" 2>/dev/null) || break
+      case "$link_target" in
+        /*) GROK_REAL="$link_target" ;;
+        *)  GROK_REAL="$(dirname "$GROK_REAL")/$link_target" ;;
+      esac
+    done
+    bin_owner=$(stat -f '%u' "$GROK_REAL" 2>/dev/null || stat -c '%u' "$GROK_REAL" 2>/dev/null || echo "")
+    bin_perm=$(stat -f '%Lp' "$GROK_REAL" 2>/dev/null || stat -c '%a' "$GROK_REAL" 2>/dev/null || echo "")
     if [ -n "$bin_owner" ] && [ "$bin_owner" != "$(id -u)" ] && [ "$bin_owner" != "0" ]; then
-      note "grok バイナリの所有者が想定外のため実行しません: $GROK_BIN"; exit 126
+      note "grok バイナリの所有者が想定外のため実行しません: $GROK_REAL"; exit 126
     fi
     if [ -n "$bin_perm" ]; then
       case "$bin_perm" in
-        *[2367][0-7]|*[2367]) note "grok バイナリが group/other から書込可能なため実行しません: $GROK_BIN"; exit 126 ;;
+        *[2367][0-7]|*[2367]) note "grok バイナリが group/other から書込可能なため実行しません: $GROK_REAL"; exit 126 ;;
       esac
     fi
     # --deny Read/Write/Edit/Bash: grok は ~/.claude/settings.json の allow ルールを継承するため明示 deny 必須。

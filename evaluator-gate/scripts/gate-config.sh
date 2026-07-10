@@ -21,14 +21,25 @@ set_enabled() {
     '.schema = 1 | .projects[$p] = {enabled: $e, updated: $ts}' > "$tmpf" && mv "$tmpf" "$GATE_CONFIG"
 }
 
+# 引数なし・空引数は status 扱い
+[ -z "$cmd" ] && cmd=status
+
 case "$cmd" in
   on)
-    set_enabled true
-    printf 'evaluator-gate: ON  (%s)\n' "$project"
+    if set_enabled true; then
+      printf 'evaluator-gate: ON  (%s)\n' "$project"
+    else
+      printf 'evaluator-gate: 設定の保存に失敗しました（%s は変更されていません）\n' "$GATE_CONFIG" >&2
+      exit 1
+    fi
     ;;
   off)
-    set_enabled false
-    printf 'evaluator-gate: OFF (%s)\n' "$project"
+    if set_enabled false; then
+      printf 'evaluator-gate: OFF (%s)\n' "$project"
+    else
+      printf 'evaluator-gate: 設定の保存に失敗しました（%s は変更されていません）\n' "$GATE_CONFIG" >&2
+      exit 1
+    fi
     ;;
   status)
     printf 'project: %s\n' "$project"

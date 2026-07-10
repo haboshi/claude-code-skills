@@ -33,13 +33,28 @@ case "$kind" in
       GROK_BIN=$(command -v grok 2>/dev/null || true)
     fi
     if [ -z "$GROK_BIN" ] || [ ! -x "$GROK_BIN" ]; then note "grok CLI 不在"; exit 127; fi
-    # --deny Write/Edit/Bash: grok は ~/.claude/settings.json の allow ルールを継承するため明示 deny 必須
+    # 毎 Stop で実行するバイナリなので、置き換えによる実行乗っ取りを避ける:
+    # 自分（または root）所有であり、group/other から書き込み可能でないことを確認する。
+    # stat が使えない環境ではチェックを省略する（best-effort な多層防御）
+    bin_owner=$(stat -f '%u' "$GROK_BIN" 2>/dev/null || stat -c '%u' "$GROK_BIN" 2>/dev/null || echo "")
+    bin_perm=$(stat -f '%Lp' "$GROK_BIN" 2>/dev/null || stat -c '%a' "$GROK_BIN" 2>/dev/null || echo "")
+    if [ -n "$bin_owner" ] && [ "$bin_owner" != "$(id -u)" ] && [ "$bin_owner" != "0" ]; then
+      note "grok バイナリの所有者が想定外のため実行しません: $GROK_BIN"; exit 126
+    fi
+    if [ -n "$bin_perm" ]; then
+      case "$bin_perm" in
+        *[2367][0-7]|*[2367]) note "grok バイナリが group/other から書込可能なため実行しません: $GROK_BIN"; exit 126 ;;
+      esac
+    fi
+    # --deny Read/Write/Edit/Bash: grok は ~/.claude/settings.json の allow ルールを継承するため明示 deny 必須。
+    # Read も拒否する（証拠は prompt.md に同梱済み。evidence 外のローカルファイルを読ませない）。
+    # prompt-file は CLI 自身が読むためツールの Read は不要。
     # --no-memory: fresh evaluator 原則（過去セッションの記憶を持ち込まない）
     run_with_timeout "$tsec" "$GROK_BIN" \
       --prompt-file "$prompt" --output-format plain \
       -m "${EVALUATOR_GATE_GROK_MODEL:-grok-4.5}" --cwd "$cwd" \
       --no-subagents --no-memory --disable-web-search --max-turns 8 \
-      --deny Write --deny Edit --deny Bash \
+      --deny Read --deny Write --deny Edit --deny Bash \
       > "$outf" 2>> "$logf"
     exit $?
     ;;

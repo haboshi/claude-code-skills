@@ -12,13 +12,18 @@ proj_dir="${CLAUDE_PROJECT_DIR:-$PWD}"
 project=$(resolve_project_root "$proj_dir") || { echo "git リポジトリではないため評価対象がありません"; exit 0; }
 command -v jq >/dev/null 2>&1 || { echo "jq が必要です" >&2; exit 1; }
 
+umask 077
 ensure_dirs
-wdir="$GATE_TMP_DIR/advisory-$$"
-mkdir -p "$wdir"
+wdir=$(mktemp -d "$GATE_TMP_DIR/advisory.XXXXXX") || { echo "一時ディレクトリの作成に失敗しました" >&2; exit 1; }
 trap 'rm -rf "$wdir"' EXIT
 
 printf '%s' "（/evaluate によるオンデマンド評価。ビルダーの完了主張はありません。現在の作業状態そのものを評価してください）" > "$wdir/last_msg_raw.txt"
 build_evidence "$project" "$wdir/last_msg_raw.txt" "$wdir"
+# 外部送信前の無害化（Stop ゲートと同一処理）
+for ef in msg summary excerpt; do
+  scrub_sentinels "$wdir/$ef.txt"
+  redact_secrets "$wdir/$ef.txt"
+done
 printf '%s\n' "You may not modify anything; judge only from the evidence in this prompt." > "$wdir/tool_note.txt"
 if [ -n "$focus" ]; then
   printf 'Additional focus requested by the user: %s\n' "$focus" > "$wdir/focus.txt"
@@ -41,7 +46,7 @@ echo "## Codex の所見"
 if [ "$rc_c" -eq 0 ] && [ -s "$wdir/out-codex.txt" ]; then
   cat "$wdir/out-codex.txt"
 else
-  echo "（利用不可: rc=$rc_c。'codex login status' を確認してください）"
+  echo "（利用不可: rc=${rc_c}。'codex login status' を確認してください）"
   detect_auth_hint "$wdir/out-codex.txt" "$wdir/log-codex.txt" codex
 fi
 echo
@@ -49,6 +54,6 @@ echo "## Grok の所見"
 if [ "$rc_g" -eq 0 ] && [ -s "$wdir/out-grok.txt" ]; then
   cat "$wdir/out-grok.txt"
 else
-  echo "（利用不可: rc=$rc_g。'grok login' を確認してください — トークンは7日で失効）"
+  echo "（利用不可: rc=${rc_g}。'grok login' を確認してください — トークンは7日で失効）"
   detect_auth_hint "$wdir/out-grok.txt" "$wdir/log-grok.txt" grok
 fi

@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# テスト用 fake grok: FAKE_GROK_OUTPUT を stdout へ
+logdir="${FAKE_CALL_LOG_DIR:-/tmp}"
+mkdir -p "$logdir" 2>/dev/null || true
+echo "grok called" >> "$logdir/fake-calls.log"
+printf '%s\n' "${FAKE_GROK_OUTPUT:-ALLOW: ok}"
+exit "${FAKE_GROK_RC:-0}"

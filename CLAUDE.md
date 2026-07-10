@@ -104,6 +104,9 @@ cd svg-header-image && node scripts/generate.test.js
 
 # npm test が定義されているプラグイン（svg-to-webp / mermaid-to-webp / svg-diagram / tts）
 cd svg-to-webp && npm test
+
+# Bash テスト（evaluator-gate — fake 評価者による決定論テスト、実 LLM 呼び出しなし）
+bash evaluator-gate/tests/run-tests.sh
 ```
 
 ### 必要な環境変数（プラグインごと）

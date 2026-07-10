@@ -7,7 +7,7 @@ argument-hint: "on | off | status"
 
 ## Step 1: トグル/状態確認の実行
 
-`bash "${CLAUDE_PLUGIN_ROOT}/scripts/gate-config.sh" $ARGUMENTS` を実行する。
+`bash "${CLAUDE_PLUGIN_ROOT}/scripts/gate-config.sh" "$ARGUMENTS"` を実行する（空なら status になる）。
 project キーはスクリプトが `git rev-parse --show-toplevel` で決定する（カレントの git リポジトリ単位・既定 OFF の opt-in）。
 
 ## Step 2: 結果の報告

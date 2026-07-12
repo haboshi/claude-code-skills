@@ -780,6 +780,55 @@ reset_calls
 out=$(stopjson s26 "完了" | run_gate); rc=$?
 if [ -z "$out" ] && [ "$rc" -eq 0 ] && [ "$(calls)" = "0" ]; then ok "T26 off 後は無音"; else bad "T26" "calls=$(calls)"; fi
 
+# --- T31: opt-in 督促（未判断の git リポで SessionStart 時に有効化を促す）---
+NREPO="$WORK/nudge-repo"
+mkdir -p "$NREPO"
+git -C "$NREPO" init -q -b main 2>/dev/null || git -C "$NREPO" init -q
+git -C "$NREPO" config user.email t@t; git -C "$NREPO" config user.name t
+echo x > "$NREPO/a.txt"; git -C "$NREPO" add -A >/dev/null; git -C "$NREPO" commit -qm i >/dev/null
+nudgejson() { jq -n --arg s "$1" --arg c "$NREPO" '{session_id:$s, cwd:$c, hook_event_name:"SessionStart", source:"startup"}'; }
+# マーカーのキーは resolve_project_root（git toplevel の実パス）に合わせる。$NREPO を直接
+# sha 化すると symlink/TMPDIR 実パス差で不一致になる。
+NPROJ=$(cd "$NREPO" && git rev-parse --show-toplevel 2>/dev/null)
+NMARKER="$EVALUATOR_GATE_HOME/nudged/$(printf '%s' "$NPROJ" | shasum -a 256 | cut -d' ' -f1)"
+
+# 未判断 → 督促が出る + マーカー作成
+out=$(nudgejson n1 | run_start)
+if printf '%s' "$out" | grep -q "未設定" && printf '%s' "$out" | grep -q "/evaluator-gate on" && [ -f "$NMARKER" ]; then
+  ok "T31 未opt-inのgitリポで督促を出す（マーカー作成）"
+else bad "T31" "out=$out marker=$([ -f "$NMARKER" ] && echo yes)"; fi
+
+# 直後に再度 → interval 内なので督促出ない（うるさくならない）
+out=$(nudgejson n2 | run_start)
+if [ -z "$out" ]; then ok "T31b interval内は督促を出さない"; else bad "T31b" "out=$out"; fi
+
+# interval 経過を偽装 → 再び督促
+touch -t "$(date -v-2d +%Y%m%d%H%M 2>/dev/null || date -d '2 days ago' +%Y%m%d%H%M)" "$NMARKER" 2>/dev/null
+out=$(nudgejson n3 | run_start)
+if printf '%s' "$out" | grep -q "未設定"; then ok "T31c interval経過後は再び督促"; else bad "T31c" "out=$out"; fi
+
+# on 判断済み → 督促せず baseline 記録（is_enabled パスに入る）
+(cd "$NREPO" && bash "$PLUG/scripts/gate-config.sh" on >/dev/null)
+out=$(nudgejson n4 | run_start)
+bh=$(cat "$EVALUATOR_GATE_HOME/state/n4.json" 2>/dev/null | jq -r '.baseline_head // "none"')
+if [ -z "$out" ] && [ "$bh" != "none" ]; then ok "T31d on済みは督促せずbaseline記録"; else bad "T31d" "out=$out bh=$bh"; fi
+
+# off 判断済み → 督促しない（is_enabled false だが判断済みなので黙る。マーカー消しても出ない）
+(cd "$NREPO" && bash "$PLUG/scripts/gate-config.sh" off >/dev/null)
+rm -f "$NMARKER"
+out=$(nudgejson n5 | run_start)
+if [ -z "$out" ]; then ok "T31e off済み（判断済み）は督促しない"; else bad "T31e" "out=$out"; fi
+
+# --- T31f: INTERVAL=00 系は 0 扱いにならず既定に丸める（毎セッション督促の抑止）---
+NREPO2="$WORK/nudge-repo2"
+mkdir -p "$NREPO2"; git -C "$NREPO2" init -q -b main 2>/dev/null || git -C "$NREPO2" init -q
+git -C "$NREPO2" config user.email t@t; git -C "$NREPO2" config user.name t
+echo y > "$NREPO2/a"; git -C "$NREPO2" add -A >/dev/null; git -C "$NREPO2" commit -qm i >/dev/null
+nj2() { jq -n --arg s "$1" --arg c "$NREPO2" '{session_id:$s, cwd:$c, hook_event_name:"SessionStart", source:"startup"}'; }
+out=$(nj2 m1 | EVALUATOR_GATE_NUDGE_INTERVAL=00 run_start)   # 1回目は督促
+out=$(nj2 m2 | EVALUATOR_GATE_NUDGE_INTERVAL=00 run_start)   # 00 が 0 扱いなら再督促してしまう
+if [ -z "$out" ]; then ok "T31f INTERVAL=00 でも既定間隔に丸め毎回督促しない"; else bad "T31f" "再督促: $out"; fi
+
 echo "----"
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

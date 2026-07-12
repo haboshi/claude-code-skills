@@ -3,7 +3,7 @@
 // 1 transcript ファイル = 1 セッション。冪等: 同じ入力から常に同じダイジェストを返す。
 
 const C = require('./common');
-const { classifyToolResult, detectRetries, detectDrift } = require('./classify');
+const { classifyToolResult, detectRetries, detectDrift, detectHallucinationMarkers } = require('./classify');
 const { costUsd } = require('./pricing');
 
 // tool_use.input から短い target 文字列を抽出（Read/Edit/Write→file_path, Bash→cmd先頭, Grep→pattern）
@@ -54,6 +54,10 @@ function digestFromRecords(records, opts = {}) {
   const toolEvents = [];      // 時系列（retry/drift 用）: { tool, target, isError, turnIdx }
   const toolErrors = [];      // { tool, error_class, preview_masked, turn_idx, raw? }
   const hookErrors = [];
+  const orphaned = [];        // 結果の無い tool_use（＝ターン打ち切り/model-side error の代理シグナル）
+  const hallucinations = [];  // R8: 作話/混線の痕跡（assistant テキスト・tool_result）
+  const CAP = 50;             // 弱シグナル配列の上限（暴走セッションでのメモリ暴発を防ぐ）
+  let lastToolUseId = null;   // 最後に発火した tool_use（in-flight なので orphan 判定から除外）
   let modelRefusals = 0, permissionDenials = 0;
 
   const invokedSkills = new Set(), invokedSubagents = new Set(), invokedCommands = new Set(), invokedMcp = new Set();
@@ -80,8 +84,9 @@ function digestFromRecords(records, opts = {}) {
     const msg = rec.message;
 
     if (rec.type === 'user') {
-      // 割り込み検出
-      const cstr = typeof (msg && msg.content) === 'string' ? msg.content : '';
+      // 割り込み検出（content は string / array 双方あり。array 形式で来る中断を従来は取りこぼしていた）
+      const rawContent = msg && msg.content;
+      const cstr = typeof rawContent === 'string' ? rawContent : resultText(rawContent);
       if (/\[Request interrupted/i.test(cstr)) interruptions++;
       // コマンド発火
       if (cstr.indexOf('<command-name>') !== -1) {
@@ -120,14 +125,22 @@ function digestFromRecords(records, opts = {}) {
         bm.input += rowInput; bm.output += rowOutput; tokens.by_model[model] = bm;
         costTotal += costUsd({ input: rowInput, output: rowOutput, cache_read: rowCr, cache_creation: rowCw }, model);
       }
-      // ツール使用
+      // ツール使用 / テキスト（作話痕跡走査）
       const content = msg && msg.content;
       if (Array.isArray(content)) {
         for (const b of content) {
-          if (!b || b.type !== 'tool_use') continue;
+          if (!b) continue;
+          // assistant テキストに内部プロトコル構文の断片（R8 混線）が漏れていないか
+          if (b.type === 'text' && b.text && hallucinations.length < CAP) {
+            const h = detectHallucinationMarkers(b.text);
+            if (h.suspected) hallucinations.push({ where: 'assistant_text', markers: h.markers, turn_idx: turnIdx });
+            continue;
+          }
+          if (b.type !== 'tool_use') continue;
           const name = b.name || 'unknown';
           const target = extractTarget(name, b.input);
           toolUseById[b.id] = { name, target, turnIdx };
+          lastToolUseId = b.id; // 発火順に更新 → 最終値が「最後に発火した tool_use」
           if (toolSeq.length < 60) toolSeq.push(name);
           if (name === 'Skill' && b.input && (b.input.skill || b.input.command)) invokedSkills.add(b.input.skill || b.input.command);
           else if (name === 'Task' && b.input && b.input.subagent_type) invokedSubagents.add(b.input.subagent_type);
@@ -149,6 +162,16 @@ function digestFromRecords(records, opts = {}) {
     const res = toolResultById[id];
     const c = toolCounts[use.name] || { count: 0, errors: 0 };
     c.count++;
+    // 結果の無い tool_use＝ターン打ち切り（model-side error 等）の代理。ただし最後に発火した1件は
+    // in-flight（まだ結果待ち）でありうるため除外する（増分再取込みで自然に確定する）。
+    if (!res && id !== lastToolUseId && orphaned.length < CAP) {
+      orphaned.push({ tool: use.name, target: use.target, turn_idx: use.turnIdx });
+    }
+    // tool_result 本文に作話/混線の痕跡がないか（成功結果でも走査＝R8 は is_error=false で来る）
+    if (res && res.text && hallucinations.length < CAP) {
+      const h = detectHallucinationMarkers(res.text);
+      if (h.suspected) hallucinations.push({ where: 'tool_result', tool: use.name, markers: h.markers, turn_idx: use.turnIdx });
+    }
     const isError = res ? res.isError : false;
     if (isError) {
       c.errors++;
@@ -177,13 +200,16 @@ function digestFromRecords(records, opts = {}) {
   const totalToolErrors = Object.values(toolCounts).reduce((s, t) => s + t.errors, 0);
   const errorRate = totalToolCalls ? totalToolErrors / totalToolCalls : 0;
   const clamp01 = (x) => Math.max(0, Math.min(1, x));
+  // 重みの合計は 1.00（0.35+0.15+0.10+0.10+0.10+0.05+0.10+0.05）。打ち切り・作話を新たに算入。
   const friction = clamp01(
-    0.40 * errorRate +
-    0.20 * Math.min(1, retries.length / 5) +
-    0.15 * Math.min(1, permissionDenials / 3) +
+    0.35 * errorRate +
+    0.15 * Math.min(1, retries.length / 5) +
+    0.10 * Math.min(1, permissionDenials / 3) +
     0.10 * Math.min(1, compactions / 3) +
     0.10 * Math.min(1, interruptions / 3) +
-    0.05 * Math.min(1, modelRefusals / 2)
+    0.05 * Math.min(1, modelRefusals / 2) +
+    0.10 * Math.min(1, orphaned.length / 3) +
+    0.05 * Math.min(1, hallucinations.length / 2)
   );
 
   return {
@@ -218,6 +244,8 @@ function digestFromRecords(records, opts = {}) {
       hook_errors: hookErrors,
       retries,
       drift_signals: driftSignals,
+      orphaned_tool_use: orphaned,        // 打ち切り（model-side error 等）の代理シグナル
+      suspected_hallucinations: hallucinations, // R8: tool-result 作話/混線の痕跡（advisory）
     },
     interruptions,
     friction_score: Math.round(friction * 100) / 100,

@@ -95,4 +95,28 @@ function detectDrift(toolEvents, opts = {}) {
   return signals;
 }
 
-module.exports = { classifyToolResult, detectRetries, detectDrift, RULES };
+// R8: tool_result の作話/混線（tool-result hallucination）の痕跡検出（決定論・弱シグナル）。
+// 実データ検証（2026-07-12）で、低精度マーカー（<invoke>・<parameter name=・%{...}）は skill/agent/hook を
+// オーサリングする正当なテキストと区別できず誤検知支配になることが判明（assistant_text 284件が全て低精度由来）。
+// そのため suspected 判定は「高精度マーカー（HP）のみ」に限定する。低精度は診断用に markers へ記録するが
+// 単独では suspected にしない（rules: verification-integrity R4/R5・hook-authoring R3=ノイズ advisory の禁止）。
+const HALLUC_MARKERS = [
+  ['result_name_combo', /<result>\s*\n?\s*<name>/],       // 高精度: 漏洩した tool_result エンコード（<result><name>…）
+  ['tool_use_id_leak', /"tool_use_id"\s*:/],              // 高精度: 内部フィールドの漏洩
+  ['invoke_tag', /<\/?(?:antml:)?invoke\b/],              // 低精度: <invoke> タグ断片（オーサリングで頻出＝診断のみ）
+  ['parameter_tag', /<(?:antml:)?parameter\s+name=/],     // 低精度: <parameter name=…> 断片（診断のみ）
+  ['format_specifier_output', /%\{http_code\}|%\{[a-z_]+\}/], // 低精度: フォーマット指定子（curl -w 等で正当に出る＝診断のみ）
+];
+const HALLUC_HP = new Set(['result_name_combo', 'tool_use_id_leak']);
+
+// text から作話痕跡マーカーを検出。{ suspected, markers } を返す（markers はマッチした kind の配列）。
+// suspected は高精度マーカーが1つ以上あるときのみ true（低精度は誤検知源のため単独では立てない）。
+function detectHallucinationMarkers(text) {
+  const t = String(text || '');
+  const markers = [];
+  for (const [kind, re] of HALLUC_MARKERS) if (re.test(t)) markers.push(kind);
+  const suspected = markers.some((m) => HALLUC_HP.has(m));
+  return { suspected, markers };
+}
+
+module.exports = { classifyToolResult, detectRetries, detectDrift, detectHallucinationMarkers, RULES };

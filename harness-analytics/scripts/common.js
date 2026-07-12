@@ -30,7 +30,10 @@ const SERVER_LOCK_PATH = path.join(HA_DIR, 'server.lock');
 const AUTO_REFRESH_PATH = path.join(HA_DIR, '.auto-refresh.json');
 
 // 現行ダイジェストスキーマ版。上げると cursor 不一致セッションが再処理対象になる（分類ロジック変更時も上げる）。
-const DIGEST_VERSION = 2;
+// v3: orphaned_tool_use（打ち切り代理）と suspected_hallucinations（R8 混線）を failure_signals に追加。
+// v4: 作話検出を高精度マーカーのみに限定（低精度はオーサリング誤検知支配のため）。
+// v5: 割り込み検出が string content しか見ておらず array 形式の中断を取りこぼしていたのを修正。
+const DIGEST_VERSION = 5;
 
 // 日付ヘルパ（ローカルタイム基準の YYYY-MM-DD）
 function today() {

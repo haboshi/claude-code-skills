@@ -27,6 +27,8 @@ validate_session_id "$session_id" || { note "session_id が不正な形式のた
 cwd=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null || true)
 [ -n "$cwd" ] || cwd="${CLAUDE_PROJECT_DIR:-$PWD}"
 last_msg=$(printf '%s' "$INPUT" | jq -r '.last_assistant_message // ""' 2>/dev/null || true)
+# transcript_path: 評価者に「ユーザーの元の指示」を渡すために使う（無ければ従来動作）
+transcript_path=$(printf '%s' "$INPUT" | jq -r '.transcript_path // ""' 2>/dev/null || true)
 
 # --- ゼロコスト事前チェック（速い順・すべて fail-open で通過） ---
 [ "${EVALUATOR_GATE_BYPASS:-0}" = "1" ] && { note "BYPASS=1 によりスキップ"; exit 0; }
@@ -61,6 +63,10 @@ MAX_BLOCKS="${EVALUATOR_GATE_MAX_BLOCKS:-3}"
 case "$MAX_BLOCKS" in ''|*[!0-9]*) MAX_BLOCKS=3 ;; esac
 EV_TIMEOUT="${EVALUATOR_GATE_EVAL_TIMEOUT:-240}"
 case "$EV_TIMEOUT" in ''|*[!0-9]*) EV_TIMEOUT=240 ;; esac
+# 評価者に渡すユーザー指示のターン数（証拠 diff 範囲との整合の近似）。暴走防止で上限 20
+INSTR_TURNS="${EVALUATOR_GATE_INSTRUCTION_TURNS:-3}"
+case "$INSTR_TURNS" in ''|*[!0-9]*) INSTR_TURNS=3 ;; esac
+[ "$INSTR_TURNS" -gt 20 ] && INSTR_TURNS=20
 # フック全体の timeout（hooks.json: 300 秒）に収める:
 # ロック待ち最大 20 + 評価 240 + TERM→KILL 猶予 5 + git/jq の諸経費 < 300
 [ "$EV_TIMEOUT" -gt 240 ] && EV_TIMEOUT=240
@@ -257,9 +263,20 @@ fi
 # 生の完了主張を残さない（評価者は cwd 配下のファイルを読める）
 rm -f "$wdir/last_msg_raw.txt"
 
+# ユーザーの元の指示（直近 N ターン）を証拠に加える。評価者に「何を頼まれたか」を与えて
+# 「成果物がリポジトリに出る種類か」を較正させる。抽出は transcript の user ロールのみ。
+# 失敗・不在時は instruction.txt を作らず、従来どおり主張＋diff だけで評価する（fail-open）。
+if [ -n "$transcript_path" ] && [ -f "$transcript_path" ]; then
+  extract_user_instructions "$transcript_path" "$INSTR_TURNS" 4000 "$wdir/instruction.txt" \
+    || rm -f "$wdir/instruction.txt"
+fi
+
 # 外部送信前の無害化（センチネル除去 + secret redact）。
 # 失敗したら「redact できない内容を外部に送らない」= 評価せず fail-open する。
-if ! sanitize_evidence "$wdir/msg.txt" "$wdir/summary.txt" "$wdir/excerpt.txt"; then
+# instruction.txt も他の証拠と同じ redact 経路を必ず通す（生成できていれば対象に含める）。
+sanitize_files=("$wdir/msg.txt" "$wdir/summary.txt" "$wdir/excerpt.txt")
+[ -s "$wdir/instruction.txt" ] && sanitize_files+=("$wdir/instruction.txt")
+if ! sanitize_evidence "${sanitize_files[@]}"; then
   note "evidence の secret redact に失敗したため、外部送信せず評価をスキップします（fail-open）"
   exit 0
 fi
@@ -274,8 +291,10 @@ for raw in "$wdir/last_msg_raw.txt" "$wdir/tracked.diff"; do
 done
 
 printf '%s\n' "You may not modify anything; judge only from the evidence in this prompt." > "$wdir/tool_note.txt"
+# 第7引数（focus）はゲートでは未使用のため空文字。第8引数が元指示（非空時のみ描画）。
 if ! render_template "$PLUGIN_ROOT/prompts/stop-gate.md" "$wdir/prompt.md" \
-     "$wdir/tool_note.txt" "$wdir/msg.txt" "$wdir/summary.txt" "$wdir/excerpt.txt"; then
+     "$wdir/tool_note.txt" "$wdir/msg.txt" "$wdir/summary.txt" "$wdir/excerpt.txt" \
+     "" "$wdir/instruction.txt"; then
   note "プロンプト生成に失敗したため評価をスキップします（fail-open）"
   exit 0
 fi

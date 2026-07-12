@@ -1,6 +1,6 @@
 {
   "name": "evaluator-gate",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Stop フックでビルダー（Claude 本体）の完了主張を外部モデル評価者（Codex/Grok、いずれもサブスク認証・API 従量課金なし）が検証する完了ゲート。ビルダー≠評価者の分離（fresh context・別モデル系統）で「完了しました」の安易な着地を根拠つきで差し戻す。diff ハッシュによる決定論事前チェックで変更のないターンは LLM を起動しない。per-project opt-in（既定 OFF）。/evaluator-gate で切替、/evaluate でオンデマンド所見評価。",
   "author": {
     "name": "haboshi",

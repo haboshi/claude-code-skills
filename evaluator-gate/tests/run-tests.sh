@@ -47,6 +47,14 @@ run_gate() { bash "$PLUG/scripts/stop-gate.sh" 2>/dev/null; }
 run_start() { bash "$PLUG/scripts/session-baseline.sh" 2>/dev/null; }
 state_of() { cat "$EVALUATOR_GATE_HOME/state/$1.json" 2>/dev/null; }
 promptf() { echo "$FAKE_CALL_LOG_DIR/last-prompt.txt"; }
+# transcript（JSONL）構築ヘルパー
+tx_user()    { jq -n -c --arg t "$1" '{type:"user",message:{role:"user",content:$t}}'; }
+tx_asst()    { jq -n -c --arg t "$1" '{type:"assistant",message:{role:"assistant",content:[{type:"text",text:$t}]}}'; }
+tx_toolres() { jq -n -c --arg t "$1" '{type:"user",message:{role:"user",content:[{type:"tool_result",tool_use_id:"x",content:$t}]}}'; }
+stopjson_tx() { # $1 session, $2 message, $3 transcript_path
+  jq -n --arg s "$1" --arg c "$REPO" --arg m "$2" --arg tp "$3" \
+    '{session_id:$s, cwd:$c, hook_event_name:"Stop", stop_hook_active:false, last_assistant_message:$m, transcript_path:$tp}'
+}
 
 BLOCK_OUT='BLOCK: 主張と差分が一致しません
 base.txt:2 — TODO が残置 — 実装を完了させる'
@@ -702,6 +710,68 @@ if command -v sandbox-exec >/dev/null 2>&1; then
 else
   ok "T25r sandbox-exec 不在のためスキップ"
 fi
+
+# === 元指示（USER_INSTRUCTION）注入の結線テスト（T27-T30） ===
+# fake 評価者は LLM の判断は検証しない。ここで検証するのは「元指示が正しく抽出・redact され
+# 評価者プロンプトに届くか」という機構（結線）まで。ルーブリックの効き目は実 LLM の spot check。
+
+# --- T27: ユーザーの元指示が評価者プロンプトに描画される（今回のインシデント再現） ---
+# 指示=「MCPサーバ追加」（リポジトリ外作業）、diff=無関係な変更、でも元指示が届くこと。
+TX="$WORK/tx27.jsonl"; : > "$TX"
+tx_user "MCPサーバ INSTRMARK_ANTHRO を追加して" >> "$TX"
+tx_asst "追加しました" >> "$TX"
+tx_toolres "Connected" >> "$TX"
+tx_user "はい" >> "$TX"
+echo "unrelated change 27" >> "$REPO/base.txt"
+reset_calls
+out=$(stopjson_tx s27 "user scope に追加し Connected を確認しました" "$TX" | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
+if [ "$(calls)" = "2" ] && grep -q "INSTRMARK_ANTHRO" "$(promptf)" && grep -q "USER_INSTRUCTION_BEGIN" "$(promptf)"; then
+  ok "T27 元指示がプロンプトに描画される（リポジトリ外タスクの文脈が評価者に届く）"
+else bad "T27" "calls=$(calls) has_instr=$(grep -c INSTRMARK_ANTHRO "$(promptf)")"; fi
+
+# --- T27b: transcript が無ければ元指示は混入しない（従来動作を維持） ---
+echo "unrelated change 27b" >> "$REPO/base.txt"
+reset_calls
+out=$(stopjson s27b "設定を変更しました" | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
+if [ "$(calls)" = "2" ] && ! grep -q "INSTRMARK_ANTHRO" "$(promptf)"; then
+  ok "T27b transcript不在時は元指示を混入しない（fail-openで従来動作）"
+else bad "T27b" "calls=$(calls)"; fi
+
+# --- T28: 元指示内の secret も他の証拠と同じ redact 経路を通る ---
+TX28="$WORK/tx28.jsonl"; : > "$TX28"
+tx_user "このキー sk-proj-INSTRSECRET-abcdefghij0123 を使って実装して" >> "$TX28"
+echo "change 28" >> "$REPO/base.txt"
+reset_calls
+out=$(stopjson_tx s28 "実装しました" "$TX28" | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
+if [ "$(calls)" = "2" ] && ! grep -q "sk-proj-INSTRSECRET" "$(promptf)" && grep -q "REDACTED" "$(promptf)"; then
+  ok "T28 元指示内のsecretもredactされる"
+else bad "T28" "leak=$(grep -o 'sk-proj-INSTRSECRET[a-z0-9-]*' "$(promptf)" | head -1)"; fi
+
+# --- T29: hook注入（system-reminder / [SYSTEM NOTIFICATION]）は指示として拾わない ---
+TX29="$WORK/tx29.jsonl"; : > "$TX29"
+tx_user "<system-reminder>SYSREMINDER_NOISE_29 巨大なCLAUDEmd</system-reminder>
+本物の指示 GENUINE_29 を実装して" >> "$TX29"
+tx_user "[SYSTEM NOTIFICATION - NOT USER INPUT]
+<task-notification>NOTIF_NOISE_29</task-notification>" >> "$TX29"
+echo "change 29" >> "$REPO/base.txt"
+reset_calls
+out=$(stopjson_tx s29 "実装しました" "$TX29" | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
+if [ "$(calls)" = "2" ] && grep -q "GENUINE_29" "$(promptf)" && \
+   ! grep -qE "SYSREMINDER_NOISE_29|NOTIF_NOISE_29" "$(promptf)"; then
+  ok "T29 hook注入(system-reminder/notification)は指示として拾わない"
+else bad "T29" "genuine=$(grep -c GENUINE_29 "$(promptf)") noise=$(grep -oE 'SYSREMINDER_NOISE_29|NOTIF_NOISE_29' "$(promptf)" | tr '\n' ',')"; fi
+
+# --- T30: EVALUATOR_GATE_INSTRUCTION_TURNS で指示の窓を絞れる ---
+TX30="$WORK/tx30.jsonl"; : > "$TX30"
+tx_user "最初の指示 TURNMARK_1" >> "$TX30"
+tx_user "二番目の指示 TURNMARK_2" >> "$TX30"
+tx_user "最新の指示 TURNMARK_3" >> "$TX30"
+echo "change 30" >> "$REPO/base.txt"
+reset_calls
+out=$(stopjson_tx s30 "対応しました" "$TX30" | EVALUATOR_GATE_INSTRUCTION_TURNS=1 EVALUATOR_GATE_KEEP_TMP=1 run_gate)
+if [ "$(calls)" = "2" ] && grep -q "TURNMARK_3" "$(promptf)" && ! grep -q "TURNMARK_1" "$(promptf)"; then
+  ok "T30 INSTRUCTION_TURNS=1 で直近1件のみ（古い指示は含まない）"
+else bad "T30" "m1=$(grep -c TURNMARK_1 "$(promptf)") m3=$(grep -c TURNMARK_3 "$(promptf)")"; fi
 
 # --- T26: off で完全無音に戻る ---
 (cd "$REPO" && bash "$PLUG/scripts/gate-config.sh" off >/dev/null)

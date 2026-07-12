@@ -94,7 +94,8 @@ Stop 発火
 
 ## データフローと既知の限界
 
-- **外部送信**: ゲートを有効にすると、ビルダーの完了主張（last_assistant_message）と git 差分の抜粋が **OpenAI（Codex）と xAI（Grok）に送信される**。機密性の高いリポジトリでは有効化の前にこの点を判断すること。`/evaluate` はゲート OFF でも送信する。
+- **外部送信**: ゲートを有効にすると、ビルダーの完了主張（last_assistant_message）・git 差分の抜粋・**直近数ターンのユーザーの元指示**（transcript の user ロールのみ、既定3ターン）が **OpenAI（Codex）と xAI（Grok）に送信される**。元指示は他の証拠と同じ secret redact 経路を通す。機密性の高いリポジトリでは有効化の前にこの点を判断すること。`/evaluate` はゲート OFF でも送信する。
+- **元指示による較正（REQUEST 文脈）**: 評価者に「何を頼まれたか」を渡すことで、`git diff が主張の内容を含むか` だけの判定を、`タスクの成果物がそもそもリポジトリに出る種類か` を踏まえた判定に較正する。成果物がリポジトリ外に着地するタスク（`~/.claude*` などの設定・MCP/CLI セットアップ・環境変数・外部サービス）では diff 不一致だけで差し戻さない。抽出は transcript の **user ロールのみ**（builder の最終メッセージからは取らない＝偽の指示で verdict を操作させない）。窓は証拠 diff の範囲（eval_base→now）の近似として `EVALUATOR_GATE_INSTRUCTION_TURNS`（既定3）で調整する。**残存限界**: 評価者はリポジトリ外の効果を積極的には検証できない（git に痕跡が出ないため）。この機構は「確認できないものを誤って差し戻す」ことを止めるだけで、外部効果の真偽までは保証しない。
 - **secret の防波堤（多層）**:
   1. *名前ベースの除外* — 機微パス（`.env*` / `*.pem` / `*.key` / `*.p12` / `*.pfx` / `*.jks` / `*.keystore` / `*id_rsa*` / `*id_ed25519*` / `*id_ecdsa*` / `*secret*` / `*credential*` / `.npmrc` / `.netrc` / `*.tfvars` / `*.tfstate` / `service-account*.json`、大文字小文字不問）の**内容**は evidence から除外（ファイル名は変更一覧に載る）。パターンは `gate-lib.sh` の `SENSITIVE_GLOBS` が唯一の定義元で、tracked（git pathspec）と untracked（`is_sensitive_path`）の双方に適用される。**除外を追加するときはここだけを編集する**。
   2. *内容ベースの redact* — 通常名のファイル（`docker-compose.yml` 等）や**完了主張の本文**に埋まった高信号 secret（`sk-…` / `AKIA…` / `ASIA…` / `ghp_…` / `github_pat_…` / `npm_…` / `AIza…` / JWT / `xox…` / Bearer トークン / URL 埋込みパスワード / `password=` `secret=` `token=` `api_key=` `credential=` の右辺（引用符・JSON 形式を含む）/ PEM ブロック本体）を送信前にマスクする。正規表現なので **best-effort**（すべての secret は捕まえられない）。**redact に失敗したら外部送信せず評価をスキップする**（fail-closed）。
@@ -114,7 +115,7 @@ Stop 発火
 - **history 書き換えの縁**: `commit --amend` / rebase で eval_base と baseline_head の両方が到達不能になった場合、そのターンのコミット済み変更は範囲評価できない。黙って受理せず警告つき許可で可視化するが、**そのターンは検証されない**。
 - **同一ターン内での既存ブランチ切替 + コミット**: `git checkout existing-feature && git commit` を1ターンで行うと、reflog の直近が `commit:` になるため、そのブランチの既存コミットも今回の作業として評価されうる（コミット数上限50で頭打ち。超えると評価せず警告）。ターンを分ければ正しく扱われる。
 - **セッション途中導入**: SessionStart フックを通っていないセッション（プラグインを途中でインストールした等）でクリーンな作業ツリーのまま停止した場合は評価しない。過去の無関係なコミットを評価して誤ブロックするより安全側に倒している。
-- **並行実行**: 同一セッションの多重 Stop はロックで直列化するが、**別セッションが同じリポジトリを同時に編集している場合**、ハッシュ取得から evidence 生成までの間の変更が混ざりうる（評価の精度の問題であって、誤ブロックの原因にはなりにくい）。
+- **並行実行 / 共有 worktree の混入**: 同一セッションの多重 Stop はロックで直列化するが、**別セッションが同じ作業ツリーを同時に編集している場合**、その未コミット差分が evidence に混ざる。かつては「別セッションの無関係な diff」を完了主張と突き合わせて**誤ブロックした実例がある**（リポジトリ外の MCP 追加を報告したターンで、別セッションの無関係な変更を主張の不一致と誤認）。現在は元指示（REQUEST）文脈と「タスクにも主張にも無関係な差分は他セッション/既存状態由来かもしれず虚偽の根拠にしない」というルーブリックで緩和している。ただし機構的に別セッションの差分を除外しているわけではない（評価者の判断に委ねる緩和）。
 - **プロンプト注入耐性**: ビルダーのメッセージと diff は「信頼しないデータ」としてセンチネルで囲み、データ側のセンチネル文字列は挿入前に除去（境界偽装防止）。評価者には内部指示への追従禁止・操作意図の指摘を指示している。完全な防御ではない。
 
 ## トラブルシュート
@@ -122,6 +123,7 @@ Stop 発火
 - **Grok が常に unavailable**: `grok login` を実行（grok.com サブスクのブラウザ認証。トークンは7日で失効）。`/evaluator-gate status` が auth の経過日数を表示する。
 - **Codex が常に unavailable**: `codex login status` で ChatGPT ログインを確認。
 - **ブロックが不当だと思ったら**: `/evaluate` で advisory の所見を取り、人間が判断する。緊急脱出は環境変数 `EVALUATOR_GATE_BYPASS=1`（人間専用）。
+- **リポジトリ外の作業（MCP 追加・設定変更・外部操作）なのに差し戻される**: 評価者は直近数ターンの元指示（REQUEST）を見て「成果物がリポジトリに出る種類か」を判断する。元指示がゲートに届いていない可能性がある（transcript を読めない環境・古いセッション）。届いている場合でも文脈が薄いときは `EVALUATOR_GATE_INSTRUCTION_TURNS`（既定3）を増やすと、タスクを定義したより前のターンまで評価者に渡せる。
 - **state をリセットしたい**: `rm ~/.claude/evaluator-gate/state/<session_id>.json`。
 - **評価が遅い**: `EVALUATOR_GATE_EVAL_TIMEOUT`（秒、既定240）と `EVALUATOR_GATE_CODEX_EFFORT`（既定 medium）で調整。モデルは `EVALUATOR_GATE_CODEX_MODEL` / `EVALUATOR_GATE_GROK_MODEL`（既定 grok-4.5）で上書き可能。
 - **OS レベル読取・書込隔離を使いたい**: `EVALUATOR_GATE_SANDBOX=1`（macOS のみ）。有効時は評価者を `sandbox-exec` で包み、順次実行に切り替える。

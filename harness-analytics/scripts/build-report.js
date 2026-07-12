@@ -178,6 +178,21 @@ function kpiRow(kpis) {
   return cells.map(([k, v]) => `<div class="kpi"><div class="kpi-v">${esc(v)}</div><div class="kpi-k">${esc(k)}</div></div>`).join('');
 }
 
+// ハーネス健全性（v3）: 従来 digest で不可視だった打ち切り・作話を可視化する。
+function harnessHealth(kpis) {
+  const ot = kpis.orphaned_total || 0, os = kpis.orphaned_sessions || 0;
+  const ht = kpis.hallucination_total || 0, hs = kpis.hallucination_sessions || 0;
+  const cells = [
+    ['打ち切り (orphaned tool_use)', `${ot}件`, `${os} セッション`],
+    ['作話疑い (tool-result R8)', `${ht}件`, `${hs} セッション`],
+  ];
+  const cellHtml = cells.map(([k, v, s]) =>
+    `<div class="kpi"><div class="kpi-v">${esc(v)}</div><div class="kpi-k">${esc(k)}<br><span class="muted">${esc(s)}</span></div></div>`).join('');
+  return `<h2>ハーネス健全性 — 打ち切り・作話の可視化</h2>
+    <div class="kpis" style="grid-template-columns:repeat(2,1fr);max-width:760px">${cellHtml}</div>
+    <div class="meta">従来 digest で不可視だった「静かな失敗」。<b>打ち切り</b>＝ツール結果が返る前にターンが切れた回数（model-side error 等の代理シグナル）。<b>作話疑い</b>＝tool_result に内部プロトコル構文が混入した痕跡（advisory・メタ議論由来の誤検知を含みうる）。件数&gt;0 は該当セッションが存在することを示す。</div>`;
+}
+
 const STYLE = `
   :root { color-scheme: light;
     --bg:#f4f7f8; --fg:#16242d; --muted:#5b6a74; --line:#dfe6e9; --card:#ffffff; --card2:#eef3f5;
@@ -307,6 +322,8 @@ function html(data) {
     <div class="fignote">右上ほど「何度も・広く」起きている＝優先。円の大きさ＝コスト影響。赤＝最優先。</div></div>
 </div>
 
+${harnessHealth(kpis)}
+
 <h2>内訳チャート</h2>
 <div class="grid">
   <div class="card"><h3>失敗クラスター Top（件数）</h3>${clustersChart(byScore)}</div>
@@ -341,7 +358,11 @@ function markdown(data) {
     lines.push(`- 直す場所: ${files}`);
     if (hero.llm && hero.llm.root_cause) lines.push(`- 根因(推定): ${hero.llm.root_cause}`);
   } else { lines.push(`優先度の高い失敗は検出されませんでした。`); }
-  lines.push(``, `## KPI`, ``, `| 指標 | 値 |`, `|---|---|`, `| セッション | ${kpis.sessions} |`, `| 総コスト(概算) | $${(kpis.total_cost_usd || 0).toFixed(2)} |`, `| ツールエラー率 | ${((kpis.tool_error_rate || 0) * 100).toFixed(1)}% |`, `| 平均 friction | ${kpis.avg_friction} |`, ``, `## 失敗クラスター`, ``, `| クラス/ツール | 件数 | 影響 | 傾向 | 改善示唆 | 対象面 |`, `|---|---|---|---|---|---|`);
+  lines.push(``, `## KPI`, ``, `| 指標 | 値 |`, `|---|---|`, `| セッション | ${kpis.sessions} |`, `| 総コスト(概算) | $${(kpis.total_cost_usd || 0).toFixed(2)} |`, `| ツールエラー率 | ${((kpis.tool_error_rate || 0) * 100).toFixed(1)}% |`, `| 平均 friction | ${kpis.avg_friction} |`, ``,
+    `## ハーネス健全性（打ち切り/作話の可視化）`, ``, `| 指標 | 件数 | 影響セッション |`, `|---|---|---|`,
+    `| 打ち切り(orphaned tool_use) | ${kpis.orphaned_total || 0} | ${kpis.orphaned_sessions || 0} |`,
+    `| 作話疑い(tool-result R8) | ${kpis.hallucination_total || 0} | ${kpis.hallucination_sessions || 0} |`,
+    ``, `## 失敗クラスター`, ``, `| クラス/ツール | 件数 | 影響 | 傾向 | 改善示唆 | 対象面 |`, `|---|---|---|---|---|---|`);
   for (const c of clusters) lines.push(`| ${c.error_class}/${c.tool}${c.is_defense ? '(防御)' : ''} | ${c.count} | ${c.affected_sessions} | ${c.trend || ''} | ${c.suggested_fix} | ${c.target_surface} |`);
   return lines.join('\n') + '\n';
 }

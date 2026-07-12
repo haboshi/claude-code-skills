@@ -5,6 +5,7 @@
 function computeKpis(digests) {
   const n = digests.length;
   let totalCost = 0, toolCalls = 0, toolErrors = 0, compactions = 0, interruptions = 0, frictionSum = 0;
+  let orphanTotal = 0, orphanSessions = 0, hallucTotal = 0, hallucSessions = 0;
   const byTool = {}; // name -> { count, errors }
   const costBySession = [];
   const compactionBySession = [];
@@ -14,6 +15,11 @@ function computeKpis(digests) {
     compactions += (d.turns && d.turns.compactions) || 0;
     interruptions += d.interruptions || 0;
     frictionSum += d.friction_score || 0;
+    const fsig = d.failure_signals || {};
+    const on = (fsig.orphaned_tool_use || []).length;
+    const hn = (fsig.suspected_hallucinations || []).length;
+    orphanTotal += on; if (on) orphanSessions++;
+    hallucTotal += hn; if (hn) hallucSessions++;
     for (const [name, t] of Object.entries(d.tools || {})) {
       const bt = byTool[name] || { count: 0, errors: 0 };
       bt.count += t.count || 0; bt.errors += t.errors || 0; byTool[name] = bt;
@@ -37,6 +43,11 @@ function computeKpis(digests) {
     compaction_rate: n ? Math.round((compactions / n) * 100) / 100 : 0,
     interruption_rate: n ? Math.round((interruptions / n) * 100) / 100 : 0,
     avg_friction: n ? Math.round((frictionSum / n) * 100) / 100 : 0,
+    // ハーネス健全性（v3 新規）: 従来 digest で不可視だった打ち切り・作話の可視化
+    orphaned_total: orphanTotal,
+    orphaned_sessions: orphanSessions,
+    hallucination_total: hallucTotal,
+    hallucination_sessions: hallucSessions,
     by_tool: byTool,
     cost_hotspots: costBySession.slice(0, 10),
     compaction_hotspots: compactionBySession.slice(0, 10),

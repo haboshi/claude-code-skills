@@ -4,8 +4,9 @@
 # これがないと、セッション初回のターンで「実装 → コミット → 作業ツリーがクリーン」になった場合に
 # 評価すべき範囲を特定できず、素通りしてしまう（時刻ヒューリスティックは誤評価の元なので使わない）。
 #
-# 契約: stdout に出力しない（SessionStart の stdout は次ターンの context に注入されるため）。
-#       何が起きても exit 0（セッション開始を妨げない）。
+# 契約: baseline 記録経路は stdout に出力しない（SessionStart の stdout は次ターンの
+#       context に注入される）。例外として、未 opt-in の git リポでは1行だけ督促を
+#       意図的に出す（下記）。何が起きても exit 0（セッション開始を妨げない）。
 set -uo pipefail
 
 export PATH="$PATH:/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin"
@@ -26,7 +27,19 @@ cwd=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null || true)
 
 project=$(resolve_project_root "$cwd") || exit 0
 [ -n "$project" ] || exit 0
-is_enabled "$project" || exit 0
+
+# 未 opt-in（is_enabled でない）の git リポジトリでは、まだ on/off の判断をしていない場合に
+# 限り、24h に1回だけ「有効化できます」と督促する。ゲートは per-project opt-in（既定 OFF）で
+# 能動的に on にしないと作動しないため、これがないと機能が死蔵しやすい。
+# on/off どちらかを設定済み（判断済み）のプロジェクトには二度と出さない。
+# SessionStart の stdout は次ターンの context に注入される（＝ビルダーがそこで判断できる）。
+if ! is_enabled "$project"; then
+  if ! has_project_decision "$project" && should_nudge "$project"; then
+    record_nudge "$project"
+    printf '[evaluator-gate] このリポジトリは完了ゲートが未設定です。有効化するなら `/evaluator-gate on`（Codex/Grok の外部評価者が「完了」主張を git 差分と突き合わせて検証し、実装が伴わなければ差し戻します。既定 OFF）。機密性の高いリポジトリでは有効化しないでください（差分が外部モデルに送信されます）。\n'
+  fi
+  exit 0
+fi
 
 ensure_dirs
 state_load "$session_id"

@@ -87,6 +87,41 @@ is_enabled() {
   jq -e --arg p "$1" '.projects[$p].enabled == true' "$GATE_CONFIG" >/dev/null 2>&1
 }
 
+# 引数: project 絶対パス → config に on/off いずれかの判断があれば 0（enabled の値は問わない）。
+# 「まだ opt-in 判断をしていない」プロジェクトを見分けるために使う（督促の対象判定）。
+has_project_decision() {
+  [ -f "$GATE_CONFIG" ] || return 1
+  jq -e --arg p "$1" '.projects | has($p)' "$GATE_CONFIG" >/dev/null 2>&1
+}
+
+# 督促の頻度制御用マーカー。project パスを sha 化してファイル名にする（パスに依存しない安全な名前）。
+GATE_NUDGE_DIR="$GATE_HOME/nudged"
+nudge_key() { printf '%s' "$1" | shasum -a 256 | cut -d' ' -f1; }
+
+# 引数: project 絶対パス → 督促を出すべきなら 0。
+# 前回督促から EVALUATOR_GATE_NUDGE_INTERVAL 秒（既定 86400=24h）経過、または未督促なら出す。
+should_nudge() {
+  local marker interval age epoch
+  interval="${EVALUATOR_GATE_NUDGE_INTERVAL:-86400}"
+  # 非数値・空を既定に。その後 10 進数化して 0/00/000 も既定へ丸める
+  # （0 系だと毎セッション督促になり「うるさくない」原則に反する。10# は先頭ゼロの
+  #  8 進数解釈も回避する）。
+  case "$interval" in ''|*[!0-9]*) interval=86400 ;; esac
+  interval=$((10#$interval)) 2>/dev/null || interval=86400
+  [ "$interval" -lt 1 ] && interval=86400
+  marker="$GATE_NUDGE_DIR/$(nudge_key "$1")"
+  [ -f "$marker" ] || return 0
+  epoch=$(stat -f%m "$marker" 2>/dev/null || stat -c%Y "$marker" 2>/dev/null || echo 0)
+  age=$(( $(date +%s) - epoch ))
+  [ "$age" -ge "$interval" ]
+}
+
+# 督促を出したことを記録する（頻度制御のため）。失敗しても無害。
+record_nudge() {
+  mkdir -p "$GATE_NUDGE_DIR" 2>/dev/null || return 0
+  : > "$GATE_NUDGE_DIR/$(nudge_key "$1")" 2>/dev/null || true
+}
+
 # 決定論 diff ハッシュ: HEAD + tracked diff + status + untracked のメタ/内容
 # - HEAD を含めることで「ターン内コミットでクリーン化」も変化として検知
 # - untracked は全件のメタ（サイズ+mtime）を NUL-safe で記録（51件目以降・1MB 超の変更も検知）、

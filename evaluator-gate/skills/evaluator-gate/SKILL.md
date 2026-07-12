@@ -76,7 +76,9 @@ Stop 発火
 - `/evaluator-gate status` — 有効状態・セッション state・Codex/Grok の利用可否
 - `/evaluate [焦点]` — ゲートとは独立のオンデマンド詳細評価（advisory・差し戻しなし）
 
-状態ファイル: `~/.claude/evaluator-gate/`（config.json / state/<session_id>.json / tmp/）。7日より古い state/tmp は自動 GC。
+**opt-in 督促**: プラグインは全プロジェクトでロードされるが、ゲートが実際に作動するのは `on` した git リポジトリだけ（既定 OFF）。能動的に `on` しないと死蔵しやすいため、SessionStart フックが「まだ on/off の判断をしていない git リポジトリ」では **24時間に1回だけ**「`/evaluator-gate on` で有効化できます」と context に督促を出す。`on` でも `off` でも一度判断すれば二度と出さない。督促間隔は `EVALUATOR_GATE_NUDGE_INTERVAL`（秒、既定 86400）で調整可。
+
+状態ファイル: `~/.claude/evaluator-gate/`（config.json / state/<session_id>.json / tmp/ / nudged/）。7日より古い state/tmp は自動 GC。
 
 ## 縮退動作一覧
 

@@ -316,6 +316,8 @@ scrub_sentinels() {
     -e 's/BUILDER_MESSAGE_END/[SENTINEL-REDACTED]/g' \
     -e 's/DIFF_BEGIN/[SENTINEL-REDACTED]/g' \
     -e 's/DIFF_END/[SENTINEL-REDACTED]/g' \
+    -e 's/USER_INSTRUCTION_BEGIN/[SENTINEL-REDACTED]/g' \
+    -e 's/USER_INSTRUCTION_END/[SENTINEL-REDACTED]/g' \
     -e 's/DATA_BEGIN/[SENTINEL-REDACTED]/g' \
     -e 's/DATA_END/[SENTINEL-REDACTED]/g' \
     "$f" > "$tmpf" 2>/dev/null || { rm -f "$tmpf"; return 1; }
@@ -506,11 +508,70 @@ cat_with_final_newline() {
   if [ -s "$1" ] && [ -n "$(tail -c 1 "$1")" ]; then printf '\n'; fi
 }
 
-# 引数: template out tool_note_file msg_file summary_file excerpt_file [focus_file]
+# transcript（JSONL）から「ユーザーの元の指示」を直近 N ターン分だけ抽出する。
+# 引数: transcript_path turns max_bytes out_file
+# 目的: 評価者に REQUEST（何を頼まれたか）の文脈を与え、成果物の期待場所を較正させる。
+# 芯: 抽出は transcript の **user ロールの人間発話のみ**（builder 最終メッセージからは取らない）。
+#     これにより builder が偽の「ユーザー指示」を注入して verdict を操作する経路を作らない。
+# 除外: tool_result ターン（自動生成）／isMeta・isSidechain／system-reminder・task-notification
+#       ブロック／[SYSTEM NOTIFICATION 始まりの通知ターン。
+# 窓: diff の証拠範囲（eval_base→now）と整合させるための近似として「直近 N ターン」を使う。
+#     N は呼び出し側が EVALUATOR_GATE_INSTRUCTION_TURNS から与える。
+# 生成物は未 redact のため、呼び出し側は必ず sanitize_evidence を通してから外部送信すること。
+extract_user_instructions() {
+  local transcript turns maxbytes outf prog lines jline txt first
+  transcript="$1"; turns="${2:-3}"; maxbytes="${3:-4000}"; outf="$4"
+  [ -f "$transcript" ] || return 1
+  command -v jq >/dev/null 2>&1 || return 1
+  case "$turns" in ''|*[!0-9]*) turns=3 ;; esac
+  [ "$turns" -ge 1 ] || return 1
+  prog='
+    fromjson? // empty
+    | select(.type == "user")
+    | select((.isMeta // false) == false)
+    | select((.isSidechain // false) == false)
+    | (.message.content) as $c
+    | ( if ($c | type) == "string" then $c
+        elif ($c | type) == "array" then
+          ( if any($c[]?; .type == "tool_result") then empty
+            else ([ $c[]? | select(.type == "text") | .text ] | join("\n")) end )
+        else empty end ) as $t0
+    | ( $t0
+        | gsub("<system-reminder>.*?</system-reminder>"; ""; "m")
+        | gsub("<task-notification>.*?</task-notification>"; ""; "m")
+        | sub("^\\s+"; "") | sub("\\s+$"; "") ) as $t
+    | select(($t | length) > 0)
+    | select(($t | test("^\\[SYSTEM NOTIFICATION")) | not)
+    | $t
+  '
+  lines=$(jq -R -c "$prog" "$transcript" 2>/dev/null | tail -n "$turns") || return 1
+  [ -n "$lines" ] || return 1
+  : > "$outf" || return 1
+  first=1
+  while IFS= read -r jline; do
+    [ -n "$jline" ] || continue
+    txt=$(printf '%s' "$jline" | jq -r '. // empty' 2>/dev/null) || continue
+    [ -n "$txt" ] || continue
+    if [ "$first" -eq 1 ]; then first=0; else printf '\n\n--- (次のユーザー指示) ---\n\n' >> "$outf"; fi
+    printf '%s' "$txt" >> "$outf"
+  done <<EOF
+$lines
+EOF
+  # サイズ上限。新しい指示ほど後ろにあるので、超過時は末尾（新しい側）を残す。
+  if [ "$(wc -c < "$outf" 2>/dev/null || echo 0)" -gt "$maxbytes" ]; then
+    { printf '...[中略: 指示が長いため先頭を省略]...\n'; tail -c "$maxbytes" "$outf"; } > "$outf.cap" 2>/dev/null \
+      && mv "$outf.cap" "$outf" 2>/dev/null || rm -f "$outf.cap"
+  fi
+  [ -s "$outf" ] || return 1
+  return 0
+}
+
+# 引数: template out tool_note_file msg_file summary_file excerpt_file [focus_file] [instruction_file]
 # プレースホルダは行単位（{{NAME}} のみの行）で置換する
+# {{USER_INSTRUCTION}} / {{FOCUS}} は対応ファイルが非空のときだけ描画する（任意スロット）
 render_template() {
-  local tpl outf f_tool f_msg f_sum f_exc f_focus line
-  tpl="$1"; outf="$2"; f_tool="$3"; f_msg="$4"; f_sum="$5"; f_exc="$6"; f_focus="${7:-}"
+  local tpl outf f_tool f_msg f_sum f_exc f_focus f_instr line
+  tpl="$1"; outf="$2"; f_tool="$3"; f_msg="$4"; f_sum="$5"; f_exc="$6"; f_focus="${7:-}"; f_instr="${8:-}"
   : > "$outf"
   while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in
@@ -518,6 +579,8 @@ render_template() {
       '{{LAST_ASSISTANT_MESSAGE}}') cat_with_final_newline "$f_msg" >> "$outf" ;;
       '{{DIFF_SUMMARY}}') cat_with_final_newline "$f_sum" >> "$outf" ;;
       '{{DIFF_EXCERPT}}') cat_with_final_newline "$f_exc" >> "$outf" ;;
+      '{{USER_INSTRUCTION}}')
+        if [ -n "$f_instr" ] && [ -s "$f_instr" ]; then cat_with_final_newline "$f_instr" >> "$outf"; fi ;;
       '{{FOCUS}}')
         if [ -n "$f_focus" ] && [ -s "$f_focus" ]; then cat_with_final_newline "$f_focus" >> "$outf"; fi ;;
       *) printf '%s\n' "$line" >> "$outf" ;;

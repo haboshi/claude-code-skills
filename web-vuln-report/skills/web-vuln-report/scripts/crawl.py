@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import time
 import urllib.robotparser
@@ -47,7 +48,99 @@ _TECH_HEADER_HINTS = {
     "x-powered-by": "X-Powered-By",
     "x-generator": "X-Generator",
     "x-aspnet-version": "X-AspNet-Version",
+    # インフラ/フレームワーク指紋（v0.4）。CDN/ELB/ランタイムの弱いシグナル。
+    "via": "Via",
+    "cf-ray": "CF-Ray",
+    "x-vercel-id": "X-Vercel-Id",
+    "x-amz-cf-id": "X-Amz-Cf-Id",
+    "x-runtime": "X-Runtime",
 }
+
+# v0.4 受動深掘り: inline script からルート blob（Ziggy / Inertia / Next）と
+# JS 内 /api/ 参照を「マーカーだけ」抽出する（HTML/JS 本文は保持しない）。
+_ZIGGY_DEF_RE = re.compile(r"(?:const|var|let)\s+Ziggy\s*=|window\.Ziggy\s*=")
+_ZIGGY_ROUTE_RE = re.compile(r'"([\w.\-]+)"\s*:\s*\{\s*"uri"\s*:\s*"([^"]+)"')
+_JS_API_RE = re.compile(r'["\'`](/api/[A-Za-z0-9_\-/{}.:]+)')
+_NG_VERSION_RE = re.compile(r"\sng-version=")
+_VUE_ATTR_RE = re.compile(r"\sdata-v-[0-9a-f]{6,8}")
+# ルート/EP blob の暴発防止（巨大 SPA でも JSON を肥大化させない上限）
+_MAX_ROUTES = 400
+_MAX_API_PATHS = 200
+
+
+def _extract_client_markers(soup: BeautifulSoup, html: str, base_url: str) -> dict:
+    """`<script src>` URL 群とルート blob マーカー、クライアント FW 指紋を構造化して返す。
+
+    soup は既にパース済みのため追加コストは小さい。本文は保持せず必要マーカーのみ抽出する。"""
+    h = html or ""
+    script_srcs: list[str] = []
+    for s in soup.find_all("script", src=True):
+        src = (s.get("src") or "").strip()
+        if src:
+            script_srcs.append(urljoin(base_url, src))
+    inline = "\n".join((s.get_text() or "") for s in soup.find_all("script") if not s.get("src"))
+
+    route_markers = {"ziggy": [], "next_data": False, "inertia_url": None, "api_paths": []}
+    if _ZIGGY_DEF_RE.search(inline):
+        for name, uri in _ZIGGY_ROUTE_RE.findall(inline)[:_MAX_ROUTES]:
+            route_markers["ziggy"].append({"name": name, "uri": uri})
+    app = soup.find(attrs={"data-page": True})
+    if app and app.get("data-page"):
+        try:
+            dp = json.loads(app["data-page"])
+            route_markers["inertia_url"] = dp.get("url")
+        except Exception:
+            route_markers["inertia_url"] = None
+    if soup.find("script", id="__NEXT_DATA__") or "__NEXT_DATA__" in h:
+        route_markers["next_data"] = True
+    api: list[str] = []
+    for m in _JS_API_RE.findall(inline):
+        if m not in api:
+            api.append(m)
+        if len(api) >= _MAX_API_PATHS:
+            break
+    route_markers["api_paths"] = api
+
+    client_fw = _detect_client_fw(soup, h, script_srcs)
+    return {"script_srcs": _dedupe_str(script_srcs), "route_markers": route_markers,
+            "client_fw": client_fw}
+
+
+def _detect_client_fw(soup: BeautifulSoup, h: str, script_srcs: list[str]) -> list[str]:
+    """DOM/メタ/スクリプトパスからクライアント FW を弱く指紋する（情報カテゴリ・CVE 断定はしない）。"""
+    fw: set[str] = set()
+    if "data-reactroot" in h:
+        fw.add("react")
+    if soup.find("script", id="__NEXT_DATA__") or "/_next/static/" in h:
+        fw.add("next")
+    if "__NUXT__" in h or "/_nuxt/" in h:
+        fw.add("nuxt")
+    if _VUE_ATTR_RE.search(h) or "__vue__" in h:
+        fw.add("vue")
+    if _NG_VERSION_RE.search(h) or "_nghost" in h or "_ngcontent" in h:
+        fw.add("angular")
+    if soup.find("meta", attrs={"name": "csrf-token"}):
+        fw.add("laravel-csrf-meta")
+    if "api.w.org" in h:
+        fw.add("wordpress")
+    for src in script_srcs:
+        low = src.lower()
+        if "wp-content" in low or "wp-includes" in low:
+            fw.add("wordpress")
+        if "/_next/" in low:
+            fw.add("next")
+        if "/_nuxt/" in low:
+            fw.add("nuxt")
+    return sorted(fw)
+
+
+def _dedupe_str(items: list[str]) -> list[str]:
+    seen, out = set(), []
+    for it in items:
+        if it not in seen:
+            seen.add(it)
+            out.append(it)
+    return out
 
 
 @dataclass
@@ -229,6 +322,10 @@ def crawl(target: str, authorized_by: str, max_pages: int = 50, max_depth: int =
                 soup = BeautifulSoup(html, "html.parser")
                 title = soup.title.string.strip() if soup.title and soup.title.string else ""
                 page["title"] = title
+                markers = _extract_client_markers(soup, html, url)
+                page["script_srcs"] = markers["script_srcs"]
+                page["route_markers"] = markers["route_markers"]
+                page["client_fw"] = markers["client_fw"]
                 result.forms.extend(_extract_forms(url, soup))
                 for link in _extract_links(url, soup):
                     if link not in seen and _same_scope(link, allowed_hosts):

@@ -80,7 +80,30 @@ def _min_grade(a: str, b: str) -> str:
     return a if GRADE_ORDER.index(a) <= GRADE_ORDER.index(b) else b
 
 
-def compute_grade(findings: list[dict], by_sev: dict[str, int]) -> dict:
+def _incomplete_grade(by_sev: dict[str, int]) -> dict:
+    """G1: 主要ページ未ロード等でデータが不十分なとき、A- 等の高評価を出さず
+    「算定不能／要再診断」を返す。読み手が『検査済みで安全』と誤読するのを防ぐ。"""
+    worst = next((s for s in SEVERITY_ORDER if by_sev.get(s, 0) > 0), "Info")
+    return {
+        "security_score": None,
+        "grade": "—",
+        "grade_base": "—",
+        "grade_capped": False,
+        "grade_rating": "要再診断（データ不足）",
+        "grade_meaning": ("主要ページがロードできず（TLS 証明書エラー・接続不可等）、診断データが"
+                          "不十分なため総合評価を算定できません。到達性・証明書を是正のうえ再診断してください。"),
+        "grade_context": ("主ターゲットの主要ページが応答せず多くの検査が未実施です。台帳の"
+                          "「問題なし」は本ケースでは限定的で、未応答項目は「未実施」に振り分けています。"),
+        "severe_present": (by_sev.get("Critical", 0) + by_sev.get("High", 0)) > 0,
+        "worst_severity": worst,
+        "worst_severity_ja": SEVERITY_JA.get(worst, "情報"),
+        "assessment_incomplete": True,
+    }
+
+
+def compute_grade(findings: list[dict], by_sev: dict[str, int], reliable: bool = True) -> dict:
+    if not reliable:
+        return _incomplete_grade(by_sev)
     deduction = sum(SEV_DEDUCTION.get(f.get("severity", "Info"), 0)
                     * CONF_FACTOR.get(f.get("confidence", "High"), 1.0) for f in findings)
     security_score = max(0, round(100 - deduction))
@@ -118,6 +141,7 @@ def compute_grade(findings: list[dict], by_sev: dict[str, int]) -> dict:
         "severe_present": (crit + high) > 0,
         "worst_severity": worst,
         "worst_severity_ja": SEVERITY_JA.get(worst, "情報"),
+        "assessment_incomplete": False,
     }
 
 
@@ -185,7 +209,12 @@ def merge_findings(findings: list[dict]) -> list[dict]:
     for key in order:
         g = grouped[key]
         evs = g.pop("_evidence")
-        g["evidence"] = evs[0] if evs else g.get("evidence", "")
+        # 異なる証跡（例: jQuery 1.11.1 と 2.2.0、複数 Cookie）は全件を列挙する。
+        # 先頭のみ残すと 2 件目以降の版数・詳細が報告書から消える不具合を防ぐ。
+        if len(evs) > 1:
+            g["evidence"] = "\n".join(f"・{e}" for e in evs)
+        else:
+            g["evidence"] = evs[0] if evs else g.get("evidence", "")
         n = len(g["affected"])
         if n > 1:
             g["evidence"] += f"\n（該当 {n} 箇所。詳細は「対象」欄を参照）"
@@ -193,7 +222,7 @@ def merge_findings(findings: list[dict]) -> list[dict]:
     return merged
 
 
-def aggregate(findings: list[dict]) -> dict:
+def aggregate(findings: list[dict], reliable: bool = True) -> dict:
     by_sev = {s: 0 for s in SEVERITY_ORDER}
     owasp_cov: dict[str, int] = {}
     max_score = 0.0
@@ -231,7 +260,7 @@ def aggregate(findings: list[dict]) -> dict:
         "risk_score": risk_score,   # 後方互換のため保持（表示には用いない）
         "risk_rating": rating,
     }
-    summary.update(compute_grade(findings, by_sev))
+    summary.update(compute_grade(findings, by_sev, reliable=reliable))
     return summary
 
 
@@ -244,9 +273,12 @@ def score_all(data: dict) -> dict:
     # 集約・並べ替え後に ID を振り直す（提示順と一致させる）
     for i, f in enumerate(findings, 1):
         f["id"] = f"VWR-{i:03d}"
+    # G1: 診断信頼性フラグ（assessment.data_reliable）が明示 False のときだけグレードをゲート。
+    # フラグ不在（直接 score_all を呼ぶ既存呼び出し）は従来通り信頼扱い（後方互換）。
+    reliable = data.get("assessment", {}).get("data_reliable", True)
     out = dict(data)
     out["findings"] = findings
-    out["summary"] = aggregate(findings)
+    out["summary"] = aggregate(findings, reliable=reliable)
     out["scored_at"] = datetime.now(timezone.utc).isoformat()
     return out
 

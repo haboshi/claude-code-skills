@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Claude Code用スキルコレクション",
-    "version": "0.11.0",
+    "version": "0.12.0",
     "homepage": "https://github.com/haboshi/claude-code-skills"
   },
   "plugins": [
@@ -245,10 +245,10 @@
     },
     {
       "name": "web-vuln-report",
-      "description": "URL を起点に Web サイト/システム/アプリを巡回して診断対象を洗い出し、非破壊の脆弱性診断を実施。CVSS 4.0（CVSS-B）・OWASP Top 10:2025・CWE を付し、OWASP WSTG（診断手法）と ASVS 5.0.0（検証要件）を参照した日本語のビジネス脆弱性診断報告書（エグゼクティブサマリ＋技術詳細＋プロの示唆）を HTML で生成し、適正サイズ（A4）の PDF に変換する。nuclei/testssl.sh があれば自動併用。Genspark アップロード用 .skill バンドル生成にも対応。認可済み・単一組織スコープの防御的診断に限定。「脆弱性診断」「セキュリティ診断」「診断報告書」「Webサイト診断」「vulnerability assessment」で発動。",
+      "description": "URL を起点に Web サイト/システム/アプリを巡回して診断対象を洗い出し、非破壊の脆弱性診断を実施。CVSS 4.0（CVSS-B）・OWASP Top 10:2025・CWE を付し、OWASP WSTG（診断手法）と ASVS 5.0.0（検証要件）を参照した日本語のビジネス脆弱性診断報告書（エグゼクティブサマリ＋技術詳細＋プロの示唆）を HTML で生成し、適正サイズ（A4）の PDF に変換する。診断項目カバレッジ台帳（実施/問題なし/エラー/未実施）で網羅性を可視化し、DMARC/SPF（メールなりすまし対策）の受動チェックも実施。nuclei/testssl.sh があれば自動併用。v0.4 で SPA/JS ルート露出（Ziggy/Inertia/Next）・JS バンドル内の秘密走査・ソースマップ露出・フレームワーク/EOL 判定・DNSSEC など単一アプリの深掘り検出に対応（能動認証テストは opt-in・既定 OFF・非破壊）。Genspark アップロード用 .skill バンドル生成にも対応。認可済み・単一組織スコープの防御的診断に限定。「脆弱性診断」「セキュリティ診断」「診断報告書」「Webサイト診断」「vulnerability assessment」で発動。",
       "source": "./web-vuln-report",
       "strict": false,
-      "version": "0.2.0",
+      "version": "0.4.0",
       "category": "security",
       "keywords": [
         "security",
@@ -260,6 +260,12 @@
         "asvs",
         "pentest-report",
         "web-security",
+        "dmarc",
+        "route-disclosure",
+        "js-secret-scan",
+        "source-map",
+        "dnssec",
+        "eol-runtime",
         "脆弱性診断",
         "セキュリティ診断",
         "診断報告書",

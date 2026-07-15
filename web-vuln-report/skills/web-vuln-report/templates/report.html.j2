@@ -82,7 +82,7 @@
   <div class="verdict-mark grade-{{ gl }}">
     <div class="vg">{{ g }}</div>
     <div class="vdiv"></div>
-    <div class="vs">スコア <strong>{{ summary.security_score }}</strong> / 100</div>
+    <div class="vs">スコア <strong>{{ summary.security_score if summary.security_score is not none else '—' }}</strong> / 100</div>
   </div>
   <div class="verdict-main">
     <div class="verdict-eyebrow">総合セキュリティ評価</div>
@@ -177,6 +177,34 @@
       内蔵チェックのみの結果は構成・衛生面の指摘であり、個別 CVE の成立を保証するものではない。</li>
   <li>検出事項は診断時点のスナップショットであり、以降の変更は反映されない。</li>
 </ul>
+
+{% if coverage %}
+<h3>診断項目カバレッジ台帳</h3>
+<p class="note">本診断で機械的に検査した項目と、その実施結果を明示する。「問題なし」は<strong>検査を実施し所見が
+無かった</strong>ことを、「未実施」は当該項目を<strong>実行しなかった</strong>ことを表す。検査の合格・エラー・
+未実施を沈黙で潰さず、診断の網羅性と監査可能性を担保する目的による。</p>
+<table class="data-table coverage-ledger">
+  <thead><tr><th>診断項目</th><th>分類</th><th>種別</th><th class="cov-col">実施結果</th><th>備考</th></tr></thead>
+  <tbody>
+  {% for c in coverage %}
+    <tr>
+      <td>{{ c.label }}</td>
+      <td>{{ c.category }}</td>
+      <td>{{ {'passive':'受動','active':'能動','network':'通信','active-auth':'能動認証'}.get(c.kind, c.kind) }}</td>
+      <td class="cov-col"><span class="cov cov-{{ c.status }}">{{ c.status_ja }}{% if c.status == 'finding' and c.findings %}（{{ c.findings }}）{% endif %}</span></td>
+      <td class="note">{{ c.note }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% if coverage_summary.by_status %}
+<p class="note">実施 {{ coverage_summary.total }} 項目 —
+  検出あり {{ coverage_summary.by_status.get('finding', 0) }} ／
+  問題なし {{ coverage_summary.by_status.get('clean', 0) }} ／
+  エラー {{ coverage_summary.by_status.get('error', 0) }} ／
+  未実施 {{ coverage_summary.by_status.get('skipped', 0) }}</p>
+{% endif %}
+{% endif %}
 
 <!-- ===== 3. 検出事項の詳細 ===== -->
 <h2 class="numbered" id="sec-findings">検出事項の詳細</h2>

@@ -1,18 +1,18 @@
 {
-  "target": "http://127.0.0.1:8899",
+  "target": "https://example-vulnerable.local",
   "scope": {
-    "target": "http://127.0.0.1:8899",
+    "target": "https://example-vulnerable.local",
     "hosts": [
-      "127.0.0.1"
+      "example-vulnerable.local"
     ],
-    "authorized_by": "社内検証環境（ローカルフィクスチャ・書面認可相当）",
+    "authorized_by": "サンプル生成（ローカル脆弱フィクスチャ）",
     "respect_robots": false,
-    "rate_per_sec": 0.0,
-    "max_pages": 30,
-    "max_depth": 3,
-    "started_at": "2026-07-14T18:37:37.517547+00:00",
+    "rate_per_sec": 0,
+    "max_pages": 15,
+    "max_depth": 2,
+    "started_at": "2026-07-15T15:26:44.900075+00:00",
     "user_agent": "web-vuln-report/0.1 (authorized security assessment; +non-destructive)",
-    "finished_at": "2026-07-14T18:37:37.577118+00:00",
+    "finished_at": "2026-07-15T15:26:44.941505+00:00",
     "pages_crawled": 4
   },
   "findings": [
@@ -28,8 +28,8 @@
       "cvss_score": 8.7,
       "confidence": "High",
       "affected": [
-        "http://127.0.0.1:8899/.git/HEAD",
-        "http://127.0.0.1:8899/.env"
+        "https://example-vulnerable.local/.git/HEAD",
+        "https://example-vulnerable.local/.env"
       ],
       "evidence": "HTTP 200 で取得可能（署名一致: 'ref: '）\n（該当 2 箇所。詳細は「対象」欄を参照）",
       "description": "`.git`/`.env`/バックアップ等の機微ファイルが公開領域から取得可能。",
@@ -44,34 +44,6 @@
     },
     {
       "id": "VWR-002",
-      "check_id": "info-disclosure-banner",
-      "title": "サーバ/フレームワークのバージョン露出",
-      "owasp": "A01:2025-アクセス制御の不備",
-      "cwe": "CWE-200",
-      "wstg": "WSTG-INFO-02",
-      "asvs": "v5.0.0-13.4.6 (L3)",
-      "cvss_vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N",
-      "cvss_score": 6.9,
-      "confidence": "Medium",
-      "affected": [
-        "http://127.0.0.1:8899",
-        "http://127.0.0.1:8899/search?q=hello",
-        "http://127.0.0.1:8899/go?url=/next",
-        "http://127.0.0.1:8899/files/"
-      ],
-      "evidence": "バージョン露出: BaseHTTP/0.6 Python/3.11.15, TestServer/1.2.3\n（該当 4 箇所。詳細は「対象」欄を参照）",
-      "description": "Server/X-Powered-By 等でソフトウェアとバージョンが露出し、既知脆弱性の 標的選定を容易にしている。",
-      "impact": "攻撃者による脆弱性探索の効率化。",
-      "remediation": "バージョン情報の露出を抑制する（トークン非表示・バナー抑制）。",
-      "references": [
-        "https://cwe.mitre.org/data/definitions/200.html"
-      ],
-      "source": "core",
-      "severity": "Medium",
-      "severity_ja": "警告"
-    },
-    {
-      "id": "VWR-003",
       "check_id": "directory-listing",
       "title": "ディレクトリリスティングが有効",
       "owasp": "A01:2025-アクセス制御の不備",
@@ -82,7 +54,7 @@
       "cvss_score": 6.9,
       "confidence": "High",
       "affected": [
-        "http://127.0.0.1:8899/files/"
+        "https://example-vulnerable.local/files/"
       ],
       "evidence": "自動インデックス表示の兆候（'Index of /'）",
       "description": "自動インデックス表示が有効で、意図しないファイル一覧が閲覧できる。",
@@ -96,7 +68,7 @@
       "severity_ja": "警告"
     },
     {
-      "id": "VWR-004",
+      "id": "VWR-003",
       "check_id": "risky-http-method",
       "title": "危険な HTTP メソッドが有効（TRACE/PUT/DELETE 等）",
       "owasp": "A02:2025-セキュリティの設定ミス（暫定・2025 CWE リスト未確認）",
@@ -107,7 +79,7 @@
       "cvss_score": 6.9,
       "confidence": "High",
       "affected": [
-        "http://127.0.0.1:8899"
+        "https://example-vulnerable.local"
       ],
       "evidence": "Allow ヘッダに危険メソッド: TRACE, PUT",
       "description": "OPTIONS 応答で TRACE/PUT/DELETE 等が許可されている。",
@@ -121,7 +93,7 @@
       "severity_ja": "警告"
     },
     {
-      "id": "VWR-005",
+      "id": "VWR-004",
       "check_id": "open-redirect",
       "title": "オープンリダイレクトの可能性",
       "owasp": "A01:2025-アクセス制御の不備",
@@ -132,7 +104,7 @@
       "cvss_score": 5.1,
       "confidence": "Medium",
       "affected": [
-        "http://127.0.0.1:8899/go?url=https%3A%2F%2Fvwr-redirect-probe.example.org%2F"
+        "https://example-vulnerable.local/go?url=https%3A%2F%2Fvwr-redirect-probe.example.org%2F"
       ],
       "evidence": "パラメータ 'url' がリダイレクト先に反映（Location=https://vwr-redirect-probe.example.org/）",
       "description": "リダイレクト先パラメータが検証されず、任意 URL へ誘導できる兆候がある。",
@@ -146,7 +118,7 @@
       "severity_ja": "警告"
     },
     {
-      "id": "VWR-006",
+      "id": "VWR-005",
       "check_id": "reflected-input",
       "title": "入力値の無害化されない反射（XSS の兆候）",
       "owasp": "A05:2025-インジェクション",
@@ -157,7 +129,7 @@
       "cvss_score": 5.1,
       "confidence": "Medium",
       "affected": [
-        "http://127.0.0.1:8899/search?q=vwrPROBE9137%3C%22%27"
+        "https://example-vulnerable.local/search?q=vwrPROBE9137%3C%22%27"
       ],
       "evidence": "パラメータ 'q' の値が無害化されず反射（マーカー検出）",
       "description": "無害な検査マーカーが HTML エスケープされずに応答へ反射している。反射型 XSS の疑い。",
@@ -171,7 +143,7 @@
       "severity_ja": "警告"
     },
     {
-      "id": "VWR-007",
+      "id": "VWR-006",
       "check_id": "missing-referrer-policy",
       "title": "Referrer-Policy 未設定",
       "owasp": "A01:2025-アクセス制御の不備",
@@ -182,10 +154,10 @@
       "cvss_score": 2.3,
       "confidence": "Medium",
       "affected": [
-        "http://127.0.0.1:8899",
-        "http://127.0.0.1:8899/search?q=hello",
-        "http://127.0.0.1:8899/go?url=/next",
-        "http://127.0.0.1:8899/files/"
+        "https://example-vulnerable.local",
+        "https://example-vulnerable.local/search?q=hello",
+        "https://example-vulnerable.local/go?url=/next",
+        "https://example-vulnerable.local/files/"
       ],
       "evidence": "Referrer-Policy が未設定\n（該当 4 箇所。詳細は「対象」欄を参照）",
       "description": "リファラ制御が無く、URL に含まれる機微情報が外部サイトへ送出される余地がある。",
@@ -193,6 +165,31 @@
       "remediation": "`Referrer-Policy: strict-origin-when-cross-origin` 等を設定する。",
       "references": [
         "https://owasp.org/www-project-secure-headers/"
+      ],
+      "source": "core",
+      "severity": "Low",
+      "severity_ja": "注意"
+    },
+    {
+      "id": "VWR-007",
+      "check_id": "insecure-form-target",
+      "title": "フォームの送信先が平文 HTTP（暗号化されない経路への送信）",
+      "owasp": "A04:2025-暗号化の失敗",
+      "cwe": "CWE-319",
+      "wstg": "WSTG-CRYP-03",
+      "asvs": "v5.0.0-12.2.1 (L1)",
+      "cvss_vector": "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:P/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N",
+      "cvss_score": 2.3,
+      "confidence": "High",
+      "affected": [
+        "https://example-vulnerable.local/search"
+      ],
+      "evidence": "フォーム送信先が平文 HTTP（method=GET）",
+      "description": "HTML フォームの action が http:// を指しており、入力（認証情報を含みうる）が暗号化されない経路で送信される。",
+      "impact": "経路上での盗聴により、送信データや認証情報が第三者に漏洩しうる。",
+      "remediation": "フォームの送信先を https:// に統一し、平文 HTTP への送信を排除する。",
+      "references": [
+        "https://cwe.mitre.org/data/definitions/319.html"
       ],
       "source": "core",
       "severity": "Low",
@@ -210,10 +207,10 @@
       "cvss_score": 2.1,
       "confidence": "High",
       "affected": [
-        "http://127.0.0.1:8899",
-        "http://127.0.0.1:8899/search?q=hello",
-        "http://127.0.0.1:8899/go?url=/next",
-        "http://127.0.0.1:8899/files/"
+        "https://example-vulnerable.local",
+        "https://example-vulnerable.local/search?q=hello",
+        "https://example-vulnerable.local/go?url=/next",
+        "https://example-vulnerable.local/files/"
       ],
       "evidence": "X-Content-Type-Options: nosniff が未設定\n（該当 4 箇所。詳細は「対象」欄を参照）",
       "description": "MIME スニッフィング抑止ヘッダが無く、ブラウザがコンテンツ型を誤推定して スクリプトとして解釈する余地がある。",
@@ -238,10 +235,10 @@
       "cvss_score": 2.1,
       "confidence": "High",
       "affected": [
-        "http://127.0.0.1:8899",
-        "http://127.0.0.1:8899/search?q=hello",
-        "http://127.0.0.1:8899/go?url=/next",
-        "http://127.0.0.1:8899/files/"
+        "https://example-vulnerable.local",
+        "https://example-vulnerable.local/search?q=hello",
+        "https://example-vulnerable.local/go?url=/next",
+        "https://example-vulnerable.local/files/"
       ],
       "evidence": "Content-Security-Policy ヘッダが存在しない\n（該当 4 箇所。詳細は「対象」欄を参照）",
       "description": "CSP が無く、XSS 等のスクリプト注入に対する多層防御が欠如している。",
@@ -266,10 +263,10 @@
       "cvss_score": 2.1,
       "confidence": "High",
       "affected": [
-        "http://127.0.0.1:8899",
-        "http://127.0.0.1:8899/search?q=hello",
-        "http://127.0.0.1:8899/go?url=/next",
-        "http://127.0.0.1:8899/files/"
+        "https://example-vulnerable.local",
+        "https://example-vulnerable.local/search?q=hello",
+        "https://example-vulnerable.local/go?url=/next",
+        "https://example-vulnerable.local/files/"
       ],
       "evidence": "X-Frame-Options も CSP frame-ancestors も未設定\n（該当 4 箇所。詳細は「対象」欄を参照）",
       "description": "フレーム埋め込み制限が無く、UI を重ねてユーザー操作を騙し取るクリックジャッキングが可能。",
@@ -294,10 +291,10 @@
       "cvss_score": 2.1,
       "confidence": "Low",
       "affected": [
-        "http://127.0.0.1:8899",
-        "http://127.0.0.1:8899/search?q=hello",
-        "http://127.0.0.1:8899/go?url=/next",
-        "http://127.0.0.1:8899/files/"
+        "https://example-vulnerable.local",
+        "https://example-vulnerable.local/search?q=hello",
+        "https://example-vulnerable.local/go?url=/next",
+        "https://example-vulnerable.local/files/"
       ],
       "evidence": "Permissions-Policy（旧 Feature-Policy）が未設定\n（該当 4 箇所。詳細は「対象」欄を参照）",
       "description": "ブラウザ機能（カメラ・位置情報・全画面等）の利用制限ポリシーが未設定で、埋め込みコンテンツや XSS 時に機能を濫用される余地がある。",
@@ -322,7 +319,7 @@
       "cvss_score": 2.1,
       "confidence": "Medium",
       "affected": [
-        "http://127.0.0.1:8899"
+        "https://example-vulnerable.local"
       ],
       "evidence": "Cookie 'SESSIONID' に HttpOnly 属性が無い",
       "description": "HttpOnly が無く、XSS 発生時に JavaScript から Cookie を読み取られる。",
@@ -347,7 +344,7 @@
       "cvss_score": 2.1,
       "confidence": "Medium",
       "affected": [
-        "http://127.0.0.1:8899"
+        "https://example-vulnerable.local"
       ],
       "evidence": "Cookie 'SESSIONID' に SameSite 属性が無い",
       "description": "SameSite が未指定で、CSRF に対する既定防御が弱い。",
@@ -372,7 +369,7 @@
       "cvss_score": 2.1,
       "confidence": "Low",
       "affected": [
-        "http://127.0.0.1:8899"
+        "https://example-vulnerable.local"
       ],
       "evidence": "古い可能性のあるライブラリ参照: js: /static/jquery-1.8.3.min.js",
       "description": "既知の古いバージョン痕跡を持つ JS ライブラリを検出。CVE 断定には外部 DB （nuclei 等）併用が必要。",
@@ -384,36 +381,245 @@
       "source": "core",
       "severity": "Low",
       "severity_ja": "注意"
+    },
+    {
+      "id": "VWR-015",
+      "check_id": "info-disclosure-banner",
+      "title": "サーバ/フレームワークのバージョン露出",
+      "owasp": "A01:2025-アクセス制御の不備",
+      "cwe": "CWE-200",
+      "wstg": "WSTG-INFO-02",
+      "asvs": "v5.0.0-13.4.6 (L3)",
+      "cvss_vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:N/SC:N/SI:N/SA:N",
+      "cvss_score": 0.0,
+      "confidence": "Medium",
+      "affected": [
+        "https://example-vulnerable.local",
+        "https://example-vulnerable.local/search?q=hello",
+        "https://example-vulnerable.local/go?url=/next",
+        "https://example-vulnerable.local/files/"
+      ],
+      "evidence": "バージョン露出: BaseHTTP/0.6 Python/3.11.15, TestServer/1.2.3\n（該当 4 箇所。詳細は「対象」欄を参照）",
+      "description": "Server/X-Powered-By 等でソフトウェアとバージョンが露出している。直接の機密性侵害は無いが、既知脆弱性の標的選定など偵察を容易にする参考情報。",
+      "impact": "攻撃者による脆弱性探索の効率化（単独では直接の被害を生じない）。",
+      "remediation": "バージョン情報の露出を抑制する（トークン非表示・バナー抑制）。",
+      "references": [
+        "https://cwe.mitre.org/data/definitions/200.html"
+      ],
+      "source": "core",
+      "severity": "Info",
+      "severity_ja": "情報"
     }
   ],
+  "coverage": [
+    {
+      "id": "security-headers",
+      "label": "セキュリティヘッダ（HSTS/CSP/XFO 等）",
+      "category": "A02/A04/A06",
+      "kind": "passive",
+      "status": "finding",
+      "status_ja": "検出あり",
+      "findings": 24,
+      "note": ""
+    },
+    {
+      "id": "cookies",
+      "label": "Cookie 属性（Secure/HttpOnly/SameSite）",
+      "category": "A01/A02",
+      "kind": "passive",
+      "status": "finding",
+      "status_ja": "検出あり",
+      "findings": 2,
+      "note": ""
+    },
+    {
+      "id": "sri",
+      "label": "外部リソースの SRI（改竄検知）",
+      "category": "A08",
+      "kind": "passive",
+      "status": "clean",
+      "status_ja": "問題なし",
+      "findings": 0,
+      "note": ""
+    },
+    {
+      "id": "outdated-libs",
+      "label": "古いクライアントライブラリの痕跡",
+      "category": "A03",
+      "kind": "passive",
+      "status": "finding",
+      "status_ja": "検出あり",
+      "findings": 1,
+      "note": ""
+    },
+    {
+      "id": "forms",
+      "label": "フォームの安全性（平文送信 / CSRF）",
+      "category": "A01/A04",
+      "kind": "passive",
+      "status": "finding",
+      "status_ja": "検出あり",
+      "findings": 1,
+      "note": ""
+    },
+    {
+      "id": "verbose-error",
+      "label": "詳細エラー / スタックトレース露出",
+      "category": "A10",
+      "kind": "passive",
+      "status": "clean",
+      "status_ja": "問題なし",
+      "findings": 0,
+      "note": ""
+    },
+    {
+      "id": "tls-protocol",
+      "label": "TLS 旧プロトコル受入（1.0/1.1）",
+      "category": "A04",
+      "kind": "network",
+      "status": "skipped",
+      "status_ja": "未実施",
+      "findings": 0,
+      "note": "HTTPS 対象外"
+    },
+    {
+      "id": "tls-cert",
+      "label": "TLS 証明書の有効期限",
+      "category": "A04",
+      "kind": "network",
+      "status": "skipped",
+      "status_ja": "未実施",
+      "findings": 0,
+      "note": "HTTPS 対象外"
+    },
+    {
+      "id": "dns-email-auth",
+      "label": "DNS メール認証（DMARC / SPF）",
+      "category": "A02",
+      "kind": "network",
+      "status": "skipped",
+      "status_ja": "未実施",
+      "findings": 0,
+      "note": "IP/ローカル対象のため対象外"
+    },
+    {
+      "id": "https-redirect",
+      "label": "HTTP→HTTPS リダイレクト強制",
+      "category": "A04",
+      "kind": "active",
+      "status": "clean",
+      "status_ja": "問題なし",
+      "findings": 0,
+      "note": ""
+    },
+    {
+      "id": "exposed-files",
+      "label": "機微ファイル / パスの公開",
+      "category": "A01",
+      "kind": "active",
+      "status": "finding",
+      "status_ja": "検出あり",
+      "findings": 2,
+      "note": ""
+    },
+    {
+      "id": "directory-listing",
+      "label": "ディレクトリリスティング",
+      "category": "A01",
+      "kind": "active",
+      "status": "finding",
+      "status_ja": "検出あり",
+      "findings": 1,
+      "note": ""
+    },
+    {
+      "id": "cors",
+      "label": "CORS 設定",
+      "category": "A02",
+      "kind": "active",
+      "status": "clean",
+      "status_ja": "問題なし",
+      "findings": 0,
+      "note": ""
+    },
+    {
+      "id": "http-methods",
+      "label": "危険な HTTP メソッド",
+      "category": "A02",
+      "kind": "active",
+      "status": "finding",
+      "status_ja": "検出あり",
+      "findings": 1,
+      "note": ""
+    },
+    {
+      "id": "open-redirect",
+      "label": "オープンリダイレクト",
+      "category": "A01",
+      "kind": "active",
+      "status": "finding",
+      "status_ja": "検出あり",
+      "findings": 1,
+      "note": ""
+    },
+    {
+      "id": "reflected-input",
+      "label": "反射型 XSS の兆候",
+      "category": "A05",
+      "kind": "active",
+      "status": "finding",
+      "status_ja": "検出あり",
+      "findings": 1,
+      "note": ""
+    },
+    {
+      "id": "mixed-content",
+      "label": "混在コンテンツ",
+      "category": "A06",
+      "kind": "active",
+      "status": "clean",
+      "status_ja": "問題なし",
+      "findings": 0,
+      "note": ""
+    }
+  ],
+  "coverage_summary": {
+    "total": 17,
+    "by_status": {
+      "finding": 9,
+      "clean": 5,
+      "skipped": 3
+    }
+  },
   "summary": {
-    "total": 14,
+    "total": 15,
     "by_severity": {
       "Critical": 0,
       "High": 1,
-      "Medium": 5,
-      "Low": 8,
-      "Info": 0
+      "Medium": 4,
+      "Low": 9,
+      "Info": 1
     },
     "by_severity_ja": {
       "緊急": 0,
       "重要": 1,
-      "警告": 5,
-      "注意": 8,
-      "情報": 0
+      "警告": 4,
+      "注意": 9,
+      "情報": 1
     },
     "owasp_coverage": {
       "A01:2025-アクセス制御の不備": 6,
       "A02:2025-セキュリティの設定ミス": 2,
       "A02:2025-セキュリティの設定ミス（暫定・2025 CWE リスト未確認）": 1,
       "A03:2025-ソフトウェアサプライチェーンの障害": 1,
+      "A04:2025-暗号化の失敗": 1,
       "A05:2025-インジェクション": 1,
       "A06:2025-安全でない設計": 3
     },
     "max_cvss": 8.7,
     "risk_score": 100,
     "risk_rating": "高い",
-    "security_score": 27,
+    "security_score": 30,
     "grade": "F",
     "grade_base": "F",
     "grade_capped": false,
@@ -424,10 +630,10 @@
     "worst_severity": "High",
     "worst_severity_ja": "重要"
   },
-  "scored_at": "2026-07-14T18:37:37.599626+00:00",
+  "scored_at": "2026-07-15T15:26:44.978164+00:00",
   "pages": [
     {
-      "url": "http://127.0.0.1:8899",
+      "url": "https://example-vulnerable.local",
       "status": 200,
       "content_type": "text/html; charset=utf-8",
       "server": "BaseHTTP/0.6 Python/3.11.15, TestServer/1.2.3",
@@ -438,7 +644,7 @@
       "title": "Vuln Test App"
     },
     {
-      "url": "http://127.0.0.1:8899/search?q=hello",
+      "url": "https://example-vulnerable.local/search?q=hello",
       "status": 200,
       "content_type": "text/html; charset=utf-8",
       "server": "BaseHTTP/0.6 Python/3.11.15, TestServer/1.2.3",
@@ -448,7 +654,7 @@
       "title": ""
     },
     {
-      "url": "http://127.0.0.1:8899/go?url=/next",
+      "url": "https://example-vulnerable.local/go?url=/next",
       "status": 302,
       "content_type": "",
       "server": "BaseHTTP/0.6 Python/3.11.15",
@@ -457,7 +663,7 @@
       ]
     },
     {
-      "url": "http://127.0.0.1:8899/files/",
+      "url": "https://example-vulnerable.local/files/",
       "status": 200,
       "content_type": "text/html; charset=utf-8",
       "server": "BaseHTTP/0.6 Python/3.11.15, TestServer/1.2.3",

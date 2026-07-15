@@ -117,9 +117,9 @@ h3 {
 h4 { font-family: var(--gothic); font-weight: 700; font-size: 10pt; color: var(--ink); margin: 1em 0 0.4em; }
 
 /* ===== 表紙 ===== */
-.cover { page-break-after: always; padding-top: 1.2cm; }
-.cover .rule-top { height: 3px; background: var(--navy); width: 100%; margin-bottom: 1.4cm; }
-.cover .mark { text-align: center; margin-bottom: 0.9cm; }
+.cover { page-break-after: always; padding-top: 0.6cm; }
+.cover .rule-top { height: 3px; background: var(--navy); width: 100%; margin-bottom: 1.0cm; }
+.cover .mark { text-align: center; margin-bottom: 0.55cm; }
 .cover .mark svg { width: 62px; height: 62px; }
 .cover .doc-type {
     text-align: center; font-family: var(--gothic); font-size: 10pt; font-weight: 700;
@@ -129,11 +129,11 @@ h4 { font-family: var(--gothic); font-weight: 700; font-size: 10pt; color: var(-
     text-align: center; font-family: var(--gothic); font-weight: 700;
     font-size: 27pt; color: var(--navy); margin: 0.5em 0 0.35em; letter-spacing: 0.04em;
 }
-.cover .subtitle { text-align: center; font-family: var(--mincho); font-size: 11pt; color: var(--ink-soft); margin-bottom: 1.1cm; }
+.cover .subtitle { text-align: center; font-family: var(--mincho); font-size: 11pt; color: var(--ink-soft); margin-bottom: 0.75cm; }
 .cover .target-plate {
     text-align: center; font-family: var(--mono); font-size: 12pt; color: var(--navy);
     background: var(--panel); border: 1px solid var(--line-2); border-radius: 6px;
-    padding: 0.7em 1em; margin: 0 auto 1.5cm; max-width: 82%; word-break: break-all;
+    padding: 0.7em 1em; margin: 0 auto 1.0cm; max-width: 82%; word-break: break-all;
 }
 .cover .meta-card {
     max-width: 82%; margin: 0 auto; border-top: 1px solid var(--line-2);
@@ -149,7 +149,7 @@ h4 { font-family: var(--gothic); font-weight: 700; font-size: 10pt; color: var(-
 .cover .meta-card dd { color: var(--ink); }
 .cover .meta-card .row:last-child dt, .cover .meta-card .row:last-child dd { border-bottom: none; }
 .cover .seal {
-    text-align: center; margin-top: 1.5cm;
+    text-align: center; margin-top: 1.0cm;
 }
 .cover .seal .badge {
     display: inline-block; border: 1.5px solid var(--crit); color: var(--crit);
@@ -157,16 +157,16 @@ h4 { font-family: var(--gothic); font-weight: 700; font-size: 10pt; color: var(-
     padding: 0.4em 1.4em; border-radius: 3px;
 }
 .cover .handling {
-    max-width: 74%; margin: 0.9cm auto 0; font-family: var(--gothic); font-size: 7.5pt;
+    max-width: 74%; margin: 0.7cm auto 0; font-family: var(--gothic); font-size: 7.5pt;
     color: var(--muted); line-height: 1.7; text-align: center;
 }
 /* 表紙下部の意匠モチーフ: 重大度スケールの極細セグメント＋準拠表記 */
-.cover .system-note { max-width: 62%; margin: 1.2cm auto 0; text-align: center; }
+.cover .system-note { max-width: 80%; margin: 0.75cm auto 0; text-align: center; }
 .cover .system-note .scale { display: flex; height: 4px; border-radius: 2px; overflow: hidden; }
 .cover .system-note .scale span { flex: 1; }
 .cover .system-note .caption {
-    margin-top: 0.5em; font-family: var(--gothic); font-size: 7pt; letter-spacing: 0.22em;
-    color: var(--muted); text-transform: uppercase;
+    margin-top: 0.5em; font-family: var(--gothic); font-size: 7pt; letter-spacing: 0.18em;
+    color: var(--muted); text-transform: uppercase; white-space: nowrap;
 }
 
 /* ===== 目次 ===== */

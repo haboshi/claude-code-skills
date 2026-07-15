@@ -10,9 +10,9 @@
     "rate_per_sec": 0,
     "max_pages": 15,
     "max_depth": 2,
-    "started_at": "2026-07-15T15:00:47.978193+00:00",
+    "started_at": "2026-07-15T15:26:44.900075+00:00",
     "user_agent": "web-vuln-report/0.1 (authorized security assessment; +non-destructive)",
-    "finished_at": "2026-07-15T15:00:48.020590+00:00",
+    "finished_at": "2026-07-15T15:26:44.941505+00:00",
     "pages_crawled": 4
   },
   "findings": [
@@ -630,7 +630,7 @@
     "worst_severity": "High",
     "worst_severity_ja": "重要"
   },
-  "scored_at": "2026-07-15T15:00:48.062910+00:00",
+  "scored_at": "2026-07-15T15:26:44.978164+00:00",
   "pages": [
     {
       "url": "https://example-vulnerable.local",

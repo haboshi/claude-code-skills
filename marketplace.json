@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Claude Code用スキルコレクション",
-    "version": "0.9.1",
+    "version": "0.11.0",
     "homepage": "https://github.com/haboshi/claude-code-skills"
   },
   "plugins": [
@@ -241,6 +241,29 @@
         "外部評価",
         "差し戻し",
         "エバリュエーター"
+      ]
+    },
+    {
+      "name": "web-vuln-report",
+      "description": "URL を起点に Web サイト/システム/アプリを巡回して診断対象を洗い出し、非破壊の脆弱性診断を実施。CVSS 4.0（CVSS-B）・OWASP Top 10:2025・CWE を付し、OWASP WSTG（診断手法）と ASVS 5.0.0（検証要件）を参照した日本語のビジネス脆弱性診断報告書（エグゼクティブサマリ＋技術詳細＋プロの示唆）を HTML で生成し、適正サイズ（A4）の PDF に変換する。nuclei/testssl.sh があれば自動併用。Genspark アップロード用 .skill バンドル生成にも対応。認可済み・単一組織スコープの防御的診断に限定。「脆弱性診断」「セキュリティ診断」「診断報告書」「Webサイト診断」「vulnerability assessment」で発動。",
+      "source": "./web-vuln-report",
+      "strict": false,
+      "version": "0.2.0",
+      "category": "security",
+      "keywords": [
+        "security",
+        "vulnerability-assessment",
+        "owasp-top-10-2025",
+        "cvss-4.0",
+        "cwe",
+        "wstg",
+        "asvs",
+        "pentest-report",
+        "web-security",
+        "脆弱性診断",
+        "セキュリティ診断",
+        "診断報告書",
+        "genspark"
       ]
     }
   ]

@@ -199,29 +199,29 @@ def check_cookies(cookies: list[dict], f: Findings) -> None:
                   f"Cookie '{c['name']}' が SameSite=None かつ Secure 属性を欠く")
 
 
-def check_tls(target: str, f: Findings) -> None:
+def check_cert_expiry(target: str, f: Findings) -> None:
+    """TLS 証明書の有効期限を検証する（残 30 日未満で所見）。
+
+    接続・証明書取得の失敗は例外を送出し、呼び出し側（カバレッジ台帳）が
+    「エラー（検査できなかった）」として表面化する。旧実装は例外を握り潰し、
+    合格・エラー・未実行がすべて同じ沈黙になっていた欠陥を是正している。"""
     parsed = urlparse(target)
     if parsed.scheme != "https":
         return
     host = parsed.hostname
     port = parsed.port or 443
-    _probe_old_tls(host, port, f, target)
-    # 証明書の有効期限は正規の検証コンテキストで取得する
-    try:
-        ctx = ssl.create_default_context()
-        with socket.create_connection((host, port), timeout=10) as sock:
-            with ctx.wrap_socket(sock, server_hostname=host) as ssock:
-                cert = ssock.getpeercert()
-        not_after = cert.get("notAfter")
-        if not_after:
-            exp = datetime.strptime(not_after, "%b %d %H:%M:%S %Y %Z").replace(tzinfo=timezone.utc)
-            days = (exp - datetime.now(timezone.utc)).days
-            if days < 30:
-                f.add("tls-cert-expiring", target,
-                      f"証明書の残存日数 {days} 日（notAfter={not_after}）",
-                      confidence="High")
-    except Exception:
-        pass
+    ctx = ssl.create_default_context()
+    with socket.create_connection((host, port), timeout=10) as sock:
+        with ctx.wrap_socket(sock, server_hostname=host) as ssock:
+            cert = ssock.getpeercert()
+    not_after = cert.get("notAfter")
+    if not_after:
+        exp = datetime.strptime(not_after, "%b %d %H:%M:%S %Y %Z").replace(tzinfo=timezone.utc)
+        days = (exp - datetime.now(timezone.utc)).days
+        if days < 30:
+            f.add("tls-cert-expiring", target,
+                  f"証明書の残存日数 {days} 日（notAfter={not_after}）",
+                  confidence="High")
 
 
 def _probe_old_tls(host: str, port: int, f: Findings, target: str) -> None:
@@ -229,7 +229,7 @@ def _probe_old_tls(host: str, port: int, f: Findings, target: str) -> None:
 
     ここでは「サーバが旧プロトコルのハンドシェイクを受理するか」だけを判定する。
     証明書の正当性は本検査の対象外（データ送受信は行わない）ため、意図的に
-    check_hostname/verify を無効化している。証明書の有効期限は check_tls 側の
+    check_hostname/verify を無効化している。証明書の有効期限は check_cert_expiry 側の
     正規検証コンテキストで別途確認する。この無効化は本関数のプロトコル受入判定に限定する。
     """
     if not hasattr(ssl, "TLSVersion"):
@@ -385,6 +385,11 @@ def check_reflected_input(params: list[dict], client: httpx.Client, f: Findings)
             r = client.get(probe)
         except Exception:
             continue
+        # 反射型 XSS は HTML 文脈でのみ成立する。JSON/プレーンテキスト等の応答が
+        # 値をエコーしても XSS ではないため、content-type が text/html の場合のみ判定する
+        # （API のエコーを反射型 XSS と誤検知する偽陽性を除去）。
+        if "text/html" not in r.headers.get("content-type", "").lower():
+            continue
         body = r.text
         # マーカーがエスケープされずそのまま（< " ' を含む形で）反射しているか
         if f"{REFLECT_MARKER}<\"'" in body or f"{REFLECT_MARKER}<" in body:
@@ -440,6 +445,151 @@ def check_sri(url: str, html: str, f: Findings) -> None:
             return  # 1 ページ 1 件に留める（過剰列挙を避ける）
 
 
+# 詳細エラー/スタックトレースの高特異度シグネチャ（通常コンテンツにはまず現れない）。
+# 誤検知を避けるため一般語（"error" 等）は使わず、フレームワーク/DB 固有の文言に限定する。
+_VERBOSE_STRONG = (
+    "Traceback (most recent call last):",              # Python
+    "Werkzeug Debugger",                                # Flask デバッグ
+    "Whoops, looks like something went wrong",          # Laravel
+    "Server Error in '/' Application",                  # ASP.NET
+    "You have an error in your SQL syntax",             # MySQL
+    "SQLSTATE[",                                        # PDO/SQL
+    "Microsoft OLE DB Provider for SQL Server",         # MSSQL
+    "Warning: mysql_",                                  # PHP + MySQL
+)
+_VERBOSE_ORA = re.compile(r"ORA-\d{5}")                 # Oracle
+_VERBOSE_PHP = re.compile(r"(?:Fatal error|Warning|Notice)\s*:.{0,200}?on line \d+", re.I | re.S)
+
+
+def check_verbose_error(url: str, html: str, f: Findings) -> None:
+    """応答本文にスタックトレース/DB エラー等の詳細エラー露出の兆候があるかを検出（非破壊・パッシブ）。
+
+    evidence にはシグネチャ種別のみを載せ、内部パス等の生データは載せない。"""
+    if not html:
+        return
+    hit = next((s for s in _VERBOSE_STRONG if s in html), None)
+    if not hit and _VERBOSE_ORA.search(html):
+        hit = "ORA-番号 (Oracle エラー)"
+    if not hit and _VERBOSE_PHP.search(html):
+        hit = "PHP エラー（... on line N）"
+    if hit:
+        f.add("verbose-error", url, f"詳細エラー/スタックトレースの兆候を検出: {hit}")
+
+
+# フォーム静的検査のヒント語
+_CSRF_TOKEN_HINTS = ("csrf", "xsrf", "_token", "authenticity_token",
+                     "verificationtoken", "requestverificationtoken", "nonce")
+_SENSITIVE_FIELD_HINTS = ("password", "passwd", "email", "login", "user",
+                          "account", "card", "cvv", "ssn")
+
+
+def check_forms(forms: list[dict], f: Findings) -> None:
+    """crawl が収集したフォーム定義を静的に検査する（非破壊・送信は一切行わない）。
+
+    検査対象: (a) 平文 HTTP への送信、(b) 機微な POST フォームの anti-CSRF トークン様 hidden 欠如。
+    注: password 欄の autocomplete 無効化は ASVS 5.0.0 では要求されない（むしろ
+    パスワードマネージャ許可を要求する方針転換があった）ため、検査対象から除外している。"""
+    seen_http, seen_csrf = set(), set()
+    for form in forms:
+        action = (form.get("action") or "").strip()
+        page_url = form.get("url", "")
+        method = (form.get("method") or "GET").upper()
+        inputs = form.get("inputs", [])
+        names = [(i.get("name") or "").lower() for i in inputs]
+        has_password = any((i.get("type") or "").lower() == "password" for i in inputs)
+
+        # (a) 平文送信: action が http://（機微データが暗号化されない経路で送出される）
+        if action.lower().startswith("http://") and action not in seen_http:
+            seen_http.add(action)
+            note = "（password 欄を含む）" if has_password else ""
+            f.add("insecure-form-target", action,
+                  f"フォーム送信先が平文 HTTP{note}（method={method}）")
+
+        # (b) 機微な POST フォームに anti-CSRF トークン様 hidden が見当たらない
+        if method == "POST" and any(h in n for n in names for h in _SENSITIVE_FIELD_HINTS):
+            has_token = any(h in n for n in names for h in _CSRF_TOKEN_HINTS)
+            key = action or page_url
+            if not has_token and key not in seen_csrf:
+                seen_csrf.add(key)
+                f.add("missing-csrf-token", key,
+                      "機微な POST フォームに anti-CSRF トークン様の hidden フィールドが無い",
+                      confidence="Low")
+
+
+# 組織ドメイン推定の簡易版（PSL を持たないため、代表的な多ラベル公開接尾辞のみ内蔵）。
+# 深いサブドメインや稀な多段 ccTLD では推定を外しうるため、所見側で手動確認を促す。
+_MULTI_LABEL_SUFFIXES = {
+    "co.jp", "ne.jp", "or.jp", "go.jp", "ac.jp", "ad.jp", "ed.jp", "gr.jp", "lg.jp",
+    "co.uk", "org.uk", "gov.uk", "ac.uk", "me.uk", "net.uk",
+    "com.au", "net.au", "org.au", "gov.au", "edu.au", "co.nz", "org.nz", "govt.nz",
+    "co.kr", "or.kr", "ne.kr", "go.kr", "co.in", "co.za", "org.za",
+    "com.br", "com.cn", "com.hk", "com.sg", "com.tw", "com.my", "com.ph", "com.vn",
+    "com.mx", "com.ar", "com.co", "com.tr", "com.ua", "com.pe", "com.ng", "com.pk",
+    "co.id", "co.th", "co.il", "co.ke", "co.jp", "com.eg", "com.sa", "com.pl",
+}
+
+
+def _registrable_domain(host: str) -> str:
+    labels = (host or "").strip(".").split(".")
+    if len(labels) <= 2:
+        return ".".join(labels)
+    if ".".join(labels[-2:]) in _MULTI_LABEL_SUFFIXES:
+        return ".".join(labels[-3:])
+    return ".".join(labels[-2:])
+
+
+def dns_available() -> bool:
+    try:
+        import dns.resolver  # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
+def _default_dns_query(name: str, rdtype: str) -> list[str]:
+    """DNS レコード文字列のリストを返す。レコード不在は []、ネットワーク等の障害は例外送出。"""
+    import dns.resolver
+    try:
+        ans = dns.resolver.resolve(name, rdtype, lifetime=8.0)
+    except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
+        return []
+    out = []
+    for r in ans:
+        strings = getattr(r, "strings", None)
+        if strings is not None:  # TXT: 分割文字列を結合
+            out.append(b"".join(strings).decode("utf-8", "replace"))
+        else:
+            out.append(str(r))
+    return out
+
+
+def check_dns(target: str, f: Findings, query=None) -> None:
+    """DMARC/SPF を受動的に照会する（DNS クエリのみ・非破壊）。
+
+    query は (name, rdtype)->list[str] の呼び出し可能（テスト時にフェイクを注入）。
+    ネットワーク障害時は例外を送出し、呼び出し側（カバレッジ台帳）が error として扱う。"""
+    q = query or _default_dns_query
+    domain = _registrable_domain(urlparse(target).hostname or "")
+    if not domain:
+        return
+    # DMARC（_dmarc.<domain> の TXT）
+    dmarc = [t for t in q(f"_dmarc.{domain}", "TXT") if t.lower().startswith("v=dmarc1")]
+    if not dmarc:
+        f.add("dns-dmarc-missing", domain,
+              f"_dmarc.{domain} に DMARC レコード（v=DMARC1）が存在しない", confidence="Medium")
+    else:
+        m = re.search(r"p\s*=\s*(none|quarantine|reject)", dmarc[0], re.I)
+        if m and m.group(1).lower() == "none":
+            f.add("dns-dmarc-weak", domain,
+                  "DMARC ポリシーが p=none（監視のみでなりすましメールを拒否しない）",
+                  confidence="Medium")
+    # SPF（ドメイン apex の TXT）
+    spf = [t for t in q(domain, "TXT") if t.lower().startswith("v=spf1")]
+    if not spf:
+        f.add("dns-spf-missing", domain,
+              f"{domain} に SPF レコード（v=spf1）が存在しない", confidence="Medium")
+
+
 def check_https_redirect(target: str, client, f: Findings) -> None:
     """HTTPS 対象について、HTTP アクセスが HTTPS へ確実にリダイレクトされるかを検証。"""
     p = urlparse(target)
@@ -459,8 +609,104 @@ def check_https_redirect(target: str, client, f: Findings) -> None:
               f"HTTP アクセスのリダイレクト先が HTTPS でない（Location={loc}）")
 
 
-def run_checks(crawl: dict, timeout: float = 15.0, active: bool = True) -> list[dict]:
+# ===== カバレッジ台帳（診断項目の実施状況を可視化） =====
+# (group_id, 表示名, 分類, 種別)。「実施したが問題なし（clean）」「エラー」「未実施」を
+# 沈黙で潰さず report に面出しするための土台。旧実装は検出事項のみ列挙していた。
+LEDGER_GROUPS = [
+    ("security-headers", "セキュリティヘッダ（HSTS/CSP/XFO 等）", "A02/A04/A06", "passive"),
+    ("cookies", "Cookie 属性（Secure/HttpOnly/SameSite）", "A01/A02", "passive"),
+    ("sri", "外部リソースの SRI（改竄検知）", "A08", "passive"),
+    ("outdated-libs", "古いクライアントライブラリの痕跡", "A03", "passive"),
+    ("forms", "フォームの安全性（平文送信 / CSRF）", "A01/A04", "passive"),
+    ("verbose-error", "詳細エラー / スタックトレース露出", "A10", "passive"),
+    ("tls-protocol", "TLS 旧プロトコル受入（1.0/1.1）", "A04", "network"),
+    ("tls-cert", "TLS 証明書の有効期限", "A04", "network"),
+    ("dns-email-auth", "DNS メール認証（DMARC / SPF）", "A02", "network"),
+    ("https-redirect", "HTTP→HTTPS リダイレクト強制", "A04", "active"),
+    ("exposed-files", "機微ファイル / パスの公開", "A01", "active"),
+    ("directory-listing", "ディレクトリリスティング", "A01", "active"),
+    ("cors", "CORS 設定", "A02", "active"),
+    ("http-methods", "危険な HTTP メソッド", "A02", "active"),
+    ("open-redirect", "オープンリダイレクト", "A01", "active"),
+    ("reflected-input", "反射型 XSS の兆候", "A05", "active"),
+    ("mixed-content", "混在コンテンツ", "A06", "active"),
+]
+
+# 各グループが生成しうる check_id（台帳の finding/clean 判定に使用）
+_GROUP_CHECK_IDS = {
+    "security-headers": {"missing-hsts", "missing-xcto", "missing-csp", "weak-csp",
+                         "missing-frame-options", "missing-referrer-policy",
+                         "missing-permissions-policy", "info-disclosure-banner"},
+    "cookies": {"cookie-insecure", "cookie-no-httponly", "cookie-no-samesite",
+                "cookie-samesite-none-insecure"},
+    "sri": {"missing-sri"},
+    "outdated-libs": {"outdated-library"},
+    "forms": {"insecure-form-target", "missing-csrf-token"},
+    "verbose-error": {"verbose-error"},
+    "tls-protocol": {"tls-weak-protocol"},
+    "tls-cert": {"tls-cert-expiring"},
+    "dns-email-auth": {"dns-dmarc-missing", "dns-dmarc-weak", "dns-spf-missing"},
+    "https-redirect": {"no-https-redirect"},
+    "exposed-files": {"exposed-sensitive-file"},
+    "directory-listing": {"directory-listing"},
+    "cors": {"cors-misconfig"},
+    "http-methods": {"risky-http-method"},
+    "open-redirect": {"open-redirect"},
+    "reflected-input": {"reflected-input"},
+    "mixed-content": {"mixed-content"},
+}
+_CHECK_TO_GROUP = {cid: gid for gid, cids in _GROUP_CHECK_IDS.items() for cid in cids}
+
+LEDGER_STATUS_JA = {"finding": "検出あり", "clean": "問題なし", "error": "エラー", "skipped": "未実施"}
+
+
+class Ledger:
+    """診断項目ごとの実施状況（検出/問題なし/エラー/未実施）を保持する。"""
+
+    def __init__(self):
+        self._rows: dict[str, dict] = {}
+
+    def record(self, group_id: str, status: str, findings: int = 0, note: str = "") -> None:
+        self._rows[group_id] = {"status": status, "findings": findings, "note": note}
+
+    def has(self, group_id: str) -> bool:
+        return group_id in self._rows
+
+    def rows(self) -> list[dict]:
+        out = []
+        for gid, label, cat, kind in LEDGER_GROUPS:
+            r = self._rows.get(gid, {"status": "skipped", "findings": 0, "note": "未実行"})
+            out.append({
+                "id": gid, "label": label, "category": cat, "kind": kind,
+                "status": r["status"], "status_ja": LEDGER_STATUS_JA.get(r["status"], r["status"]),
+                "findings": r["findings"], "note": r["note"],
+            })
+        return out
+
+    def summary(self) -> dict:
+        by: dict[str, int] = {}
+        for r in self.rows():
+            by[r["status"]] = by.get(r["status"], 0) + 1
+        return {"total": len(LEDGER_GROUPS), "by_status": by}
+
+
+def _dns_target_ok(host: str) -> bool:
+    """DNS メール認証チェックの対象になりうるか（IP・ローカル・非 FQDN は対象外）。"""
+    if not host or "." not in host or ":" in host:
+        return False
+    if host in ("localhost", "127.0.0.1", "::1") or host.endswith(".local"):
+        return False
+    # IPv4 ドット表記
+    if host.count(".") == 3 and host.replace(".", "").isdigit():
+        return False
+    return True
+
+
+def run_checks(crawl: dict, timeout: float = 15.0, active: bool = True,
+               ledger: "Ledger | None" = None) -> list[dict]:
     f = Findings()
+    if ledger is None:
+        ledger = Ledger()
     scope = crawl.get("scope", {})
     target = scope.get("target", "")
     allowed = set(h.lower() for h in scope.get("hosts", []))
@@ -471,10 +717,23 @@ def run_checks(crawl: dict, timeout: float = 15.0, active: bool = True) -> list[
     def in_scope(u: str) -> bool:
         return (urlparse(u).hostname or "").lower() in allowed
 
+    ran: set[str] = set()         # 実際に実行できたグループ（未実行を clean にしないための実績記録）
+    errored: dict[str, str] = {}  # 例外を送出したグループ。値は例外種別のみ（生の例外文字列に
+                                  # 含まれうるリクエスト URL・クエリを台帳へ載せない＝情報開示防止）
+
+    def _safe(gid: str, fn) -> None:
+        """チェックを実行し、成功なら ran に、例外なら errored に記録して他項目を巻き込まない。"""
+        try:
+            fn()
+            ran.add(gid)
+        except Exception as e:
+            errored[gid] = type(e).__name__
+
     with _client(timeout) as raw:
         # 全通信を _SafeClient 経由に統一し、非破壊メソッドをコードで強制＋レート制御する
         sc = _SafeClient(raw, delay)
-        # パッシブ（巡回済みデータから判定）
+
+        # ===== パッシブ（巡回済みデータから判定・各チェックは個別に error 隔離） =====
         for page in pages:
             if page.get("error") or "status" not in page:
                 continue
@@ -482,25 +741,76 @@ def run_checks(crawl: dict, timeout: float = 15.0, active: bool = True) -> list[
                 r = sc.get(page["url"])
             except Exception:
                 continue
-            check_security_headers(page, _headers_lower(r), f)
+            _safe("security-headers", lambda: check_security_headers(page, _headers_lower(r), f))
             if "text/html" in r.headers.get("content-type", ""):
-                check_sri(page["url"], r.text, f)
-        check_cookies(crawl.get("cookies", []), f)
-        check_outdated_libraries(pages, f)
-        if target:
-            check_tls(target, f)
+                _safe("sri", lambda: check_sri(page["url"], r.text, f))
+                _safe("verbose-error", lambda: check_verbose_error(page["url"], r.text, f))
 
-        # アクティブ（非破壊の能動プローブ）
+        _safe("cookies", lambda: check_cookies(crawl.get("cookies", []), f))
+        _safe("outdated-libs", lambda: check_outdated_libraries(pages, f))
+        _safe("forms", lambda: check_forms(crawl.get("forms", []), f))
+
+        # TLS（HTTPS 対象のみ・接続/証明書取得の失敗は error として表面化）
+        tp = urlparse(target) if target else None
+        if tp and tp.scheme == "https":
+            host, port = tp.hostname, (tp.port or 443)
+            _safe("tls-protocol", lambda: _probe_old_tls(host, port, f, target))
+            _safe("tls-cert", lambda: check_cert_expiry(target, f))
+        elif target:
+            ledger.record("tls-protocol", "skipped", note="HTTPS 対象外")
+            ledger.record("tls-cert", "skipped", note="HTTPS 対象外")
+
+        # DNS メール認証（DMARC/SPF）
+        dns_host = (tp.hostname if tp else "") or ""
+        if target and dns_available() and _dns_target_ok(dns_host):
+            _safe("dns-email-auth", lambda: check_dns(target, f))
+        elif target:
+            note = "dnspython 未導入" if not dns_available() else "IP/ローカル対象のため対象外"
+            ledger.record("dns-email-auth", "skipped", note=note)
+
+        # ===== アクティブ（非破壊の能動プローブ） =====
         if active and target and in_scope(target):
-            check_exposed_files(target, sc, f)
-            check_directory_listing(pages, sc, f)
-            check_cors(target, sc, f)
-            check_http_methods(target, sc, f)
-            check_https_redirect(target, sc, f)
             params = [p for p in crawl.get("params", []) if in_scope(p["url"])]
-            check_open_redirect(params, sc, f)
-            check_reflected_input(params, sc, f)
-            check_mixed_content(pages, sc, f)
+            active_jobs = [
+                ("exposed-files", lambda: check_exposed_files(target, sc, f)),
+                ("directory-listing", lambda: check_directory_listing(pages, sc, f)),
+                ("cors", lambda: check_cors(target, sc, f)),
+                ("http-methods", lambda: check_http_methods(target, sc, f)),
+                ("https-redirect", lambda: check_https_redirect(target, sc, f)),
+                ("open-redirect", lambda: check_open_redirect(params, sc, f)),
+                ("reflected-input", lambda: check_reflected_input(params, sc, f)),
+                ("mixed-content", lambda: check_mixed_content(pages, sc, f)),
+            ]
+            for gid, job in active_jobs:
+                _safe(gid, job)
+        else:
+            reason = "能動プローブ無効（--passive-only）" if not active else "対象がスコープ外"
+            for gid in ("https-redirect", "exposed-files", "directory-listing", "cors",
+                        "http-methods", "open-redirect", "reflected-input", "mixed-content"):
+                if not ledger.has(gid):
+                    ledger.record(gid, "skipped", note=reason)
+
+    # ===== 台帳の確定（finding > error > clean > skipped） =====
+    # finding を error より優先し、所見のある群は本文と整合させる（error は注記で併記）。
+    # 実行実績（ran）の無い群は clean でなく skipped とし、未検査を沈黙で合格にしない。
+    found_counts: dict[str, int] = {}
+    for it in f.as_list():
+        gid = _CHECK_TO_GROUP.get(it["check_id"])
+        if gid:
+            found_counts[gid] = found_counts.get(gid, 0) + 1
+    for gid, _label, _cat, _kind in LEDGER_GROUPS:
+        if ledger.has(gid):
+            continue
+        n = found_counts.get(gid, 0)
+        if n > 0:
+            note = f"一部エラー（{errored[gid]}）" if gid in errored else ""
+            ledger.record(gid, "finding", findings=n, note=note)
+        elif gid in errored:
+            ledger.record(gid, "error", note=errored[gid])
+        elif gid in ran:
+            ledger.record(gid, "clean")
+        else:
+            ledger.record(gid, "skipped", note="対象応答なし／未実施")
 
     return f.as_list()
 
@@ -516,12 +826,15 @@ def main(argv: list[str] | None = None) -> int:
     with open(args.crawl, encoding="utf-8") as fp:
         crawl = json.load(fp)
 
-    findings = run_checks(crawl, timeout=args.timeout, active=not args.passive_only)
+    ledger = Ledger()
+    findings = run_checks(crawl, timeout=args.timeout, active=not args.passive_only, ledger=ledger)
     out = {
         "target": crawl.get("scope", {}).get("target", ""),
         "generated_at": _now_iso(),
         "scope": crawl.get("scope", {}),
         "findings": findings,
+        "coverage": ledger.rows(),
+        "coverage_summary": ledger.summary(),
     }
     with open(args.out, "w", encoding="utf-8") as fp:
         json.dump(out, fp, ensure_ascii=False, indent=2)

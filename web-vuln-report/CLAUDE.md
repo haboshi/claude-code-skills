@@ -50,6 +50,16 @@ skills/web-vuln-report/
   catalog と references/standards-mapping.md が正。
 - **報告書 HTML は autoescape=True**: 対象由来データを確実にエスケープ（格納型 XSS 防止）。信頼できる
   自前 CSS・narrative のみ `|safe`。
+- **カバレッジ台帳（v0.3）**: `checks.Ledger` が各診断項目を finding/clean/error/skipped で記録し、
+  報告書に「診断項目カバレッジ台帳」として面出しする。旧実装は検出事項のみ列挙し、合格・エラー・
+  未実施がすべて同じ沈黙だった欠陥を是正（`check_cert_expiry` は接続失敗を例外送出→台帳で error 化）。
+  台帳は `run_checks(..., ledger=Ledger())` で受け取り、findings_doc→scored→render へ透過する。
+- **受動 DNS / forms（v0.3）**: `check_dns`（DMARC/SPF・dnspython は soft-import、不在時 skipped）、
+  `check_forms`（平文送信/CSRF の静的検査・送信は行わない）。`_registrable_domain` は PSL を持たず
+  代表的多ラベル ccTLD のみ内蔵の簡易推定。**password autocomplete は不採用**（ASVS 5.0.0 が
+  無効化を要求しない方針転換のため）。
+- **CVSS 較正の誠実性（v0.3）**: `info-disclosure-banner` は VC:L→VC:N（Info）に是正（バージョン
+  文字列は機密データでない）。偵察系の較正は機械的一律変更でなく個別レビューで判断する。
 - **CVE 網羅を誇張しない**: 内蔵チェックは構成/衛生面の指摘。CVE 級は外部ツール併用時のみ、
   報告書の制約事項に明記。
 - **所見は集約**: scoring.merge_findings が同一 check_id+title を1件に束ね該当箇所を列挙
@@ -59,7 +69,7 @@ skills/web-vuln-report/
 
 ```bash
 cd skills/web-vuln-report
-uv run --with httpx --with beautifulsoup4 --with cvss --with jinja2 --with pytest \
+uv run --with httpx --with beautifulsoup4 --with cvss --with jinja2 --with dnspython --with pytest \
   python -m pytest scripts/tests/ -v
 ```
 

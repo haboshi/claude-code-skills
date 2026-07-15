@@ -54,9 +54,15 @@ xcto / cookie-secure / cookie-httponly / cors / samesite-none の系統のみ。
 
 #### info-disclosure-banner — サーバ/フレームワークのバージョン露出
 - CWE: CWE-200 / WSTG: WSTG-INFO-02 / ASVS: v5.0.0-13.4.6 (L3)
-- CVSS-B: `CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N`（6.9）
-- 観測: Server/X-Powered-By 等でソフトウェアとバージョンが露出し、既知脆弱性の 標的選定を容易にしている。
+- CVSS-B: `CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:N/SC:N/SI:N/SA:N`（0.0・Info）
+- 観測: Server/X-Powered-By 等でソフトウェアとバージョンが露出。直接の機密性侵害は無いが偵察を容易にする参考情報（v0.3 で VC:L→VC:N に較正。バージョン文字列は機密データでないため）。
 - 対策: バージョン情報の露出を抑制する（トークン非表示・バナー抑制）。
+
+#### missing-csrf-token — 機微な POST フォームに anti-CSRF トークンが見当たらない
+- CWE: CWE-352 / WSTG: WSTG-SESS-05 / ASVS: v5.0.0-3.5.1 (L1)
+- CVSS-B: `CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:A/VC:N/VI:L/VA:N/SC:N/SI:N/SA:N`（2.1）
+- 観測: 機微な POST フォーム（password/email 等を含む）に anti-CSRF トークン様の hidden が無い。SameSite/ヘッダ方式の防御は静的解析で検知できないため手動確認を推奨（確度 Low）。フォームは静的検査のみで送信は行わない。
+- 対策: 同期トークン（anti-CSRF トークン）を導入し、`SameSite` Cookie を併用する。
 
 ---
 
@@ -97,6 +103,24 @@ xcto / cookie-secure / cookie-httponly / cors / samesite-none の系統のみ。
 - CVSS-B: `CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:A/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N`（2.1）
 - 観測: SameSite=None は Secure 属性が必須。欠くとモダンブラウザに拒否され、平文経路での送出や CSRF 防御の無効化につながる。
 - 対策: `SameSite=None` を用いる場合は必ず `Secure` を併記する。
+
+#### dns-dmarc-missing — DMARC レコード未設定（メールなりすまし対策の欠如）
+- CWE: CWE-693 / WSTG: 該当なし（独自根拠） / ASVS: 該当なし
+- CVSS-B: `CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:P/VC:N/VI:L/VA:N/SC:N/SI:N/SA:N`（2.3）
+- 観測: `_dmarc.<domain>` に DMARC レコード（v=DMARC1）が無く、正規ドメインを騙るなりすましメールを受信側が判別しにくい。DNS の TXT 参照のみの受動チェック（非破壊）。
+- 対策: DMARC レコードを公開し、SPF/DKIM と整合させ p=quarantine→reject へ段階強化する。
+
+#### dns-dmarc-weak — DMARC ポリシーが p=none（監視のみ・拒否しない）
+- CWE: CWE-693 / WSTG: 該当なし（独自根拠） / ASVS: 該当なし
+- CVSS-B: `CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:P/VC:N/VI:L/VA:N/SC:N/SI:N/SA:N`（2.3）
+- 観測: DMARC は存在するが p=none で、なりすましメールを検疫・拒否せず監視のみ。
+- 対策: レポートで正規送信元を洗い出し、p=quarantine を経て p=reject へ強化する。
+
+#### dns-spf-missing — SPF レコード未設定（送信元 IP 認可の欠如）
+- CWE: CWE-693 / WSTG: 該当なし（独自根拠） / ASVS: 該当なし
+- CVSS-B: `CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:P/VC:N/VI:L/VA:N/SC:N/SI:N/SA:N`（2.3）
+- 観測: ドメイン apex に SPF レコード（v=spf1）が無く、送信を許可された IP の宣言が欠けている。DNS TXT 参照のみの受動チェック。
+- 対策: SPF レコードを公開し、正規送信元のみ許可して末尾を -all（または ~all）とする。
 
 ---
 
@@ -141,6 +165,12 @@ xcto / cookie-secure / cookie-httponly / cors / samesite-none の系統のみ。
 - CVSS-B: `CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:P/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N`（2.3）
 - 観測: 平文 HTTP でのアクセスが HTTPS へ確実に誘導されず、初回接続や直打ちで平文通信が成立しうる。
 - 対策: 全 HTTP アクセスを HTTPS へ 301 リダイレクトし、HSTS を併用する。
+
+#### insecure-form-target — フォームの送信先が平文 HTTP（暗号化されない経路への送信）
+- CWE: CWE-319 / WSTG: WSTG-CRYP-03 / ASVS: v5.0.0-12.2.1 (L1)
+- CVSS-B: `CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:P/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N`（2.3）
+- 観測: HTML フォームの action が http:// を指し、入力（認証情報を含みうる）が暗号化されない経路で送信される。crawl 済みフォーム定義の静的検査のみ（送信は行わない）。
+- 対策: フォームの送信先を https:// に統一し、平文 HTTP への送信を排除する。
 
 ---
 

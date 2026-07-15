@@ -289,6 +289,16 @@ th.num { width: 3.4em; }
 .findings-summary th:nth-child(2), .findings-summary td:nth-child(2) { width: 4.6em; white-space: nowrap; }
 .findings-summary th:last-child, .findings-summary td:last-child { white-space: nowrap; width: 6em; font-family: var(--mono); font-size: 8.5pt; color: var(--ink-soft); }
 
+/* ===== 診断項目カバレッジ台帳 ===== */
+.coverage-ledger td:first-child { font-family: var(--gothic); font-size: 9pt; color: var(--ink); }
+.coverage-ledger th.cov-col, .coverage-ledger td.cov-col { width: 6.6em; white-space: nowrap; }
+.cov { display: inline-block; padding: 0.1em 0.6em; border-radius: 999px; font-size: 8.5pt;
+    font-weight: 700; font-family: var(--gothic); }
+.cov-finding { background: var(--med-pill); color: #422f00; }   /* 検出あり */
+.cov-clean   { background: #e4f4ea; color: #0f6b39; }           /* 問題なし */
+.cov-error   { background: #fbe3c9; color: #8a3b0b; }           /* エラー */
+.cov-skipped { background: var(--panel); color: var(--muted); border: 1px solid var(--line); }  /* 未実施 */
+
 /* キー/バリューの定義表（範囲と手法）: 定義表はハイライン統一（ゼブラ無し） */
 .kv { border-top: 1px solid var(--line-2); }
 .kv table { margin: 0; }

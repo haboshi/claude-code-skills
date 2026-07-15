@@ -295,6 +295,184 @@ def test_report_escapes_target_data_xss():
     assert "@page" in html                      # CSS（|safe）は壊れていない
 
 
+def test_coverage_ledger_statuses(crawl_data):
+    from checks import run_checks, Ledger, LEDGER_GROUPS
+    led = Ledger()
+    run_checks(crawl_data, timeout=10, active=True, ledger=led)
+    rows = {r["id"]: r for r in led.rows()}
+    # 全グループが台帳に載る
+    assert len(rows) == len(LEDGER_GROUPS)
+    # ヘッダ群は検出あり（フィクスチャに欠落ヘッダ多数）
+    assert rows["security-headers"]["status"] == "finding"
+    # http 対象なので TLS は未実施
+    assert rows["tls-cert"]["status"] == "skipped"
+    assert rows["tls-protocol"]["status"] == "skipped"
+    # ローカル/IP 対象なので DNS は未実施（外部ネットワークを叩かない）
+    assert rows["dns-email-auth"]["status"] == "skipped"
+    # 実施済みで所見の無い群（例: forms は GET 検索のみ）は「問題なし(clean)」
+    statuses = {r["status"] for r in rows.values()}
+    assert "clean" in statuses
+    # passive-only では能動群が未実施になる
+    led2 = Ledger()
+    run_checks(crawl_data, timeout=10, active=False, ledger=led2)
+    rows2 = {r["id"]: r for r in led2.rows()}
+    assert rows2["reflected-input"]["status"] == "skipped"
+    assert rows2["exposed-files"]["status"] == "skipped"
+
+
+def test_coverage_ledger_no_html_is_skipped_not_clean():
+    # ページ応答が無い（＝HTML 検査が一度も走らない）とき、ページ依存の受動群を
+    # 「問題なし(clean)」にせず「未実施(skipped)」とする（未検査を沈黙で合格にしない）。
+    from checks import run_checks, Ledger
+    led = Ledger()
+    run_checks({"scope": {"target": "", "hosts": []}, "pages": [], "cookies": [], "forms": []},
+               timeout=5, active=False, ledger=led)
+    rows = {r["id"]: r for r in led.rows()}
+    assert rows["security-headers"]["status"] == "skipped"
+    assert rows["sri"]["status"] == "skipped"
+    assert rows["verbose-error"]["status"] == "skipped"
+    # 空データでも実行される群（cookies/forms）は clean（実施済み・所見なし）
+    assert rows["cookies"]["status"] == "clean"
+    assert rows["forms"]["status"] == "clean"
+
+
+def test_registrable_domain_expanded_ccTLDs():
+    from checks import _registrable_domain
+    # レビュー指摘の多ラベル ccTLD で公開接尾辞を返さない（DMARC/SPF 偽陽性の回避）
+    assert _registrable_domain("www.example.com.mx") == "example.com.mx"
+    assert _registrable_domain("shop.example.co.id") == "example.co.id"
+    assert _registrable_domain("a.example.com.br") == "example.com.br"
+
+
+def test_coverage_flows_into_report(crawl_data):
+    from checks import run_checks, Ledger
+    from scoring import score_all
+    import render_report
+    led = Ledger()
+    findings = run_checks(crawl_data, timeout=10, active=True, ledger=led)
+    doc = {"target": "http://test", "scope": {"hosts": ["test"]}, "findings": findings,
+           "coverage": led.rows(), "coverage_summary": led.summary()}
+    html = render_report.render(score_all(doc), narrative={}, tools_used=[])
+    assert "診断項目カバレッジ台帳" in html
+    assert "問題なし" in html or "未実施" in html
+
+
+def test_registrable_domain_multilabel():
+    from checks import _registrable_domain
+    assert _registrable_domain("example.com") == "example.com"
+    assert _registrable_domain("www.example.com") == "example.com"
+    assert _registrable_domain("shop.example.com") == "example.com"
+    assert _registrable_domain("www.actcall.co.jp") == "actcall.co.jp"  # 多ラベル ccTLD
+    assert _registrable_domain("actcall.co.jp") == "actcall.co.jp"
+
+
+def test_check_dns_with_fake_resolver():
+    from checks import check_dns, Findings
+
+    # フェイク resolver（オフライン）: DMARC/SPF いずれも不在 → 双方検出
+    def q_empty(name, rdtype):
+        return []
+    f = Findings()
+    check_dns("https://example.com/", f, query=q_empty)
+    ids = {i["check_id"] for i in f.as_list()}
+    assert "dns-dmarc-missing" in ids
+    assert "dns-spf-missing" in ids
+
+    # DMARC が p=none、SPF あり → dns-dmarc-weak のみ、missing は出さない
+    def q_weak(name, rdtype):
+        if name.startswith("_dmarc."):
+            return ["v=DMARC1; p=none; rua=mailto:x@example.com"]
+        return ["v=spf1 include:_spf.example.com -all"]
+    f2 = Findings()
+    check_dns("https://example.com/", f2, query=q_weak)
+    ids2 = {i["check_id"] for i in f2.as_list()}
+    assert "dns-dmarc-weak" in ids2
+    assert "dns-dmarc-missing" not in ids2
+    assert "dns-spf-missing" not in ids2
+
+    # DMARC が p=reject、SPF あり → 何も出さない
+    def q_ok(name, rdtype):
+        if name.startswith("_dmarc."):
+            return ["v=DMARC1; p=reject"]
+        return ["v=spf1 -all"]
+    f3 = Findings()
+    check_dns("https://example.com/", f3, query=q_ok)
+    assert not f3.as_list()
+
+
+def test_check_forms_static_analysis():
+    from checks import check_forms, Findings
+    forms = [
+        # 平文送信 + 機微 POST + トークン無し: insecure-form-target / missing-csrf-token
+        {"url": "https://s/login", "action": "http://s/login", "method": "POST",
+         "inputs": [{"name": "user", "type": "text"}, {"name": "pass", "type": "password"}]},
+        # 対策済み: csrf トークン有り → missing-csrf-token を出さない
+        {"url": "https://s/secure", "action": "https://s/secure", "method": "POST",
+         "inputs": [{"name": "pw2", "type": "password"},
+                    {"name": "csrf_token", "type": "hidden"},
+                    {"name": "email", "type": "email"}]},
+        # GET 検索フォーム → 何も出さない
+        {"url": "https://s/search", "action": "https://s/search", "method": "GET",
+         "inputs": [{"name": "q", "type": "text"}]},
+    ]
+    f = Findings()
+    check_forms(forms, f)
+    items = f.as_list()
+    ids = {i["check_id"] for i in items}
+    assert {"insecure-form-target", "missing-csrf-token"} <= ids
+    # autocomplete は ASVS 5.0.0 方針転換により検査対象外（誤検知の温床を持ち込まない）
+    assert "password-autocomplete" not in ids
+    # 対策済み secure フォーム・GET 検索フォームは何も出さない
+    assert not any("secure" in a for i in items for a in i["affected"])
+    assert not any("search" in a for i in items for a in i["affected"])
+
+
+def test_verbose_error_detection():
+    from checks import check_verbose_error, Findings
+    # スタックトレースの兆候を検出（evidence にシグネチャ種別のみ）
+    f = Findings()
+    check_verbose_error("https://x/e", "<pre>Traceback (most recent call last):\n  File \"/app/main.py\"</pre>", f)
+    items = f.as_list()
+    assert "verbose-error" in {i["check_id"] for i in items}
+    assert "/app/main.py" not in items[0]["evidence"]  # 内部パスは載せない
+    # SQL エラー
+    f2 = Findings()
+    check_verbose_error("https://x/q", "You have an error in your SQL syntax; near '1'", f2)
+    assert "verbose-error" in {i["check_id"] for i in f2.as_list()}
+    # 通常ページは誤検知しない
+    f3 = Findings()
+    check_verbose_error("https://x/", "<html><body>エラーの対処法について解説します。</body></html>", f3)
+    assert "verbose-error" not in {i["check_id"] for i in f3.as_list()}
+
+
+def test_reflected_input_ignores_non_html():
+    # 反射型 XSS は HTML 文脈でのみ成立する。JSON/API がマーカーをエコーしても
+    # content-type が text/html でなければ検出しない（偽陽性の除去）。
+    from checks import check_reflected_input, Findings, REFLECT_MARKER
+
+    class _R:
+        def __init__(self, text, ctype):
+            self.status_code, self.text, self.headers = 200, text, {"content-type": ctype}
+
+    class _C:
+        def __init__(self, resp):
+            self._resp = resp
+
+        def get(self, url):
+            return self._resp
+
+    payload_echo = f'{REFLECT_MARKER}<"\''
+    params = [{"url": "https://x/?q=1", "name": "q"}]
+    # JSON エコー: 検出しない
+    fj = Findings()
+    check_reflected_input(params, _C(_R(f'{{"q":"{payload_echo}"}}', "application/json")), fj)
+    assert "reflected-input" not in {i["check_id"] for i in fj.as_list()}
+    # HTML 反射: 検出する
+    fh = Findings()
+    check_reflected_input(params, _C(_R(f"<div>{payload_echo}</div>", "text/html; charset=utf-8")), fh)
+    assert "reflected-input" in {i["check_id"] for i in fh.as_list()}
+
+
 def test_no_finding_leaks_raw_secret_values(findings):
     # 検出はするが、evidence にパスワード平文をそのまま載せない（署名/存在のみ）
     blob = " ".join(f["evidence"] for f in findings)

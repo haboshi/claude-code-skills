@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<title>脆弱性診断報告書 - http://127.0.0.1:8899</title>
+<title>脆弱性診断報告書 - https://example-vulnerable.local</title>
 <style>/* web-vuln-report 報告書スタイル
  * A4 印刷（weasyprint 69）向けに設計。画面閲覧も両立。自己完結（システムフォントのみ）。
  * デザイン方針: 静かな権威と安心感。抑制的な配色、ハイラインの罫線、一貫した垂直リズム、
@@ -294,6 +294,16 @@ th.num { width: 3.4em; }
 .findings-summary th:nth-child(2), .findings-summary td:nth-child(2) { width: 4.6em; white-space: nowrap; }
 .findings-summary th:last-child, .findings-summary td:last-child { white-space: nowrap; width: 6em; font-family: var(--mono); font-size: 8.5pt; color: var(--ink-soft); }
 
+/* ===== 診断項目カバレッジ台帳 ===== */
+.coverage-ledger td:first-child { font-family: var(--gothic); font-size: 9pt; color: var(--ink); }
+.coverage-ledger th.cov-col, .coverage-ledger td.cov-col { width: 6.6em; white-space: nowrap; }
+.cov { display: inline-block; padding: 0.1em 0.6em; border-radius: 999px; font-size: 8.5pt;
+    font-weight: 700; font-family: var(--gothic); }
+.cov-finding { background: var(--med-pill); color: #422f00; }   /* 検出あり */
+.cov-clean   { background: #e4f4ea; color: #0f6b39; }           /* 問題なし */
+.cov-error   { background: #fbe3c9; color: #8a3b0b; }           /* エラー */
+.cov-skipped { background: var(--panel); color: var(--muted); border: 1px solid var(--line); }  /* 未実施 */
+
 /* キー/バリューの定義表（範囲と手法）: 定義表はハイライン統一（ゼブラ無し） */
 .kv { border-top: 1px solid var(--line-2); }
 .kv table { margin: 0; }
@@ -368,15 +378,15 @@ li { margin: 0.25em 0; }
   <h1>脆弱性診断報告書</h1>
   <div class="subtitle">Web アプリケーション セキュリティ診断</div>
 
-  <div class="target-plate">http://127.0.0.1:8899</div>
+  <div class="target-plate">https://example-vulnerable.local</div>
 
   <div class="meta-card">
     <dl>
-      <div class="row"><dt>診断対象</dt><dd>http://127.0.0.1:8899</dd></div>
+      <div class="row"><dt>診断対象</dt><dd>https://example-vulnerable.local</dd></div>
       <div class="row"><dt>診断実施日</dt><dd>2026-07-15</dd></div>
       <div class="row"><dt>報告書発行日</dt><dd>2026-07-15</dd></div>
-      <div class="row"><dt>実施者</dt><dd>AllAmbitious セキュリティ診断チーム</dd></div>
-      <div class="row"><dt>認可の根拠</dt><dd>社内検証環境（ローカルフィクスチャ・書面認可相当）</dd></div>
+      <div class="row"><dt>実施者</dt><dd>AllAmbitious セキュリティ診断（サンプル）</dd></div>
+      <div class="row"><dt>認可の根拠</dt><dd>サンプル生成（ローカル脆弱フィクスチャ）</dd></div>
       <div class="row"><dt>文書番号</dt><dd class="doc-id-src">WVR-20260715</dd></div>
     </dl>
   </div>
@@ -426,7 +436,7 @@ li { margin: 0.25em 0; }
   <div class="verdict-mark grade-F">
     <div class="vg">F</div>
     <div class="vdiv"></div>
-    <div class="vs">スコア <strong>27</strong> / 100</div>
+    <div class="vs">スコア <strong>30</strong> / 100</div>
   </div>
   <div class="verdict-main">
     <div class="verdict-eyebrow">総合セキュリティ評価</div>
@@ -489,17 +499,17 @@ li { margin: 0.25em 0; }
   
   <div class="cell c-Medium">
     <div class="k">警告<span class="en">Medium</span></div>
-    <div class="v c-Medium">5</div>
+    <div class="v c-Medium">4</div>
   </div>
   
   <div class="cell c-Low">
     <div class="k">注意<span class="en">Low</span></div>
-    <div class="v c-Low">8</div>
+    <div class="v c-Low">9</div>
   </div>
   
   <div class="cell c-Info">
     <div class="k">情報<span class="en">Info</span></div>
-    <div class="v c-Info">0</div>
+    <div class="v c-Info">1</div>
   </div>
   
 </div>
@@ -521,7 +531,7 @@ li { margin: 0.25em 0; }
       <td>VWR-002</td>
       <td><span class="pill s-Medium">警告</span></td>
       <td class="num">6.9</td>
-      <td>サーバ/フレームワークのバージョン露出</td>
+      <td>ディレクトリリスティングが有効</td>
       <td>A01:2025</td>
     </tr>
   
@@ -529,20 +539,12 @@ li { margin: 0.25em 0; }
       <td>VWR-003</td>
       <td><span class="pill s-Medium">警告</span></td>
       <td class="num">6.9</td>
-      <td>ディレクトリリスティングが有効</td>
-      <td>A01:2025</td>
-    </tr>
-  
-    <tr>
-      <td>VWR-004</td>
-      <td><span class="pill s-Medium">警告</span></td>
-      <td class="num">6.9</td>
       <td>危険な HTTP メソッドが有効（TRACE/PUT/DELETE 等）</td>
       <td>A02:2025</td>
     </tr>
   
     <tr>
-      <td>VWR-005</td>
+      <td>VWR-004</td>
       <td><span class="pill s-Medium">警告</span></td>
       <td class="num">5.1</td>
       <td>オープンリダイレクトの可能性</td>
@@ -550,7 +552,7 @@ li { margin: 0.25em 0; }
     </tr>
   
     <tr>
-      <td>VWR-006</td>
+      <td>VWR-005</td>
       <td><span class="pill s-Medium">警告</span></td>
       <td class="num">5.1</td>
       <td>入力値の無害化されない反射（XSS の兆候）</td>
@@ -558,11 +560,19 @@ li { margin: 0.25em 0; }
     </tr>
   
     <tr>
-      <td>VWR-007</td>
+      <td>VWR-006</td>
       <td><span class="pill s-Low">注意</span></td>
       <td class="num">2.3</td>
       <td>Referrer-Policy 未設定</td>
       <td>A01:2025</td>
+    </tr>
+  
+    <tr>
+      <td>VWR-007</td>
+      <td><span class="pill s-Low">注意</span></td>
+      <td class="num">2.3</td>
+      <td>フォームの送信先が平文 HTTP（暗号化されない経路への送信）</td>
+      <td>A04:2025</td>
     </tr>
   
     <tr>
@@ -586,13 +596,13 @@ li { margin: 0.25em 0; }
 <div class="kv">
 <table>
   <tbody>
-    <tr><th>診断対象</th><td>http://127.0.0.1:8899</td></tr>
-    <tr><th>スコープ（ホスト）</th><td>127.0.0.1</td></tr>
+    <tr><th>診断対象</th><td>https://example-vulnerable.local</td></tr>
+    <tr><th>スコープ（ホスト）</th><td>example-vulnerable.local</td></tr>
     <tr><th>巡回ページ数</th><td>4</td></tr>
     <tr><th>診断方式</th><td>ハイブリッド（内蔵チェック）／ 非破壊</td></tr>
     <tr><th>使用ツール</th><td>内蔵チェックエンジン</td></tr>
-    <tr><th>認可の根拠</th><td>社内検証環境（ローカルフィクスチャ・書面認可相当）</td></tr>
-    <tr><th>実施日時</th><td>2026-07-14 18:37 (UTC)</td></tr>
+    <tr><th>認可の根拠</th><td>サンプル生成（ローカル脆弱フィクスチャ）</td></tr>
+    <tr><th>実施日時</th><td>2026-07-15 06:19 (UTC)</td></tr>
   </tbody>
 </table>
 </div>
@@ -618,6 +628,162 @@ li { margin: 0.25em 0; }
   <li>検出事項は診断時点のスナップショットであり、以降の変更は反映されない。</li>
 </ul>
 
+
+<h3>診断項目カバレッジ台帳</h3>
+<p class="note">本診断で機械的に検査した項目と、その実施結果を明示する。「問題なし」は<strong>検査を実施し所見が
+無かった</strong>ことを、「未実施」は当該項目を<strong>実行しなかった</strong>ことを表す。検査の合格・エラー・
+未実施を沈黙で潰さず、診断の網羅性と監査可能性を担保する目的による。</p>
+<table class="data-table coverage-ledger">
+  <thead><tr><th>診断項目</th><th>分類</th><th>種別</th><th class="cov-col">実施結果</th><th>備考</th></tr></thead>
+  <tbody>
+  
+    <tr>
+      <td>セキュリティヘッダ（HSTS/CSP/XFO 等）</td>
+      <td>A02/A04/A06</td>
+      <td>受動</td>
+      <td class="cov-col"><span class="cov cov-finding">検出あり（24）</span></td>
+      <td class="note"></td>
+    </tr>
+  
+    <tr>
+      <td>Cookie 属性（Secure/HttpOnly/SameSite）</td>
+      <td>A01/A02</td>
+      <td>受動</td>
+      <td class="cov-col"><span class="cov cov-finding">検出あり（2）</span></td>
+      <td class="note"></td>
+    </tr>
+  
+    <tr>
+      <td>外部リソースの SRI（改竄検知）</td>
+      <td>A08</td>
+      <td>受動</td>
+      <td class="cov-col"><span class="cov cov-clean">問題なし</span></td>
+      <td class="note"></td>
+    </tr>
+  
+    <tr>
+      <td>古いクライアントライブラリの痕跡</td>
+      <td>A03</td>
+      <td>受動</td>
+      <td class="cov-col"><span class="cov cov-finding">検出あり（1）</span></td>
+      <td class="note"></td>
+    </tr>
+  
+    <tr>
+      <td>フォームの安全性（平文送信 / CSRF）</td>
+      <td>A01/A04</td>
+      <td>受動</td>
+      <td class="cov-col"><span class="cov cov-finding">検出あり（1）</span></td>
+      <td class="note"></td>
+    </tr>
+  
+    <tr>
+      <td>詳細エラー / スタックトレース露出</td>
+      <td>A10</td>
+      <td>受動</td>
+      <td class="cov-col"><span class="cov cov-clean">問題なし</span></td>
+      <td class="note"></td>
+    </tr>
+  
+    <tr>
+      <td>TLS 旧プロトコル受入（1.0/1.1）</td>
+      <td>A04</td>
+      <td>通信</td>
+      <td class="cov-col"><span class="cov cov-skipped">未実施</span></td>
+      <td class="note">HTTPS 対象外</td>
+    </tr>
+  
+    <tr>
+      <td>TLS 証明書の有効期限</td>
+      <td>A04</td>
+      <td>通信</td>
+      <td class="cov-col"><span class="cov cov-skipped">未実施</span></td>
+      <td class="note">HTTPS 対象外</td>
+    </tr>
+  
+    <tr>
+      <td>DNS メール認証（DMARC / SPF）</td>
+      <td>A02</td>
+      <td>通信</td>
+      <td class="cov-col"><span class="cov cov-skipped">未実施</span></td>
+      <td class="note">IP/ローカル対象のため対象外</td>
+    </tr>
+  
+    <tr>
+      <td>HTTP→HTTPS リダイレクト強制</td>
+      <td>A04</td>
+      <td>能動</td>
+      <td class="cov-col"><span class="cov cov-clean">問題なし</span></td>
+      <td class="note"></td>
+    </tr>
+  
+    <tr>
+      <td>機微ファイル / パスの公開</td>
+      <td>A01</td>
+      <td>能動</td>
+      <td class="cov-col"><span class="cov cov-finding">検出あり（2）</span></td>
+      <td class="note"></td>
+    </tr>
+  
+    <tr>
+      <td>ディレクトリリスティング</td>
+      <td>A01</td>
+      <td>能動</td>
+      <td class="cov-col"><span class="cov cov-finding">検出あり（1）</span></td>
+      <td class="note"></td>
+    </tr>
+  
+    <tr>
+      <td>CORS 設定</td>
+      <td>A02</td>
+      <td>能動</td>
+      <td class="cov-col"><span class="cov cov-clean">問題なし</span></td>
+      <td class="note"></td>
+    </tr>
+  
+    <tr>
+      <td>危険な HTTP メソッド</td>
+      <td>A02</td>
+      <td>能動</td>
+      <td class="cov-col"><span class="cov cov-finding">検出あり（1）</span></td>
+      <td class="note"></td>
+    </tr>
+  
+    <tr>
+      <td>オープンリダイレクト</td>
+      <td>A01</td>
+      <td>能動</td>
+      <td class="cov-col"><span class="cov cov-finding">検出あり（1）</span></td>
+      <td class="note"></td>
+    </tr>
+  
+    <tr>
+      <td>反射型 XSS の兆候</td>
+      <td>A05</td>
+      <td>能動</td>
+      <td class="cov-col"><span class="cov cov-finding">検出あり（1）</span></td>
+      <td class="note"></td>
+    </tr>
+  
+    <tr>
+      <td>混在コンテンツ</td>
+      <td>A06</td>
+      <td>能動</td>
+      <td class="cov-col"><span class="cov cov-clean">問題なし</span></td>
+      <td class="note"></td>
+    </tr>
+  
+  </tbody>
+</table>
+
+<p class="note">実施 17 項目 —
+  検出あり 9 ／
+  問題なし 5 ／
+  エラー 0 ／
+  未実施 3</p>
+
+
+
 <!-- ===== 3. 検出事項の詳細 ===== -->
 <h2 class="numbered" id="sec-findings">検出事項の詳細</h2>
 
@@ -636,7 +802,7 @@ li { margin: 0.25em 0; }
     <div class="r"><dt>分類</dt><dd>A01:2025-アクセス制御の不備 ／ CWE-538</dd></div>
     <div class="r"><dt>準拠参照</dt><dd>WSTG: WSTG-CONF-04 ／ ASVS: v5.0.0-13.4.1 (L1)</dd></div>
     <div class="r"><dt>影響</dt><dd>ソースコード・認証情報・内部設定が漏洩し、深刻な侵害の起点となる。</dd></div>
-    <div class="r"><dt>対象</dt><dd class="affected"><code>http://127.0.0.1:8899/.git/HEAD</code><br><code>http://127.0.0.1:8899/.env</code></dd></div>
+    <div class="r"><dt>対象</dt><dd class="affected"><code>https://example-vulnerable.local/.git/HEAD</code><br><code>https://example-vulnerable.local/.env</code></dd></div>
     <div class="r"><dt>CVSS ベクタ</dt><dd><span class="chip mono">CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N</span></dd></div>
   </dl>
   <div class="evidence">HTTP 200 で取得可能（署名一致: &#39;ref: &#39;）
@@ -652,31 +818,6 @@ li { margin: 0.25em 0; }
     <span class="pill s-Medium">警告 / Medium</span>
     <span class="fid">VWR-002</span>
     <span class="chip">CVSS-B 6.9</span>
-    <span class="chip">確度 Medium</span>
-    
-  </div>
-  <h3 class="ftitle">サーバ/フレームワークのバージョン露出</h3>
-  <p class="fdesc">Server/X-Powered-By 等でソフトウェアとバージョンが露出し、既知脆弱性の 標的選定を容易にしている。</p>
-  <dl class="fmeta">
-    <div class="r"><dt>分類</dt><dd>A01:2025-アクセス制御の不備 ／ CWE-200</dd></div>
-    <div class="r"><dt>準拠参照</dt><dd>WSTG: WSTG-INFO-02 ／ ASVS: v5.0.0-13.4.6 (L3)</dd></div>
-    <div class="r"><dt>影響</dt><dd>攻撃者による脆弱性探索の効率化。</dd></div>
-    <div class="r"><dt>対象</dt><dd class="affected"><code>http://127.0.0.1:8899</code><br><code>http://127.0.0.1:8899/search?q=hello</code><br><code>http://127.0.0.1:8899/go?url=/next</code><br><code>http://127.0.0.1:8899/files/</code></dd></div>
-    <div class="r"><dt>CVSS ベクタ</dt><dd><span class="chip mono">CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N</span></dd></div>
-  </dl>
-  <div class="evidence">バージョン露出: BaseHTTP/0.6 Python/3.11.15, TestServer/1.2.3
-（該当 4 箇所。詳細は「対象」欄を参照）</div>
-  <div class="remediation"><strong>推奨対策：</strong>バージョン情報の露出を抑制する（トークン非表示・バナー抑制）。</div>
-  
-  <div class="refs">参考: <a href="https://cwe.mitre.org/data/definitions/200.html">https://cwe.mitre.org/data/definitions/200.html</a></div>
-  
-</div>
-
-<div class="finding b-Medium">
-  <div class="fhead">
-    <span class="pill s-Medium">警告 / Medium</span>
-    <span class="fid">VWR-003</span>
-    <span class="chip">CVSS-B 6.9</span>
     <span class="chip">確度 High</span>
     
   </div>
@@ -686,7 +827,7 @@ li { margin: 0.25em 0; }
     <div class="r"><dt>分類</dt><dd>A01:2025-アクセス制御の不備 ／ CWE-548</dd></div>
     <div class="r"><dt>準拠参照</dt><dd>WSTG: WSTG-CONF-04 ／ ASVS: v5.0.0-13.4.3 (L2)</dd></div>
     <div class="r"><dt>影響</dt><dd>非公開ファイルの発見・情報収集を容易にする。</dd></div>
-    <div class="r"><dt>対象</dt><dd class="affected"><code>http://127.0.0.1:8899/files/</code></dd></div>
+    <div class="r"><dt>対象</dt><dd class="affected"><code>https://example-vulnerable.local/files/</code></dd></div>
     <div class="r"><dt>CVSS ベクタ</dt><dd><span class="chip mono">CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N</span></dd></div>
   </dl>
   <div class="evidence">自動インデックス表示の兆候（&#39;Index of /&#39;）</div>
@@ -699,7 +840,7 @@ li { margin: 0.25em 0; }
 <div class="finding b-Medium">
   <div class="fhead">
     <span class="pill s-Medium">警告 / Medium</span>
-    <span class="fid">VWR-004</span>
+    <span class="fid">VWR-003</span>
     <span class="chip">CVSS-B 6.9</span>
     <span class="chip">確度 High</span>
     
@@ -710,7 +851,7 @@ li { margin: 0.25em 0; }
     <div class="r"><dt>分類</dt><dd>A02:2025-セキュリティの設定ミス（暫定・2025 CWE リスト未確認） ／ CWE-650</dd></div>
     <div class="r"><dt>準拠参照</dt><dd>WSTG: WSTG-CONF-06 ／ ASVS: v5.0.0-13.4.4 (L2)</dd></div>
     <div class="r"><dt>影響</dt><dd>Cross-Site Tracing や意図しないリソース操作の余地がある。</dd></div>
-    <div class="r"><dt>対象</dt><dd class="affected"><code>http://127.0.0.1:8899</code></dd></div>
+    <div class="r"><dt>対象</dt><dd class="affected"><code>https://example-vulnerable.local</code></dd></div>
     <div class="r"><dt>CVSS ベクタ</dt><dd><span class="chip mono">CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:L/VI:L/VA:N/SC:N/SI:N/SA:N</span></dd></div>
   </dl>
   <div class="evidence">Allow ヘッダに危険メソッド: TRACE, PUT</div>
@@ -723,7 +864,7 @@ li { margin: 0.25em 0; }
 <div class="finding b-Medium">
   <div class="fhead">
     <span class="pill s-Medium">警告 / Medium</span>
-    <span class="fid">VWR-005</span>
+    <span class="fid">VWR-004</span>
     <span class="chip">CVSS-B 5.1</span>
     <span class="chip">確度 Medium</span>
     
@@ -734,7 +875,7 @@ li { margin: 0.25em 0; }
     <div class="r"><dt>分類</dt><dd>A01:2025-アクセス制御の不備 ／ CWE-601</dd></div>
     <div class="r"><dt>準拠参照</dt><dd>WSTG: WSTG-CLNT-04 ／ ASVS: v5.0.0-3.7.2 (L2)</dd></div>
     <div class="r"><dt>影響</dt><dd>フィッシングや OAuth トークン窃取の踏み台になりうる。</dd></div>
-    <div class="r"><dt>対象</dt><dd class="affected"><code>http://127.0.0.1:8899/go?url=https%3A%2F%2Fvwr-redirect-probe.example.org%2F</code></dd></div>
+    <div class="r"><dt>対象</dt><dd class="affected"><code>https://example-vulnerable.local/go?url=https%3A%2F%2Fvwr-redirect-probe.example.org%2F</code></dd></div>
     <div class="r"><dt>CVSS ベクタ</dt><dd><span class="chip mono">CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:A/VC:N/VI:N/VA:N/SC:L/SI:L/SA:N</span></dd></div>
   </dl>
   <div class="evidence">パラメータ &#39;url&#39; がリダイレクト先に反映（Location=https://vwr-redirect-probe.example.org/）</div>
@@ -747,7 +888,7 @@ li { margin: 0.25em 0; }
 <div class="finding b-Medium">
   <div class="fhead">
     <span class="pill s-Medium">警告 / Medium</span>
-    <span class="fid">VWR-006</span>
+    <span class="fid">VWR-005</span>
     <span class="chip">CVSS-B 5.1</span>
     <span class="chip">確度 Medium</span>
     
@@ -758,7 +899,7 @@ li { margin: 0.25em 0; }
     <div class="r"><dt>分類</dt><dd>A05:2025-インジェクション ／ CWE-79</dd></div>
     <div class="r"><dt>準拠参照</dt><dd>WSTG: WSTG-INPV-01 ／ ASVS: v5.0.0-1.2.1 (L1)</dd></div>
     <div class="r"><dt>影響</dt><dd>スクリプト注入によりセッション窃取・改竄・なりすましが生じうる。</dd></div>
-    <div class="r"><dt>対象</dt><dd class="affected"><code>http://127.0.0.1:8899/search?q=vwrPROBE9137%3C%22%27</code></dd></div>
+    <div class="r"><dt>対象</dt><dd class="affected"><code>https://example-vulnerable.local/search?q=vwrPROBE9137%3C%22%27</code></dd></div>
     <div class="r"><dt>CVSS ベクタ</dt><dd><span class="chip mono">CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:A/VC:N/VI:N/VA:N/SC:L/SI:L/SA:N</span></dd></div>
   </dl>
   <div class="evidence">パラメータ &#39;q&#39; の値が無害化されず反射（マーカー検出）</div>
@@ -771,7 +912,7 @@ li { margin: 0.25em 0; }
 <div class="finding b-Low">
   <div class="fhead">
     <span class="pill s-Low">注意 / Low</span>
-    <span class="fid">VWR-007</span>
+    <span class="fid">VWR-006</span>
     <span class="chip">CVSS-B 2.3</span>
     <span class="chip">確度 Medium</span>
     
@@ -782,7 +923,7 @@ li { margin: 0.25em 0; }
     <div class="r"><dt>分類</dt><dd>A01:2025-アクセス制御の不備 ／ CWE-200</dd></div>
     <div class="r"><dt>準拠参照</dt><dd>WSTG: 該当なし（独自根拠） ／ ASVS: v5.0.0-3.4.5 (L2)</dd></div>
     <div class="r"><dt>影響</dt><dd>トークンや内部パスを含む URL が第三者に漏れうる。</dd></div>
-    <div class="r"><dt>対象</dt><dd class="affected"><code>http://127.0.0.1:8899</code><br><code>http://127.0.0.1:8899/search?q=hello</code><br><code>http://127.0.0.1:8899/go?url=/next</code><br><code>http://127.0.0.1:8899/files/</code></dd></div>
+    <div class="r"><dt>対象</dt><dd class="affected"><code>https://example-vulnerable.local</code><br><code>https://example-vulnerable.local/search?q=hello</code><br><code>https://example-vulnerable.local/go?url=/next</code><br><code>https://example-vulnerable.local/files/</code></dd></div>
     <div class="r"><dt>CVSS ベクタ</dt><dd><span class="chip mono">CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:P/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N</span></dd></div>
   </dl>
   <div class="evidence">Referrer-Policy が未設定
@@ -790,6 +931,30 @@ li { margin: 0.25em 0; }
   <div class="remediation"><strong>推奨対策：</strong>`Referrer-Policy: strict-origin-when-cross-origin` 等を設定する。</div>
   
   <div class="refs">参考: <a href="https://owasp.org/www-project-secure-headers/">https://owasp.org/www-project-secure-headers/</a></div>
+  
+</div>
+
+<div class="finding b-Low">
+  <div class="fhead">
+    <span class="pill s-Low">注意 / Low</span>
+    <span class="fid">VWR-007</span>
+    <span class="chip">CVSS-B 2.3</span>
+    <span class="chip">確度 High</span>
+    
+  </div>
+  <h3 class="ftitle">フォームの送信先が平文 HTTP（暗号化されない経路への送信）</h3>
+  <p class="fdesc">HTML フォームの action が http:// を指しており、入力（認証情報を含みうる）が暗号化されない経路で送信される。</p>
+  <dl class="fmeta">
+    <div class="r"><dt>分類</dt><dd>A04:2025-暗号化の失敗 ／ CWE-319</dd></div>
+    <div class="r"><dt>準拠参照</dt><dd>WSTG: WSTG-CRYP-03 ／ ASVS: v5.0.0-12.2.1 (L1)</dd></div>
+    <div class="r"><dt>影響</dt><dd>経路上での盗聴により、送信データや認証情報が第三者に漏洩しうる。</dd></div>
+    <div class="r"><dt>対象</dt><dd class="affected"><code>https://example-vulnerable.local/search</code></dd></div>
+    <div class="r"><dt>CVSS ベクタ</dt><dd><span class="chip mono">CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:P/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N</span></dd></div>
+  </dl>
+  <div class="evidence">フォーム送信先が平文 HTTP（method=GET）</div>
+  <div class="remediation"><strong>推奨対策：</strong>フォームの送信先を https:// に統一し、平文 HTTP への送信を排除する。</div>
+  
+  <div class="refs">参考: <a href="https://cwe.mitre.org/data/definitions/319.html">https://cwe.mitre.org/data/definitions/319.html</a></div>
   
 </div>
 
@@ -807,7 +972,7 @@ li { margin: 0.25em 0; }
     <div class="r"><dt>分類</dt><dd>A02:2025-セキュリティの設定ミス ／ CWE-16</dd></div>
     <div class="r"><dt>準拠参照</dt><dd>WSTG: 該当なし（独自根拠） ／ ASVS: v5.0.0-3.4.4 (L2)</dd></div>
     <div class="r"><dt>影響</dt><dd>アップロードファイル等を悪用したコンテンツ実行の一因となりうる。</dd></div>
-    <div class="r"><dt>対象</dt><dd class="affected"><code>http://127.0.0.1:8899</code><br><code>http://127.0.0.1:8899/search?q=hello</code><br><code>http://127.0.0.1:8899/go?url=/next</code><br><code>http://127.0.0.1:8899/files/</code></dd></div>
+    <div class="r"><dt>対象</dt><dd class="affected"><code>https://example-vulnerable.local</code><br><code>https://example-vulnerable.local/search?q=hello</code><br><code>https://example-vulnerable.local/go?url=/next</code><br><code>https://example-vulnerable.local/files/</code></dd></div>
     <div class="r"><dt>CVSS ベクタ</dt><dd><span class="chip mono">CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:A/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N</span></dd></div>
   </dl>
   <div class="evidence">X-Content-Type-Options: nosniff が未設定
@@ -832,7 +997,7 @@ li { margin: 0.25em 0; }
     <div class="r"><dt>分類</dt><dd>A06:2025-安全でない設計 ／ CWE-693</dd></div>
     <div class="r"><dt>準拠参照</dt><dd>WSTG: 該当なし（独自根拠） ／ ASVS: v5.0.0-3.4.3 (L2)</dd></div>
     <div class="r"><dt>影響</dt><dd>XSS の被害範囲を限定できず、任意スクリプト実行の影響が拡大しうる。</dd></div>
-    <div class="r"><dt>対象</dt><dd class="affected"><code>http://127.0.0.1:8899</code><br><code>http://127.0.0.1:8899/search?q=hello</code><br><code>http://127.0.0.1:8899/go?url=/next</code><br><code>http://127.0.0.1:8899/files/</code></dd></div>
+    <div class="r"><dt>対象</dt><dd class="affected"><code>https://example-vulnerable.local</code><br><code>https://example-vulnerable.local/search?q=hello</code><br><code>https://example-vulnerable.local/go?url=/next</code><br><code>https://example-vulnerable.local/files/</code></dd></div>
     <div class="r"><dt>CVSS ベクタ</dt><dd><span class="chip mono">CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:A/VC:L/VI:L/VA:N/SC:N/SI:N/SA:N</span></dd></div>
   </dl>
   <div class="evidence">Content-Security-Policy ヘッダが存在しない
@@ -857,7 +1022,7 @@ li { margin: 0.25em 0; }
     <div class="r"><dt>分類</dt><dd>A06:2025-安全でない設計 ／ CWE-1021</dd></div>
     <div class="r"><dt>準拠参照</dt><dd>WSTG: WSTG-CLNT-09 ／ ASVS: v5.0.0-3.4.6 (L2)</dd></div>
     <div class="r"><dt>影響</dt><dd>利用者の意図しない操作（送金・設定変更等）を誘発されうる。</dd></div>
-    <div class="r"><dt>対象</dt><dd class="affected"><code>http://127.0.0.1:8899</code><br><code>http://127.0.0.1:8899/search?q=hello</code><br><code>http://127.0.0.1:8899/go?url=/next</code><br><code>http://127.0.0.1:8899/files/</code></dd></div>
+    <div class="r"><dt>対象</dt><dd class="affected"><code>https://example-vulnerable.local</code><br><code>https://example-vulnerable.local/search?q=hello</code><br><code>https://example-vulnerable.local/go?url=/next</code><br><code>https://example-vulnerable.local/files/</code></dd></div>
     <div class="r"><dt>CVSS ベクタ</dt><dd><span class="chip mono">CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:A/VC:N/VI:L/VA:N/SC:N/SI:N/SA:N</span></dd></div>
   </dl>
   <div class="evidence">X-Frame-Options も CSP frame-ancestors も未設定
@@ -882,7 +1047,7 @@ li { margin: 0.25em 0; }
     <div class="r"><dt>分類</dt><dd>A06:2025-安全でない設計 ／ CWE-693</dd></div>
     <div class="r"><dt>準拠参照</dt><dd>WSTG: 該当なし（独自根拠） ／ ASVS: 該当なし</dd></div>
     <div class="r"><dt>影響</dt><dd>第三者コンテンツによるカメラ/位置情報等の機能濫用の一因となりうる。</dd></div>
-    <div class="r"><dt>対象</dt><dd class="affected"><code>http://127.0.0.1:8899</code><br><code>http://127.0.0.1:8899/search?q=hello</code><br><code>http://127.0.0.1:8899/go?url=/next</code><br><code>http://127.0.0.1:8899/files/</code></dd></div>
+    <div class="r"><dt>対象</dt><dd class="affected"><code>https://example-vulnerable.local</code><br><code>https://example-vulnerable.local/search?q=hello</code><br><code>https://example-vulnerable.local/go?url=/next</code><br><code>https://example-vulnerable.local/files/</code></dd></div>
     <div class="r"><dt>CVSS ベクタ</dt><dd><span class="chip mono">CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:A/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N</span></dd></div>
   </dl>
   <div class="evidence">Permissions-Policy（旧 Feature-Policy）が未設定
@@ -907,7 +1072,7 @@ li { margin: 0.25em 0; }
     <div class="r"><dt>分類</dt><dd>A02:2025-セキュリティの設定ミス ／ CWE-1004</dd></div>
     <div class="r"><dt>準拠参照</dt><dd>WSTG: WSTG-SESS-02 ／ ASVS: v5.0.0-3.3.4 (L2)</dd></div>
     <div class="r"><dt>影響</dt><dd>XSS と組み合わせてセッションクッキーが窃取される。</dd></div>
-    <div class="r"><dt>対象</dt><dd class="affected"><code>http://127.0.0.1:8899</code></dd></div>
+    <div class="r"><dt>対象</dt><dd class="affected"><code>https://example-vulnerable.local</code></dd></div>
     <div class="r"><dt>CVSS ベクタ</dt><dd><span class="chip mono">CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:A/VC:N/VI:N/VA:N/SC:L/SI:N/SA:N</span></dd></div>
   </dl>
   <div class="evidence">Cookie &#39;SESSIONID&#39; に HttpOnly 属性が無い</div>
@@ -931,7 +1096,7 @@ li { margin: 0.25em 0; }
     <div class="r"><dt>分類</dt><dd>A01:2025-アクセス制御の不備 ／ CWE-1275</dd></div>
     <div class="r"><dt>準拠参照</dt><dd>WSTG: WSTG-SESS-02 ／ ASVS: v5.0.0-3.3.2 (L2)</dd></div>
     <div class="r"><dt>影響</dt><dd>クロスサイトリクエストフォージェリの成立余地が広がる。</dd></div>
-    <div class="r"><dt>対象</dt><dd class="affected"><code>http://127.0.0.1:8899</code></dd></div>
+    <div class="r"><dt>対象</dt><dd class="affected"><code>https://example-vulnerable.local</code></dd></div>
     <div class="r"><dt>CVSS ベクタ</dt><dd><span class="chip mono">CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:A/VC:N/VI:L/VA:N/SC:N/SI:N/SA:N</span></dd></div>
   </dl>
   <div class="evidence">Cookie &#39;SESSIONID&#39; に SameSite 属性が無い</div>
@@ -955,13 +1120,38 @@ li { margin: 0.25em 0; }
     <div class="r"><dt>分類</dt><dd>A03:2025-ソフトウェアサプライチェーンの障害 ／ CWE-1104</dd></div>
     <div class="r"><dt>準拠参照</dt><dd>WSTG: 該当なし（独自根拠） ／ ASVS: v5.0.0-15.2.1 (L1)</dd></div>
     <div class="r"><dt>影響</dt><dd>既知脆弱性を含む場合、XSS/プロトタイプ汚染等の影響を受けうる。</dd></div>
-    <div class="r"><dt>対象</dt><dd class="affected"><code>http://127.0.0.1:8899</code></dd></div>
+    <div class="r"><dt>対象</dt><dd class="affected"><code>https://example-vulnerable.local</code></dd></div>
     <div class="r"><dt>CVSS ベクタ</dt><dd><span class="chip mono">CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:A/VC:L/VI:L/VA:N/SC:N/SI:N/SA:N</span></dd></div>
   </dl>
   <div class="evidence">古い可能性のあるライブラリ参照: js: /static/jquery-1.8.3.min.js</div>
   <div class="remediation"><strong>推奨対策：</strong>依存ライブラリを最新の安定版へ更新し、SCA を継続導入する。</div>
   
   <div class="refs">参考: <a href="https://owasp.org/www-project-dependency-check/">https://owasp.org/www-project-dependency-check/</a></div>
+  
+</div>
+
+<div class="finding b-Info">
+  <div class="fhead">
+    <span class="pill s-Info">情報 / Info</span>
+    <span class="fid">VWR-015</span>
+    <span class="chip">CVSS-B 0.0</span>
+    <span class="chip">確度 Medium</span>
+    
+  </div>
+  <h3 class="ftitle">サーバ/フレームワークのバージョン露出</h3>
+  <p class="fdesc">Server/X-Powered-By 等でソフトウェアとバージョンが露出している。直接の機密性侵害は無いが、既知脆弱性の標的選定など偵察を容易にする参考情報。</p>
+  <dl class="fmeta">
+    <div class="r"><dt>分類</dt><dd>A01:2025-アクセス制御の不備 ／ CWE-200</dd></div>
+    <div class="r"><dt>準拠参照</dt><dd>WSTG: WSTG-INFO-02 ／ ASVS: v5.0.0-13.4.6 (L3)</dd></div>
+    <div class="r"><dt>影響</dt><dd>攻撃者による脆弱性探索の効率化（単独では直接の被害を生じない）。</dd></div>
+    <div class="r"><dt>対象</dt><dd class="affected"><code>https://example-vulnerable.local</code><br><code>https://example-vulnerable.local/search?q=hello</code><br><code>https://example-vulnerable.local/go?url=/next</code><br><code>https://example-vulnerable.local/files/</code></dd></div>
+    <div class="r"><dt>CVSS ベクタ</dt><dd><span class="chip mono">CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:N/SC:N/SI:N/SA:N</span></dd></div>
+  </dl>
+  <div class="evidence">バージョン露出: BaseHTTP/0.6 Python/3.11.15, TestServer/1.2.3
+（該当 4 箇所。詳細は「対象」欄を参照）</div>
+  <div class="remediation"><strong>推奨対策：</strong>バージョン情報の露出を抑制する（トークン非表示・バナー抑制）。</div>
+  
+  <div class="refs">参考: <a href="https://cwe.mitre.org/data/definitions/200.html">https://cwe.mitre.org/data/definitions/200.html</a></div>
   
 </div>
 
@@ -975,25 +1165,25 @@ li { margin: 0.25em 0; }
   <tbody>
   
     <tr>
-      <td>http://127.0.0.1:8899</td>
+      <td>https://example-vulnerable.local</td>
       <td class="num">200</td>
       <td>Server: BaseHTTP/0.6 Python/3.11.15, TestServer/1.2.3; js: /static/jquery-1.8.3.min.js</td>
     </tr>
   
     <tr>
-      <td>http://127.0.0.1:8899/search?q=hello</td>
+      <td>https://example-vulnerable.local/search?q=hello</td>
       <td class="num">200</td>
       <td>Server: BaseHTTP/0.6 Python/3.11.15, TestServer/1.2.3</td>
     </tr>
   
     <tr>
-      <td>http://127.0.0.1:8899/go?url=/next</td>
+      <td>https://example-vulnerable.local/go?url=/next</td>
       <td class="num">302</td>
       <td>Server: BaseHTTP/0.6 Python/3.11.15</td>
     </tr>
   
     <tr>
-      <td>http://127.0.0.1:8899/files/</td>
+      <td>https://example-vulnerable.local/files/</td>
       <td class="num">200</td>
       <td>Server: BaseHTTP/0.6 Python/3.11.15, TestServer/1.2.3</td>
     </tr>
@@ -1003,7 +1193,7 @@ li { margin: 0.25em 0; }
 
 
 <div class="disclaimer">
-  本報告書は http://127.0.0.1:8899 に対する認可済み脆弱性診断（文書番号 WVR-20260715）の結果であり、記載情報は
+  本報告書は https://example-vulnerable.local に対する認可済み脆弱性診断（文書番号 WVR-20260715）の結果であり、記載情報は
   機密として取り扱うこと。診断は非破壊手法で実施し、検出事項は診断時点のものである。対策の実装後は
   再診断を推奨する。使用ツール: 内蔵チェックエンジン。
 </div>

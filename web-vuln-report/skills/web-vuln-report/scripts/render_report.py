@@ -84,6 +84,8 @@ def render(scored: dict, narrative: dict | None = None, assessor: str = "",
         summary=scored.get("summary", {}),
         findings=scored.get("findings", []),
         pages=scored.get("pages", []),  # assess.py が crawl の pages を合流させる
+        coverage=scored.get("coverage", []),           # 診断項目カバレッジ台帳
+        coverage_summary=scored.get("coverage_summary", {}),
         narrative=narrative or {},
         tools_used=tools_used or [],
     )

@@ -104,7 +104,9 @@ def run(args) -> int:
 
     # Phase 2: 非破壊チェック
     print("[assess] Phase 2 チェック")
-    findings = checks_mod.run_checks(crawl_dict, timeout=args.timeout, active=not args.passive_only)
+    ledger = checks_mod.Ledger()
+    findings = checks_mod.run_checks(crawl_dict, timeout=args.timeout,
+                                     active=not args.passive_only, ledger=ledger)
 
     # Phase 2b: 外部ツール併用（任意）
     tools_used: list[str] = []
@@ -118,6 +120,7 @@ def run(args) -> int:
 
     findings_doc = {
         "target": args.target, "scope": crawl_dict["scope"], "findings": findings,
+        "coverage": ledger.rows(), "coverage_summary": ledger.summary(),
     }
     (out_dir / "findings.json").write_text(
         json.dumps(findings_doc, ensure_ascii=False, indent=2), encoding="utf-8")

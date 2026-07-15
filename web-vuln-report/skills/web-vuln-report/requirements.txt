@@ -4,6 +4,7 @@ httpx
 beautifulsoup4
 jinja2
 cvss
+dnspython
 
 # PDF 化のみネイティブ依存（cairo/pango）が必要。環境にあれば追加で:
 #   python3 -m pip install weasyprint

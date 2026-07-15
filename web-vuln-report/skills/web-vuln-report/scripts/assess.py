@@ -104,9 +104,14 @@ def run(args) -> int:
 
     # Phase 2: 非破壊チェック
     print("[assess] Phase 2 チェック")
+    if args.active_auth and not args.authorized_active.strip():
+        print("[assess] --active-auth が指定されましたが --authorized-active（書面認可）が空です。"
+              "能動認証テストは実行しません（非破壊のまま続行）。", file=sys.stderr)
     ledger = checks_mod.Ledger()
-    findings = checks_mod.run_checks(crawl_dict, timeout=args.timeout,
-                                     active=not args.passive_only, ledger=ledger)
+    findings = checks_mod.run_checks(
+        crawl_dict, timeout=args.timeout, active=not args.passive_only, ledger=ledger,
+        active_auth=args.active_auth, active_auth_url=args.login_url,
+        active_auth_authorized=args.authorized_active, max_login_attempts=args.max_login_attempts)
 
     # Phase 2b: 外部ツール併用（任意）
     tools_used: list[str] = []
@@ -121,6 +126,7 @@ def run(args) -> int:
     findings_doc = {
         "target": args.target, "scope": crawl_dict["scope"], "findings": findings,
         "coverage": ledger.rows(), "coverage_summary": ledger.summary(),
+        "assessment": ledger.assessment,  # G1: 採点ゲート用の信頼性メタ
     }
     (out_dir / "findings.json").write_text(
         json.dumps(findings_doc, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -177,6 +183,15 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--ignore-robots", action="store_true")
     ap.add_argument("--extra-host", action="append", default=[])
     ap.add_argument("--passive-only", action="store_true", help="能動プローブを無効化")
+    # Phase 3 能動認証テスト（既定 OFF・非破壊・login への POST 限定）。--authorized-active が
+    # 空なら能動認証は実行されない（二重ゲート）。--login-url でエンドポイントを明示する。
+    ap.add_argument("--active-auth", action="store_true",
+                    help="能動認証テストを有効化（既定 OFF・破壊なし・login への POST 限定）")
+    ap.add_argument("--authorized-active", default="",
+                    help="能動認証テストの書面認可（空なら能動認証は実行しない）")
+    ap.add_argument("--login-url", default=None, help="能動認証テストの対象 login エンドポイント")
+    ap.add_argument("--max-login-attempts", type=int, default=8,
+                    help="ログインレート制限テストの試行上限（ハードキャップ 8 にクランプ）")
     ap.add_argument("--no-external", action="store_true", help="外部ツール併用を無効化")
     ap.add_argument("--skip-pdf", action="store_true", help="PDF 化を行わない")
     return ap

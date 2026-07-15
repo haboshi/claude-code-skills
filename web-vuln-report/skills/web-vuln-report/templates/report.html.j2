@@ -82,7 +82,7 @@
   <div class="verdict-mark grade-{{ gl }}">
     <div class="vg">{{ g }}</div>
     <div class="vdiv"></div>
-    <div class="vs">スコア <strong>{{ summary.security_score }}</strong> / 100</div>
+    <div class="vs">スコア <strong>{{ summary.security_score if summary.security_score is not none else '—' }}</strong> / 100</div>
   </div>
   <div class="verdict-main">
     <div class="verdict-eyebrow">総合セキュリティ評価</div>
@@ -190,7 +190,7 @@
     <tr>
       <td>{{ c.label }}</td>
       <td>{{ c.category }}</td>
-      <td>{{ {'passive':'受動','active':'能動','network':'通信'}.get(c.kind, c.kind) }}</td>
+      <td>{{ {'passive':'受動','active':'能動','network':'通信','active-auth':'能動認証'}.get(c.kind, c.kind) }}</td>
       <td class="cov-col"><span class="cov cov-{{ c.status }}">{{ c.status_ja }}{% if c.status == 'finding' and c.findings %}（{{ c.findings }}）{% endif %}</span></td>
       <td class="note">{{ c.note }}</td>
     </tr>

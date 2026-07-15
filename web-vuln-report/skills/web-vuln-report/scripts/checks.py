@@ -24,7 +24,7 @@ import ssl
 import sys
 import time
 from datetime import datetime, timezone
-from urllib.parse import urlparse, urlencode, urlunparse, parse_qsl
+from urllib.parse import urlparse, urlencode, urlunparse, parse_qsl, urljoin
 
 try:
     import httpx
@@ -143,6 +143,49 @@ class _SafeClient:
         return self._c.request(method, *args, **kwargs)
 
 
+class ActiveAuthViolation(RuntimeError):
+    """能動認証テストの境界（login URL への POST 以外）に反する送信を検出したときに送出。"""
+
+
+# 能動認証テストの client 側 blast-radius バックストップ（関数側の試行上限とは別の二重防御）
+_CLIENT_POST_CAP = 10
+# ログインレート制限テストの試行ハードキャップ（関数側で min(要求, これ) にクランプ）
+_LOGIN_HARD_CAP = 8
+
+
+class _ActiveAuthClient:
+    """Phase 3 能動認証テスト専用の **POST 限定・login URL 限定** クライアント（既定 OFF）。
+
+    許可するのは指定された単一 login エンドポイントへの POST のみ。他メソッド・他 URL は
+    ActiveAuthViolation を送出して送信自体を拒否する（blast radius 最小化）。非破壊境界の
+    `_SafeClient` とは完全に別クラスで、そのコード強制 GET 境界には一切手を触れない。"""
+
+    def __init__(self, client: httpx.Client, login_url: str, delay: float = 0.0,
+                 hard_cap: int = _CLIENT_POST_CAP):
+        self._c = client
+        self._login_url = login_url
+        self._delay = delay
+        self.hard_cap = hard_cap
+        self._posts = 0
+
+    def post(self, url, **kwargs):
+        if url != self._login_url:
+            raise ActiveAuthViolation(
+                "能動認証: 許可された login URL 以外への送信は拒否されました")
+        if self._posts >= self.hard_cap:
+            raise ActiveAuthViolation(
+                f"能動認証: client ハードキャップ {self.hard_cap} 回に到達したため送信を停止")
+        self._posts += 1
+        if self._delay:
+            time.sleep(self._delay)
+        return self._c.post(url, **kwargs)
+
+    def request(self, method, url, **kwargs):
+        if method.upper() != "POST":
+            raise ActiveAuthViolation(f"能動認証: メソッド {method} は許可されません（POST のみ）")
+        return self.post(url, **kwargs)
+
+
 def _headers_lower(resp: httpx.Response) -> dict[str, str]:
     return {k.lower(): v for k, v in resp.headers.items()}
 
@@ -175,10 +218,20 @@ def check_security_headers(page: dict, headers: dict[str, str], f: Findings) -> 
     if "permissions-policy" not in headers and "feature-policy" not in headers:
         f.add("missing-permissions-policy", url,
               "Permissions-Policy（旧 Feature-Policy）が未設定", confidence="Low")
+    # v0.4 ヘッダ補完: COOP 欠如 / 非推奨 X-XSS-Protection の有効値
+    if "cross-origin-opener-policy" not in headers:
+        f.add("missing-coop", url, "Cross-Origin-Opener-Policy が未設定", confidence="Low")
+    xxp = headers.get("x-xss-protection", "").strip()
+    if xxp and not xxp.startswith("0"):
+        f.add("xss-protection-legacy", url,
+              f"非推奨の X-XSS-Protection が有効値で設定（{xxp[:40]}）。近代ブラウザでは無効化(0)を推奨",
+              confidence="Low")
     server = headers.get("server", "")
     powered = headers.get("x-powered-by", "")
     banner = "; ".join(x for x in (server, powered) if x)
-    if banner and any(ch.isdigit() for ch in banner):
+    # 版数様トークン（`2.4.68` や `/1` 等）を含む場合のみバージョン露出とする。
+    # 単なる製品名（"AmazonS3" の "S3" など）の数字で誤発火しないようにする。
+    if banner and re.search(r"\d+\.\d+|/\d", banner):
         f.add("info-disclosure-banner", url, f"バージョン露出: {banner}", confidence="Medium")
 
 
@@ -222,6 +275,50 @@ def check_cert_expiry(target: str, f: Findings) -> None:
             f.add("tls-cert-expiring", target,
                   f"証明書の残存日数 {days} 日（notAfter={not_after}）",
                   confidence="High")
+
+
+# G2: TLS 証明書の検証失敗（ホスト名不一致/期限切れ/自己署名/チェーン不備）を分類する純関数。
+def _classify_cert_error(msg: str) -> str:
+    low = (msg or "").lower()
+    if any(k in low for k in ("hostname mismatch", "doesn't match", "no match",
+                              "ip address mismatch", "not valid for")):
+        return "ホスト名不一致（証明書の SAN/subject が対象ホストと一致しない）"
+    if "not yet valid" in low:
+        return "証明書の有効期間前（notBefore が未来）"
+    if "expired" in low:
+        return "証明書の期限切れ"
+    if "self-signed" in low or "self signed" in low:
+        return "自己署名証明書（信頼された CA でない）"
+    if any(k in low for k in ("unable to get local issuer", "unable to get issuer", "chain")):
+        return "中間証明書/チェーン不備（発行者をたどれない）"
+    return "証明書検証失敗（信頼チェーンが成立しない）"
+
+
+def _verify_cert(host: str, port: int, timeout: float = 10.0) -> bool:
+    """証明書検証つきで TLS ハンドシェイクする。検証失敗は ssl.SSLCertVerificationError を送出。"""
+    ctx = ssl.create_default_context()
+    with socket.create_connection((host, port), timeout=timeout) as sock:
+        with ctx.wrap_socket(sock, server_hostname=host):
+            return True
+
+
+def check_cert_validity(target: str, f: Findings, verify=None) -> None:
+    """TLS 証明書の**検証失敗**（ホスト名不一致・期限切れ・自己署名・チェーン不備）を finding 化する。
+
+    検証成功なら何もしない（期限接近は check_cert_expiry が担当）。検証失敗のみ tls-cert-invalid を
+    emit し、接続不能等の非検証エラーは送出して呼び出し側（台帳）が error として扱う。
+    verify は (host, port)->bool の呼び出し可能（テストで fake を注入）。"""
+    parsed = urlparse(target)
+    if parsed.scheme != "https":
+        return
+    host = parsed.hostname
+    port = parsed.port or 443
+    v = verify or _verify_cert
+    try:
+        v(host, port)
+    except ssl.SSLCertVerificationError as e:
+        reason = _classify_cert_error(getattr(e, "verify_message", "") or str(e))
+        f.add("tls-cert-invalid", target, f"TLS 証明書の検証に失敗: {reason}", confidence="High")
 
 
 def _probe_old_tls(host: str, port: int, f: Findings, target: str) -> None:
@@ -413,14 +510,419 @@ def check_mixed_content(pages: list[dict], client: httpx.Client, f: Findings) ->
                   confidence="Medium")
 
 
+# v0.4 是正: 汎用の lib 名+版数抽出 ＋ 内蔵の危殆版下限表。
+# 旧実装は jquery-1./jquery/1./jquery-2./angular.js/1. のみをハードコードし、`jquery/2.`
+# （スラッシュ表記 2.x）を見逃し、bootstrap/react/vue の評価ロジックが死蔵していた。
+_LIB_VER_RE = re.compile(
+    r"(jquery|bootstrap|vue|react|angular(?:\.js)?|lodash|moment|axios)"
+    r"[.\-/]?v?(\d+)\.(\d+)(?:\.(\d+))?", re.I)
+# lib -> (既知の問題を含む版の上限。この版未満を危殆版候補として Medium 確度で指摘)
+_LIB_VULN_FLOORS = {
+    "jquery": (3, 5, 0),      # <3.5.0: CVE-2020-11022/11023（XSS）
+    "bootstrap": (4, 3, 1),   # <4.3.1（3.x は <3.4.1）: XSS
+    "angular": (2, 0, 0),     # AngularJS 1.x は EOL（2.x 以降のモダン Angular は対象外）
+    "vue": (3, 0, 0),         # Vue 2.x は 2023-12 EOL
+    "lodash": (4, 17, 21),    # <4.17.21: プロトタイプ汚染
+    "moment": (2, 29, 4),     # <2.29.4: ReDoS（moment 自体もメンテ終了）
+    "axios": (1, 6, 0),       # 旧 0.x: SSRF/CSRF 系の既知問題
+    "react": (16, 0, 0),      # <16 は非常に古い（EOL 目安）
+}
+
+
 def check_outdated_libraries(pages: list[dict], f: Findings) -> None:
+    """crawl の technologies（js: <src>）と script_srcs から lib 名+版数を汎用抽出し、
+    内蔵の危殆版下限表と比較する（受動・非破壊）。CVE 断定は外部 DB 併用時のみ。"""
+    seen: set[tuple] = set()
     for page in pages:
+        haystacks = [t for t in page.get("technologies", []) if t.lower().startswith("js:")]
+        haystacks.extend(page.get("script_srcs", []))
+        for hay in haystacks:
+            for m in _LIB_VER_RE.finditer(hay):
+                lib = m.group(1).lower().replace(".js", "")
+                ver = (int(m.group(2)), int(m.group(3)), int(m.group(4) or 0))
+                floor = _LIB_VULN_FLOORS.get(lib)
+                if not floor or ver >= floor:
+                    continue  # floor 不明・下限以上は誤検知回避のため所見化しない
+                key = (page.get("url", ""), lib, ver)
+                if key in seen:
+                    continue
+                seen.add(key)
+                vs = ".".join(str(n) for n in ver)
+                fl = ".".join(str(n) for n in floor)
+                f.add("outdated-library", page.get("url", ""),
+                      f"危殆版の可能性: {lib} {vs}（既知の問題を含む版下限 {fl} 未満）",
+                      confidence="Medium")
+
+
+# ===== v0.4 フレームワーク/インフラ指紋（情報カテゴリ） =====
+_FW_LABEL = {"laravel-csrf-meta": "Laravel", "vue": "Vue", "react": "React",
+             "angular": "Angular", "next": "Next.js", "nuxt": "Nuxt", "wordpress": "WordPress"}
+_COOKIE_FW = [
+    (re.compile(r"^(laravel_session|xsrf-token)$", re.I), "Laravel"),
+    (re.compile(r"^(wordpress_|wp-settings)", re.I), "WordPress"),
+    (re.compile(r"^csrftoken$", re.I), "Django"),
+    (re.compile(r"^_[a-z0-9_]+_session$", re.I), "Rails"),
+]
+
+
+def check_framework_fingerprint(pages: list[dict], cookies: list[dict], f: Findings) -> None:
+    """ヘッダ・Cookie・DOM/スクリプトパスの複数シグナルからスタックを推定する（情報カテゴリ・
+    受動）。単体では脆弱性でなく Info(0.0) の1所見に集約。EOL/CVE 判定の入力に用いる。"""
+    fw_signals: dict[str, set[str]] = {}
+    infra: set[str] = set()
+
+    def add(fw: str, sig: str) -> None:
+        fw_signals.setdefault(fw, set()).add(sig)
+
+    for c in cookies or []:
+        name = c.get("name") or ""
+        for rx, fw in _COOKIE_FW:
+            if rx.match(name):
+                add(fw, "cookie")
+    for page in pages:
+        for m in page.get("client_fw", []):
+            add(_FW_LABEL.get(m, m), "dom")
         for tech in page.get("technologies", []):
             low = tech.lower()
-            if low.startswith("js:") and any(v in low for v in ("jquery-1.", "jquery/1.",
-                                                                 "jquery-2.", "angular.js/1.")):
-                f.add("outdated-library", page["url"],
-                      f"古い可能性のあるライブラリ参照: {tech}", confidence="Low")
+            if "awselb" in low:
+                infra.add("AWS ELB")
+            if low.startswith("cf-ray"):
+                infra.add("Cloudflare")
+            if low.startswith("x-vercel-id"):
+                infra.add("Vercel")
+            if low.startswith("via:"):
+                infra.add("プロキシ/CDN (Via)")
+            if low.startswith("x-amz-cf-id"):
+                infra.add("Amazon CloudFront")
+            if "x-runtime" in low:
+                add("Rails", "header")
+
+    if not fw_signals and not infra:
+        return
+    parts = []
+    if fw_signals:
+        parts.append("FW: " + ", ".join(sorted(fw_signals)))
+    if infra:
+        parts.append("インフラ: " + ", ".join(sorted(infra)))
+    multi = any(len(s) >= 2 for s in fw_signals.values())
+    f.add("stack-fingerprint", pages[0]["url"] if pages else "",
+          "検出スタック — " + " / ".join(parts),
+          confidence="High" if multi else "Medium")
+
+
+# ===== v0.4 EOL ランタイム判定（内蔵オフライン表・バックポート注記） =====
+# (製品名, banner 抽出正規表現, 危殆判定 predicate(version tuple)->bool, 注記)
+_EOL_RULES = [
+    ("PHP", re.compile(r"PHP/(\d+)\.(\d+)", re.I), lambda n: n <= (8, 0),
+     "PHP 8.0 は 2023-11、7.4 は 2022-11 に upstream EOL"),
+    ("Apache httpd", re.compile(r"Apache/(\d+)\.(\d+)", re.I), lambda n: n <= (2, 2),
+     "Apache httpd 2.2 系は 2018-01 に EOL"),
+    ("OpenSSL", re.compile(r"OpenSSL/(\d+)\.(\d+)\.(\d+)", re.I), lambda n: n[0] <= 1,
+     "OpenSSL 1.x 系は 2023-09（1.1.1 終了）までに全て upstream EOL"),
+    ("nginx", re.compile(r"nginx/(\d+)\.(\d+)", re.I), lambda n: n < (1, 18),
+     "nginx 1.18 未満は旧く、サポート状況の確認を要する"),
+]
+
+
+def check_eol_runtime(pages: list[dict], f: Findings) -> None:
+    """banner の版数 × 内蔵オフライン EOL 表で upstream EOL を推定する（受動）。
+    バックポート保守の可能性ゆえ「脆弱」とは断定せず確度 Medium とする。"""
+    banners: set[str] = set()
+    for page in pages:
+        b = page.get("server", "") or ""
+        for t in page.get("technologies", []):
+            if t.lower().startswith(("server:", "x-powered-by:")):
+                b += " " + t.split(":", 1)[1]
+        if b.strip():
+            banners.add(b.strip())
+    seen: set[tuple] = set()
+    src = pages[0]["url"] if pages else ""
+    for banner in banners:
+        for product, rx, pred, note in _EOL_RULES:
+            for m in rx.finditer(banner):
+                nums = tuple(int(x) for x in m.groups())
+                if not pred(nums):
+                    continue
+                ver = ".".join(str(n) for n in nums)
+                key = (product, ver)
+                if key in seen:
+                    continue
+                seen.add(key)
+                f.add("eol-runtime", src,
+                      f"{product} {ver}: {note}。upstream EOL 疑い（ディストロのバックポート"
+                      f"保守を要確認・単体では脆弱と断定しない）。",
+                      confidence="Medium")
+
+
+# v0.4 ルート/EP 露出: 機微語を含むルートのみを対象化し、期待ルートは除外する。
+_SENSITIVE_ROUTE_RE = re.compile(
+    r"(admin|user[-_]?management|users|download|generate|storage|export|delete|backup|"
+    r"invoice|payment|contract|impersonate)", re.I)
+# 認証系の期待ルートは露出しても衛生的に自然なため除外（件数インフレ防止）
+_EXPECTED_ROUTE_RE = re.compile(
+    r"(?:^|[./])(login|logout|home|password|reset|forgot|verification|verify|register|welcome)"
+    r"(?:$|[./])", re.I)
+
+
+def check_route_disclosure(pages: list[dict], f: Findings) -> None:
+    """crawl が捕捉したルート blob（Ziggy/Inertia/Next/JS 内 api）から、機微なルート/EP 名を
+    抽出する（受動・非破壊）。**1 所見に集約**し件数インフレとグレード算術崩壊を避ける。
+
+    ルート名はクライアントに配布済みの公開情報のため evidence への掲載は秘密漏洩でない。"""
+    sensitive: list[str] = []
+    seen: set[str] = set()
+    source_url = ""
+    for page in pages:
+        rm = page.get("route_markers") or {}
+        candidates: list[tuple[str, str]] = []
+        for r in rm.get("ziggy", []):
+            candidates.append((r.get("name", ""), r.get("uri", "")))
+        for p in rm.get("api_paths", []):
+            candidates.append(("", p))
+        for name, uri in candidates:
+            hay = f"{name} {uri}"
+            if _EXPECTED_ROUTE_RE.search(hay):
+                continue
+            if not _SENSITIVE_ROUTE_RE.search(hay):
+                continue
+            key = (name or uri).strip()
+            if key and key not in seen:
+                seen.add(key)
+                sensitive.append(name or uri)
+                if not source_url:
+                    source_url = page.get("url", "")
+    if sensitive:
+        total = len(sensitive)
+        sample = ", ".join(sensitive[:8])
+        more = "" if total <= 8 else f" ほか{total - 8}件"
+        f.add("route-disclosure", source_url or (pages[0]["url"] if pages else ""),
+              f"未認証ページ由来の JS から機微なルート/EP 名を {total} 件抽出（例: {sample}{more}）。"
+              f"ルート名の開示であり到達・悪用可能とは限らない。",
+              confidence="High")
+
+
+# ===== v0.4 外部 JS の上限付き取得（DoS/スコープ逸脱の回避） =====
+# 秘密は同一オリジンの first-party バンドルに載るのが通例。取得先は same-origin か
+# CDN allowlist に限定し、件数・サイズを上限で縛る。
+_CDN_ALLOWLIST = {
+    "cdn.jsdelivr.net", "unpkg.com", "cdnjs.cloudflare.com", "ajax.googleapis.com",
+    "code.jquery.com", "stackpath.bootstrapcdn.com", "maxcdn.bootstrapcdn.com",
+}
+_MAX_JS_FILES = 12
+_MAX_JS_BYTES = 2_000_000
+
+
+def _collect_script_srcs(pages: list[dict]) -> list[str]:
+    out, seen = [], set()
+    for page in pages:
+        for s in page.get("script_srcs", []):
+            if s not in seen:
+                seen.add(s)
+                out.append(s)
+    return out
+
+
+def _bounded_fetch_scripts(urls: list[str], client, allowed_hosts: set[str],
+                           limit: int = _MAX_JS_FILES, max_bytes: int = _MAX_JS_BYTES
+                           ) -> list[tuple[str, str]]:
+    """same-origin または CDN allowlist の JS を件数・サイズ上限つきで取得する（GET のみ）。"""
+    out: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for u in urls:
+        if len(out) >= limit:
+            break
+        host = (urlparse(u).hostname or "").lower()
+        if host not in allowed_hosts and host not in _CDN_ALLOWLIST:
+            continue
+        if u in seen:
+            continue
+        seen.add(u)
+        try:
+            r = client.get(u)
+        except Exception:
+            continue
+        if r.status_code != 200:
+            continue
+        if "html" in r.headers.get("content-type", "").lower():
+            continue  # HTML フォールバック（SPA catch-all）は JS でないため除外
+        body = r.text
+        out.append((u, body[:max_bytes] if len(body) > max_bytes else body))
+    return out
+
+
+# 高特異度の秘密パターン（gitleaks 既定 ruleset 準拠）。公開クライアント鍵（pk_live/AIza/
+# Firebase）は正当な公開情報のため**検出対象に含めない**（誤検知しない）。
+_SECRET_PATTERNS = [
+    ("AWS アクセスキー", re.compile(r"AKIA[0-9A-Z]{16}")),
+    ("Stripe シークレットキー", re.compile(r"sk_live_[0-9a-zA-Z]{24,}")),
+    ("GitHub Personal Access Token", re.compile(r"ghp_[0-9A-Za-z]{36}")),
+    ("Slack トークン", re.compile(r"xox[baprs]-[0-9A-Za-z-]{10,}")),
+    ("秘密鍵 (PEM)", re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----")),
+    ("GCP サービスアカウント秘密鍵", re.compile(r'"private_key"\s*:\s*"-----BEGIN')),
+]
+# 既知の example/公開接頭辞（真陽性から除外）
+_SECRET_EXAMPLE_ALLOW = {"AKIAIOSFODNN7EXAMPLE"}
+_PUBLIC_KEY_PREFIXES = ("pk_live_", "pk_test_", "AIza", "G-", "UA-", "GTM-", "ga_")
+# keyword 付随の高エントロピー・トークン（specific に載らない秘密の補助・確度 Medium）
+_GENERIC_SECRET_RE = re.compile(
+    r"""(?i)(?:secret|token|api[_-]?key|password|passwd|access[_-]?key)["']?\s*[:=]\s*"""
+    r"""["']([A-Za-z0-9/+_\-]{24,})["']""")
+
+
+def _shannon_entropy(s: str) -> float:
+    if not s:
+        return 0.0
+    from math import log2
+    counts: dict[str, int] = {}
+    for ch in s:
+        counts[ch] = counts.get(ch, 0) + 1
+    n = len(s)
+    return -sum((c / n) * log2(c / n) for c in counts.values())
+
+
+def check_js_secrets(script_bodies: list[tuple[str, str]], f: Findings) -> None:
+    """取得済み JS 本文（[(url, body)]）を走査して秘密の露出を検出する（純解析・非破壊）。
+
+    evidence には**種別と場所のみ**を載せ、生値は一切載せない（dangerous-data-handling 整合）。
+    公開クライアント鍵（pk_live/AIza/Firebase）は検出対象外＝誤検知しない。"""
+    seen: set[tuple] = set()
+    for url, body in script_bodies:
+        body = body or ""
+        for label, rx in _SECRET_PATTERNS:
+            for m in rx.finditer(body):
+                if m.group(0) in _SECRET_EXAMPLE_ALLOW:
+                    continue
+                key = (label, url)
+                if key in seen:
+                    continue
+                seen.add(key)
+                f.add("js-secret-exposure", url,
+                      f"種別: {label} の疑い / 出所: 外部 JS（生値は非掲載）", confidence="High")
+        for m in _GENERIC_SECRET_RE.finditer(body):
+            val = m.group(1)
+            if val in _SECRET_EXAMPLE_ALLOW or any(val.startswith(p) for p in _PUBLIC_KEY_PREFIXES):
+                continue
+            if _shannon_entropy(val) < 4.2:
+                continue
+            key = ("generic", url)
+            if key in seen:
+                continue
+            seen.add(key)
+            f.add("js-secret-exposure", url,
+                  "種別: 高エントロピーの秘密様トークン（keyword 付随）/ 出所: 外部 JS（生値は非掲載）",
+                  confidence="Medium")
+
+
+# ===== v0.4 認証必須ルートの保護確認（未認証 GET → 302/401/403=保護 / 200=露出疑い） =====
+_AUTH_SENSITIVE_PATHS = [
+    "/admin", "/administrator", "/user-management", "/users", "/export", "/data-export",
+    "/upload", "/settings", "/config", "/dashboard", "/api/admin", "/actuator",
+    "/swagger", "/graphql",
+]
+
+
+def _collect_robots_sitemap_paths(root: str, client) -> list[str]:
+    """robots.txt Disallow / sitemap.xml の <loc> から機微語を含むパスを収集（GET のみ）。"""
+    out: list[str] = []
+    try:
+        r = client.get(root + "/robots.txt")
+        if r.status_code == 200 and "html" not in r.headers.get("content-type", "").lower():
+            for line in r.text.splitlines():
+                low = line.strip()
+                if low.lower().startswith("disallow:"):
+                    p = low.split(":", 1)[1].strip().split("*")[0]
+                    if p.startswith("/") and _SENSITIVE_ROUTE_RE.search(p):
+                        out.append(p.rstrip("/") or p)
+    except Exception:
+        pass
+    try:
+        r = client.get(root + "/sitemap.xml")
+        if r.status_code == 200:
+            for m in re.findall(r"<loc>\s*([^<\s]+)\s*</loc>", r.text):
+                pp = urlparse(m).path
+                if pp.startswith("/") and _SENSITIVE_ROUTE_RE.search(pp):
+                    out.append(pp)
+    except Exception:
+        pass
+    return out
+
+
+def check_auth_routes(target: str, pages: list[dict], client, f: Findings,
+                      extra_paths: list[str] | None = None) -> None:
+    base = urlparse(target)
+    root = urlunparse((base.scheme, base.netloc, "", "", "", ""))
+    baseline_len = -1
+    try:
+        b = client.get(root + "/vwr-nonexistent-auth-7c3f")
+        if b.status_code == 200:
+            baseline_len = len(b.text)
+    except Exception:
+        pass
+    paths = list(dict.fromkeys(_AUTH_SENSITIVE_PATHS + list(extra_paths or [])))
+    for path in paths:
+        if not path.startswith("/"):
+            continue
+        try:
+            r = client.get(root + path)
+        except Exception:
+            continue
+        if r.status_code in (301, 302, 401, 403):
+            continue  # 保護されている（リダイレクト/認証要求）＝正常
+        if r.status_code != 200:
+            continue
+        # soft-404 / SPA フォールバック（index と本文長が酷似）は露出でなくフォールバックと判定
+        if baseline_len >= 0 and abs(len(r.text) - baseline_len) < 64:
+            continue
+        f.add("unauth-sensitive-route", root + path,
+              f"機微パス {path} が未認証 GET で 200 を返す（保護リダイレクト/401/403 なし）。"
+              f"公開が意図的な可能性もあり認可設計の確認を要する。", confidence="Medium")
+
+
+# ===== v0.4 ソースマップ露出（実体確認で HTML フォールバック誤検知を除去） =====
+_SOURCEMAP_RE = re.compile(r"(?://[#@]\s*sourceMappingURL=)(\S+)")
+
+
+def check_source_map(script_bodies: list[tuple[str, str]], client, f: Findings,
+                     allowed_hosts: set[str] | None = None) -> None:
+    """JS 末尾の `//# sourceMappingURL=` を辿るか `.map` を推測して取得し、**実体確認**する。
+
+    200 かつ本文が `{"version":3` の JSON で `"mappings"` を含む場合のみ露出と判定し、
+    SPA の HTML フォールバック（200 でも中身は index.html）を誤検知しない。"""
+    allowed_hosts = allowed_hosts or set()
+    seen: set[str] = set()
+    for url, body in script_bodies:
+        m = _SOURCEMAP_RE.search(body or "")
+        if m:
+            ref = m.group(1).strip()
+            if ref.startswith("data:"):
+                continue  # inline data URI は露出でない
+            map_url = urljoin(url, ref)
+        else:
+            map_url = url + ".map"  # 慣習的推測
+        # SSRF 防止: sourceMappingURL は対象由来の任意ホスト（内部 IP・クラウドメタデータ等）を
+        # 指しうるため、_bounded_fetch_scripts と同じく same-origin または CDN allowlist の
+        # ホストにのみ取得を限定する（allowed_hosts 未指定なら fail-closed で取得しない）。
+        map_host = (urlparse(map_url).hostname or "").lower()
+        if map_host not in allowed_hosts and map_host not in _CDN_ALLOWLIST:
+            continue
+        if map_url in seen:
+            continue
+        seen.add(map_url)
+        try:
+            r = client.get(map_url)
+        except Exception:
+            continue
+        if r.status_code != 200 or "html" in r.headers.get("content-type", "").lower():
+            continue
+        text = (r.text or "").lstrip()
+        compact = text.replace(" ", "")
+        if not (text.startswith("{") and '"version":3' in compact and '"mappings"' in text):
+            continue  # 実体確認（HTML フォールバック等を除去）
+        has_sources = '"sourcesContent"' in text
+        note = "（sourcesContent 有り＝原ソース露出に格上げ）" if has_sources else ""
+        f.add("sourcemap-exposure", map_url,
+              f"ソースマップが取得可能（version:3 の実体確認済み）{note}",
+              confidence="High" if has_sources else "Medium")
 
 
 def check_sri(url: str, html: str, f: Findings) -> None:
@@ -590,6 +1092,84 @@ def check_dns(target: str, f: Findings, query=None) -> None:
               f"{domain} に SPF レコード（v=spf1）が存在しない", confidence="Medium")
 
 
+def check_dnssec(target: str, f: Findings, query=None) -> None:
+    """DNSSEC（DNSKEY/DS）の有無を受動照会する（DNS クエリのみ・非破壊）。
+
+    query は (name, rdtype)->list[str] の呼び出し可能（テストでフェイク注入）。
+    DNSKEY/DS が双方空なら未署名と判定する。"""
+    q = query or _default_dns_query
+    domain = _registrable_domain(urlparse(target).hostname or "")
+    if not domain:
+        return
+    dnskey = q(domain, "DNSKEY")
+    ds = q(domain, "DS")
+    if not dnskey and not ds:
+        f.add("dnssec-missing", domain,
+              f"{domain} に DNSSEC（DNSKEY/DS）が確認できない（DNS 応答の完全性が検証されない）",
+              confidence="Medium")
+
+
+# ===== v0.4 Phase 3 能動認証テスト（既定 OFF・opt-in・login URL 限定 POST） =====
+import uuid as _uuid  # 局所 import（受動パスに影響させない）
+
+
+def _fake_credentials() -> dict:
+    """存在しないランダム資格情報を生成する（実在アカウントを一切使わない＝ロック回避）。"""
+    tag = _uuid.uuid4().hex[:12]
+    return {"email": f"vwr-nonexistent-{tag}@example.invalid",
+            "password": f"vwr-{_uuid.uuid4().hex[:16]}",
+            "username": f"vwr-nonexistent-{tag}"}
+
+
+def check_login_rate_limit(client: "_ActiveAuthClient", login_url: str, f: Findings,
+                           max_attempts: int = _LOGIN_HARD_CAP) -> None:
+    """存在しないランダム資格情報で login へ上限付き POST し、429/スロットリングの有無を観測する。
+
+    実在アカウントは一切使わない（アカウントロック回避）。試行回数は min(要求, ハードキャップ)。
+    前段で 419/403（CSRF 等）に阻まれレート制限に到達できない場合は判定を保留する（偽陽性回避）。"""
+    attempts = max(1, min(max_attempts, _LOGIN_HARD_CAP))
+    processed = 0
+    throttled = False
+    for _ in range(attempts):
+        try:
+            r = client.post(login_url, data=_fake_credentials())
+        except ActiveAuthViolation:
+            break
+        except Exception:
+            break
+        h = {k.lower(): v for k, v in r.headers.items()}
+        if r.status_code == 429 or "retry-after" in h or "ratelimit-limit" in h \
+                or "x-ratelimit-limit" in h:
+            throttled = True
+            break
+        if r.status_code in (419, 403):
+            continue  # 前段拒否（CSRF 等）＝レート制限に未到達。判定に数えない
+        if r.status_code in (200, 301, 302, 401, 422):
+            processed += 1
+    if processed >= 3 and not throttled:
+        f.add("no-rate-limit", login_url,
+              f"ログインへの未認証 POST を {processed} 回処理させたが 429/スロットリング応答が"
+              f"観測されなかった（実在アカウント不使用）。反自動化防御の確認を要する。",
+              confidence="Medium")
+
+
+def check_csrf_enforcement(client: "_ActiveAuthClient", login_url: str, f: Findings) -> None:
+    """anti-CSRF トークン無しの POST を **1 回だけ** 送り、419/403 で拒否されるかを観測する。
+
+    拒否（419/403）なら CSRF が実効。受理（200/302/401/422）なら csrf-not-enforced。
+    データ改変・列挙は行わない（機微につき列挙は実装しない）。"""
+    try:
+        r = client.post(login_url, data=_fake_credentials())
+    except Exception:
+        return
+    if r.status_code in (419, 403):
+        return  # トークン無し POST が拒否された＝CSRF 実効（正常）
+    if r.status_code in (200, 301, 302, 401, 422):
+        f.add("csrf-not-enforced", login_url,
+              f"anti-CSRF トークン無しの POST が {r.status_code} で受理された（419/403 で拒否されない）。"
+              f"CSRF 保護の実効性を要確認（列挙・改変は未実施）。", confidence="Medium")
+
+
 def check_https_redirect(target: str, client, f: Findings) -> None:
     """HTTPS 対象について、HTTP アクセスが HTTPS へ確実にリダイレクトされるかを検証。"""
     p = urlparse(target)
@@ -617,43 +1197,64 @@ LEDGER_GROUPS = [
     ("cookies", "Cookie 属性（Secure/HttpOnly/SameSite）", "A01/A02", "passive"),
     ("sri", "外部リソースの SRI（改竄検知）", "A08", "passive"),
     ("outdated-libs", "古いクライアントライブラリの痕跡", "A03", "passive"),
+    ("route-disclosure", "SPA/JS ルート・EP の未認証露出", "A01", "passive"),
+    ("stack-fingerprint", "フレームワーク/インフラ指紋（情報）", "A01", "passive"),
+    ("eol-runtime", "サーバランタイムの EOL 判定", "A03", "passive"),
     ("forms", "フォームの安全性（平文送信 / CSRF）", "A01/A04", "passive"),
     ("verbose-error", "詳細エラー / スタックトレース露出", "A10", "passive"),
     ("tls-protocol", "TLS 旧プロトコル受入（1.0/1.1）", "A04", "network"),
     ("tls-cert", "TLS 証明書の有効期限", "A04", "network"),
+    ("tls-cert-validity", "TLS 証明書の検証（ホスト名/期限/チェーン）", "A04", "network"),
     ("dns-email-auth", "DNS メール認証（DMARC / SPF）", "A02", "network"),
+    ("dnssec", "DNSSEC（DNSKEY / DS）", "A02", "network"),
     ("https-redirect", "HTTP→HTTPS リダイレクト強制", "A04", "active"),
     ("exposed-files", "機微ファイル / パスの公開", "A01", "active"),
     ("directory-listing", "ディレクトリリスティング", "A01", "active"),
     ("cors", "CORS 設定", "A02", "active"),
     ("http-methods", "危険な HTTP メソッド", "A02", "active"),
+    ("js-secrets", "JS バンドル内の秘密露出", "A02", "active"),
+    ("auth-routes", "認証必須ルートの保護確認", "A01", "active"),
+    ("source-map", "ソースマップ露出", "A02", "active"),
     ("open-redirect", "オープンリダイレクト", "A01", "active"),
     ("reflected-input", "反射型 XSS の兆候", "A05", "active"),
     ("mixed-content", "混在コンテンツ", "A06", "active"),
+    ("login-rate-limit", "ログインレート制限（能動・opt-in）", "A06", "active-auth"),
+    ("csrf-enforcement", "CSRF トークン実効性（能動・opt-in）", "A01", "active-auth"),
 ]
 
 # 各グループが生成しうる check_id（台帳の finding/clean 判定に使用）
 _GROUP_CHECK_IDS = {
     "security-headers": {"missing-hsts", "missing-xcto", "missing-csp", "weak-csp",
                          "missing-frame-options", "missing-referrer-policy",
-                         "missing-permissions-policy", "info-disclosure-banner"},
+                         "missing-permissions-policy", "info-disclosure-banner",
+                         "missing-coop", "xss-protection-legacy"},
     "cookies": {"cookie-insecure", "cookie-no-httponly", "cookie-no-samesite",
                 "cookie-samesite-none-insecure"},
     "sri": {"missing-sri"},
     "outdated-libs": {"outdated-library"},
+    "route-disclosure": {"route-disclosure"},
+    "stack-fingerprint": {"stack-fingerprint"},
+    "eol-runtime": {"eol-runtime"},
     "forms": {"insecure-form-target", "missing-csrf-token"},
     "verbose-error": {"verbose-error"},
     "tls-protocol": {"tls-weak-protocol"},
     "tls-cert": {"tls-cert-expiring"},
+    "tls-cert-validity": {"tls-cert-invalid"},
     "dns-email-auth": {"dns-dmarc-missing", "dns-dmarc-weak", "dns-spf-missing"},
+    "dnssec": {"dnssec-missing"},
     "https-redirect": {"no-https-redirect"},
     "exposed-files": {"exposed-sensitive-file"},
     "directory-listing": {"directory-listing"},
     "cors": {"cors-misconfig"},
     "http-methods": {"risky-http-method"},
+    "js-secrets": {"js-secret-exposure"},
+    "auth-routes": {"unauth-sensitive-route"},
+    "source-map": {"sourcemap-exposure"},
     "open-redirect": {"open-redirect"},
     "reflected-input": {"reflected-input"},
     "mixed-content": {"mixed-content"},
+    "login-rate-limit": {"no-rate-limit"},
+    "csrf-enforcement": {"csrf-not-enforced"},
 }
 _CHECK_TO_GROUP = {cid: gid for gid, cids in _GROUP_CHECK_IDS.items() for cid in cids}
 
@@ -665,6 +1266,8 @@ class Ledger:
 
     def __init__(self):
         self._rows: dict[str, dict] = {}
+        # 診断の信頼性メタ（主要ページがロードできたか等）。採点ゲートに用いる（G1）。
+        self.assessment: dict = {}
 
     def record(self, group_id: str, status: str, findings: int = 0, note: str = "") -> None:
         self._rows[group_id] = {"status": status, "findings": findings, "note": note}
@@ -703,7 +1306,9 @@ def _dns_target_ok(host: str) -> bool:
 
 
 def run_checks(crawl: dict, timeout: float = 15.0, active: bool = True,
-               ledger: "Ledger | None" = None) -> list[dict]:
+               ledger: "Ledger | None" = None, active_auth: bool = False,
+               active_auth_url: str | None = None, active_auth_authorized: str = "",
+               max_login_attempts: int = _LOGIN_HARD_CAP) -> list[dict]:
     f = Findings()
     if ledger is None:
         ledger = Ledger()
@@ -717,7 +1322,26 @@ def run_checks(crawl: dict, timeout: float = 15.0, active: bool = True,
     def in_scope(u: str) -> bool:
         return (urlparse(u).hostname or "").lower() in allowed
 
+    # ===== G1: 診断の信頼性判定（主要ページ未ロード時の false clean / グレード膨張を防ぐ） =====
+    # ページが「HTTP 応答を得た（status あり・error なし）」ものだけを実データとみなす。
+    def _page_ok(p) -> bool:
+        return isinstance(p, dict) and not p.get("error") and p.get("status") is not None
+
+    pages_total = len([p for p in pages if isinstance(p, dict)])
+    pages_responded = len([p for p in pages if _page_ok(p)])
+    tnorm = (target or "").rstrip("/")
+    target_loaded = bool(target) and any(
+        (p.get("url", "").rstrip("/") == tnorm) and _page_ok(p) for p in pages)
+    # 実データ有無: 1 ページでも HTTP 応答があれば cookies/技術情報等を実際に観測できている。
+    # 応答ゼロ（全ページ error 等）は「観測できていない」＝データ不足とし、後段で clean を出さない。
+    data_reliable = pages_responded > 0
+    ledger.assessment = {
+        "pages_total": pages_total, "pages_responded": pages_responded,
+        "target_loaded": target_loaded, "data_reliable": data_reliable,
+    }
+
     ran: set[str] = set()         # 実際に実行できたグループ（未実行を clean にしないための実績記録）
+    rate_limit_seen = False       # 受動でスロットリングヘッダを観測したか（弱陽性・非破壊）
     errored: dict[str, str] = {}  # 例外を送出したグループ。値は例外種別のみ（生の例外文字列に
                                   # 含まれうるリクエスト URL・クエリを台帳へ載せない＝情報開示防止）
 
@@ -741,14 +1365,30 @@ def run_checks(crawl: dict, timeout: float = 15.0, active: bool = True,
                 r = sc.get(page["url"])
             except Exception:
                 continue
+            _rl = _headers_lower(r)
+            if any(k in _rl for k in ("ratelimit-limit", "x-ratelimit-limit", "retry-after")):
+                rate_limit_seen = True
             _safe("security-headers", lambda: check_security_headers(page, _headers_lower(r), f))
             if "text/html" in r.headers.get("content-type", ""):
                 _safe("sri", lambda: check_sri(page["url"], r.text, f))
                 _safe("verbose-error", lambda: check_verbose_error(page["url"], r.text, f))
 
-        _safe("cookies", lambda: check_cookies(crawl.get("cookies", []), f))
-        _safe("outdated-libs", lambda: check_outdated_libraries(pages, f))
-        _safe("forms", lambda: check_forms(crawl.get("forms", []), f))
+        # G1: これらはページ応答から得た実データ（cookies/technologies/route_markers/forms）に
+        # 依存する。1 ページも応答が無ければ「観測できていない」＝データ不足で skipped とし、
+        # 空入力を「問題なし(clean)」と偽らない（主要ページ未ロード時のグレード膨張を防ぐ）。
+        _data_dependent = ("cookies", "outdated-libs", "route-disclosure",
+                           "stack-fingerprint", "eol-runtime", "forms")
+        if data_reliable:
+            _safe("cookies", lambda: check_cookies(crawl.get("cookies", []), f))
+            _safe("outdated-libs", lambda: check_outdated_libraries(pages, f))
+            _safe("route-disclosure", lambda: check_route_disclosure(pages, f))
+            _safe("stack-fingerprint",
+                  lambda: check_framework_fingerprint(pages, crawl.get("cookies", []), f))
+            _safe("eol-runtime", lambda: check_eol_runtime(pages, f))
+            _safe("forms", lambda: check_forms(crawl.get("forms", []), f))
+        else:
+            for gid in _data_dependent:
+                ledger.record(gid, "skipped", note="主要ページ未応答のためデータ不足（未観測）")
 
         # TLS（HTTPS 対象のみ・接続/証明書取得の失敗は error として表面化）
         tp = urlparse(target) if target else None
@@ -756,21 +1396,33 @@ def run_checks(crawl: dict, timeout: float = 15.0, active: bool = True,
             host, port = tp.hostname, (tp.port or 443)
             _safe("tls-protocol", lambda: _probe_old_tls(host, port, f, target))
             _safe("tls-cert", lambda: check_cert_expiry(target, f))
+            _safe("tls-cert-validity", lambda: check_cert_validity(target, f))
         elif target:
             ledger.record("tls-protocol", "skipped", note="HTTPS 対象外")
             ledger.record("tls-cert", "skipped", note="HTTPS 対象外")
+            ledger.record("tls-cert-validity", "skipped", note="HTTPS 対象外")
 
         # DNS メール認証（DMARC/SPF）
         dns_host = (tp.hostname if tp else "") or ""
         if target and dns_available() and _dns_target_ok(dns_host):
             _safe("dns-email-auth", lambda: check_dns(target, f))
+            _safe("dnssec", lambda: check_dnssec(target, f))
         elif target:
             note = "dnspython 未導入" if not dns_available() else "IP/ローカル対象のため対象外"
             ledger.record("dns-email-auth", "skipped", note=note)
+            ledger.record("dnssec", "skipped", note=note)
 
         # ===== アクティブ（非破壊の能動プローブ） =====
-        if active and target and in_scope(target):
+        # G1: 対象が全く応答していない（data_reliable=False）ときは、各能動 check の内部
+        # try/except が接続エラーを飲み込んで「実行できた＝clean」になる偽陽性を避けるため、
+        # 能動プローブ自体をゲートして skipped にする。
+        if active and target and in_scope(target) and data_reliable:
             params = [p for p in crawl.get("params", []) if in_scope(p["url"])]
+            # 外部 JS の上限付き取得（same-origin + CDN allowlist）。js-secrets / source-map で共用。
+            try:
+                script_bodies = _bounded_fetch_scripts(_collect_script_srcs(pages), sc, allowed)
+            except Exception:
+                script_bodies = []
             active_jobs = [
                 ("exposed-files", lambda: check_exposed_files(target, sc, f)),
                 ("directory-listing", lambda: check_directory_listing(pages, sc, f)),
@@ -780,15 +1432,53 @@ def run_checks(crawl: dict, timeout: float = 15.0, active: bool = True,
                 ("open-redirect", lambda: check_open_redirect(params, sc, f)),
                 ("reflected-input", lambda: check_reflected_input(params, sc, f)),
                 ("mixed-content", lambda: check_mixed_content(pages, sc, f)),
+                ("js-secrets", lambda: check_js_secrets(script_bodies, f)),
+                ("auth-routes", lambda: check_auth_routes(
+                    target, pages, sc, f,
+                    _collect_robots_sitemap_paths(
+                        urlunparse((urlparse(target).scheme, urlparse(target).netloc,
+                                    "", "", "", "")), sc))),
+                ("source-map", lambda: check_source_map(script_bodies, sc, f, allowed)),
             ]
             for gid, job in active_jobs:
                 _safe(gid, job)
         else:
-            reason = "能動プローブ無効（--passive-only）" if not active else "対象がスコープ外"
+            if not active:
+                reason = "能動プローブ無効（--passive-only）"
+            elif not (target and in_scope(target)):
+                reason = "対象がスコープ外"
+            else:
+                reason = "主要ページ未応答のため能動プローブ不可（データ不足）"
             for gid in ("https-redirect", "exposed-files", "directory-listing", "cors",
-                        "http-methods", "open-redirect", "reflected-input", "mixed-content"):
+                        "http-methods", "open-redirect", "reflected-input", "mixed-content",
+                        "js-secrets", "auth-routes", "source-map"):
                 if not ledger.has(gid):
                     ledger.record(gid, "skipped", note=reason)
+
+        # ===== Phase 3 能動認証テスト（既定 OFF・opt-in・明示認可＋login URL 必須） =====
+        # _SafeClient には触れず、POST 限定・login URL 限定の _ActiveAuthClient を隔離使用する。
+        aa_ok = bool(active_auth and active_auth_url and active_auth_authorized.strip()
+                     and in_scope(active_auth_url))
+        if aa_ok:
+            aac = _ActiveAuthClient(raw, active_auth_url, delay)
+            _safe("csrf-enforcement", lambda: check_csrf_enforcement(aac, active_auth_url, f))
+            _safe("login-rate-limit",
+                  lambda: check_login_rate_limit(aac, active_auth_url, f, max_login_attempts))
+        else:
+            if not active_auth:
+                aa_reason = "能動認証テスト無効（既定 OFF・--active-auth 未指定）"
+            elif not active_auth_authorized.strip():
+                aa_reason = "能動認証の書面認可（--authorized-active）が空"
+            elif not active_auth_url:
+                aa_reason = "login URL（--login-url）未指定"
+            else:
+                aa_reason = "login URL がスコープ外"
+            for gid in ("login-rate-limit", "csrf-enforcement"):
+                if not ledger.has(gid):
+                    note = aa_reason
+                    if gid == "login-rate-limit" and rate_limit_seen:
+                        note += " / 受動でスロットリングヘッダを観測（弱陽性）"
+                    ledger.record(gid, "skipped", note=note)
 
     # ===== 台帳の確定（finding > error > clean > skipped） =====
     # finding を error より優先し、所見のある群は本文と整合させる（error は注記で併記）。
@@ -821,13 +1511,23 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", default="findings.json")
     ap.add_argument("--timeout", type=float, default=15.0)
     ap.add_argument("--passive-only", action="store_true", help="能動プローブを行わない")
+    ap.add_argument("--active-auth", action="store_true",
+                    help="Phase 3 能動認証テストを有効化（既定 OFF・破壊なし・login への POST 限定）")
+    ap.add_argument("--authorized-active", default="",
+                    help="能動認証テストの書面認可（空なら能動認証は実行しない）")
+    ap.add_argument("--login-url", default=None, help="能動認証テストの対象 login エンドポイント")
+    ap.add_argument("--max-login-attempts", type=int, default=8,
+                    help="ログインレート制限テストの試行上限（ハードキャップ 8 にクランプ）")
     args = ap.parse_args(argv)
 
     with open(args.crawl, encoding="utf-8") as fp:
         crawl = json.load(fp)
 
     ledger = Ledger()
-    findings = run_checks(crawl, timeout=args.timeout, active=not args.passive_only, ledger=ledger)
+    findings = run_checks(crawl, timeout=args.timeout, active=not args.passive_only, ledger=ledger,
+                          active_auth=args.active_auth, active_auth_url=args.login_url,
+                          active_auth_authorized=args.authorized_active,
+                          max_login_attempts=args.max_login_attempts)
     out = {
         "target": crawl.get("scope", {}).get("target", ""),
         "generated_at": _now_iso(),
@@ -835,6 +1535,7 @@ def main(argv: list[str] | None = None) -> int:
         "findings": findings,
         "coverage": ledger.rows(),
         "coverage_summary": ledger.summary(),
+        "assessment": ledger.assessment,  # G1: 採点ゲート用の信頼性メタ
     }
     with open(args.out, "w", encoding="utf-8") as fp:
         json.dump(out, fp, ensure_ascii=False, indent=2)

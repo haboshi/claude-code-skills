@@ -98,6 +98,219 @@ def test_detects_info_disclosure_banner(findings):
     assert "info-disclosure-banner" in _check_ids(findings)
 
 
+def test_detects_route_disclosure(findings):
+    # フィクスチャの Ziggy blob（admin.users.index / data.export / storage.download）と
+    # JS 内 /api/generate-report を機微ルートとして 1 所見に集約検出する
+    ids = _check_ids(findings)
+    assert "route-disclosure" in ids
+    ev = " ".join(f["evidence"] for f in findings if f["check_id"] == "route-disclosure")
+    assert "admin" in ev or "export" in ev or "storage" in ev
+
+
+def test_detects_stack_fingerprint(findings):
+    fp = [f for f in findings if f["check_id"] == "stack-fingerprint"]
+    assert fp, "stack-fingerprint が検出されない"
+    assert "Laravel" in fp[0]["evidence"]
+    assert fp[0]["cvss_score"] == 0.0  # 情報カテゴリ（グレードを毀損しない）
+
+
+def test_merge_preserves_all_evidence():
+    # G3: 同一 check_id+title の複数証跡（jQuery 1.11.1 と 2.2.0）が全件 surface される
+    from scoring import merge_findings
+    fs = [
+        {"check_id": "outdated-library", "title": "古い可能性のあるライブラリ",
+         "affected": ["https://s/"], "evidence": "jquery 1.11.1", "confidence": "Low"},
+        {"check_id": "outdated-library", "title": "古い可能性のあるライブラリ",
+         "affected": ["https://s/"], "evidence": "jquery 2.2.0", "confidence": "Low"},
+    ]
+    m = merge_findings(fs)
+    assert len(m) == 1
+    assert "1.11.1" in m[0]["evidence"] and "2.2.0" in m[0]["evidence"]  # 先頭のみ残さない
+
+
+def test_banner_no_false_fire_on_product_name():
+    # G5: "AmazonS3" の "3" で誤発火しない。版数様トークンがある時のみ発火する
+    from checks import check_security_headers, Findings
+    f = Findings()
+    check_security_headers({"url": "https://x/"}, {"server": "AmazonS3"}, f)
+    assert "info-disclosure-banner" not in {i["check_id"] for i in f.as_list()}
+    f2 = Findings()
+    check_security_headers({"url": "https://x/"}, {"server": "Apache/2.4.68"}, f2)
+    assert "info-disclosure-banner" in {i["check_id"] for i in f2.as_list()}
+
+
+def test_outdated_library_generic_extraction():
+    from checks import check_outdated_libraries, Findings
+    # slash 表記 jquery/2.x（旧実装の見逃しバグ）と bootstrap 危殆版を検出、modern は無視
+    pages = [{"url": "https://s/", "technologies": [],
+              "script_srcs": ["https://cdn/jquery/2.2.4/jquery.min.js",
+                              "https://cdn/bootstrap/3.3.7/js/bootstrap.min.js",
+                              "https://cdn/vue/3.4.0/vue.js",
+                              "https://cdn/angular/16.2.0/angular.min.js"]}]
+    f = Findings()
+    check_outdated_libraries(pages, f)
+    ev = " ".join(i["evidence"] for i in f.as_list())
+    assert "jquery 2.2.4" in ev          # slash 表記 2.x を捕捉（バグ修正）
+    assert "bootstrap 3.3.7" in ev
+    assert "vue 3" not in ev             # モダン版は誤検知しない
+    assert "angular 16" not in ev
+
+
+def test_eol_runtime_detection():
+    from checks import check_eol_runtime, Findings
+    pages = [{"url": "https://s/", "server": "Apache/2.2.15 (CentOS)",
+              "technologies": ["Server: Apache/2.2.15 OpenSSL/1.0.2k", "X-Powered-By: PHP/7.4.3"]}]
+    f = Findings()
+    check_eol_runtime(pages, f)
+    ev = " ".join(i["evidence"] for i in f.as_list())
+    assert "PHP 7.4" in ev and "Apache httpd 2.2" in ev and "OpenSSL 1.0.2" in ev
+    # 「脆弱」と断定しない（バックポート注記つき）
+    assert all("断定しない" in i["evidence"] for i in f.as_list())
+    # モダン版は EOL 判定しない
+    f2 = Findings()
+    check_eol_runtime([{"url": "https://s/", "server": "nginx/1.25.3",
+                        "technologies": ["X-Powered-By: PHP/8.3.0"]}], f2)
+    assert not f2.as_list()
+
+
+def test_detects_js_secret_exposure(findings):
+    js = [f for f in findings if f["check_id"] == "js-secret-exposure"]
+    assert js, "js-secret-exposure が検出されない"
+    blob = " ".join(f["evidence"] for f in js)
+    assert ("sk_" + "live_0123456789") not in blob           # 生値は非掲載
+    assert "pk_live" not in blob and "AIza" not in blob  # 公開クライアント鍵は誤検知しない
+
+
+def test_js_secrets_true_and_false_positives():
+    from checks import check_js_secrets, Findings
+    # ダミー鍵はリテラルを避け連結生成する（secret-scanning 誤検知回避。実行時の値は同一）。
+    sk = "sk_" + "live_" + "0123456789abcdefABCDEFGHIJ"   # 真陽性（Stripe secret 様）
+    pk = "pk_" + "live_" + "0123456789abcdefABCDEFGHIJ"   # 公開鍵→誤検知しない
+    gk = "AIza" + "SyA1234567890abcdefghijklmnopqrstuv"    # ブラウザ鍵→誤検知しない
+    ak = "AKIA" + "IOSFODNN7EXAMPLE"                       # example→除外
+    bodies = [("https://s/app.js", f'var a="{sk}";var pk="{pk}";var g="{gk}";var ex="{ak}";')]
+    f = Findings()
+    check_js_secrets(bodies, f)
+    items = f.as_list()
+    assert [i["check_id"] for i in items] == ["js-secret-exposure"]  # sk_live のみ
+    assert items[0]["confidence"] == "High"
+    blob = " ".join(i["evidence"] for i in items)
+    for leak in (sk[:12], pk[:7], gk[:4], "AKIA"):
+        assert leak not in blob  # 生値・公開鍵接頭辞を evidence に載せない
+
+
+def test_detects_source_map_exposure(findings):
+    sm = [f for f in findings if f["check_id"] == "sourcemap-exposure"]
+    assert sm, "sourcemap-exposure が検出されない"
+    assert "sourcesContent" in sm[0]["evidence"]  # 原ソース露出に格上げ
+
+
+def test_source_map_rejects_html_fallback():
+    from checks import check_source_map, Findings
+
+    class _R:
+        def __init__(self, status, text, ctype="application/json"):
+            self.status_code, self.text, self.headers = status, text, {"content-type": ctype}
+
+    class _C:
+        def __init__(self, resp):
+            self._resp = resp
+
+        def get(self, url):
+            return self._resp
+
+    # SPA の catch-all が 200+HTML を返すケース → 実体（version:3）でないので誤検知しない
+    fh = Findings()
+    check_source_map([("https://s/app.js", "//# sourceMappingURL=app.js.map")],
+                     _C(_R(200, "<html><body>Not Found</body></html>", "text/html")), fh, {"s"})
+    assert "sourcemap-exposure" not in {i["check_id"] for i in fh.as_list()}
+    # 本物のマップ（version:3）→ 検出する
+    ft = Findings()
+    check_source_map([("https://s/app.js", "//# sourceMappingURL=app.js.map")],
+                     _C(_R(200, '{"version":3,"mappings":"AAAA"}')), ft, {"s"})
+    assert "sourcemap-exposure" in {i["check_id"] for i in ft.as_list()}
+
+
+def test_source_map_ssrf_guard():
+    # sourceMappingURL が非許可ホスト（内部IP・メタデータ等）を指しても取得しない（SSRF防止）
+    from checks import check_source_map, Findings
+
+    class _R:
+        def __init__(self):
+            self.status_code, self.text, self.headers = 200, '{"version":3,"mappings":"AAAA"}', {"content-type": "application/json"}
+
+    class _SpyClient:
+        def __init__(self):
+            self.requested = []
+
+        def get(self, url):
+            self.requested.append(url)
+            return _R()
+
+    # クロスオリジンのメタデータ/内部ホストへの sourceMappingURL → allowed_hosts 外なので取得しない
+    spy = _SpyClient()
+    f = Findings()
+    check_source_map(
+        [("https://s/app.js", "//# sourceMappingURL=http://169.254.169.254/latest/meta-data/map.js.map")],
+        spy, f, {"s"})
+    assert spy.requested == []  # 非許可ホストへは一切リクエストしない
+    assert "sourcemap-exposure" not in {i["check_id"] for i in f.as_list()}
+    # allowed_hosts 未指定は fail-closed（取得しない）
+    spy2 = _SpyClient()
+    check_source_map([("https://s/app.js", "//# sourceMappingURL=app.js.map")], spy2, Findings())
+    assert spy2.requested == []
+
+
+def test_auth_routes_detection_and_protection():
+    from checks import check_auth_routes, Findings
+    from urllib.parse import urlparse as _up
+
+    class _R:
+        def __init__(self, status, text="", ctype="text/html"):
+            self.status_code, self.text, self.headers = status, text, {"content-type": ctype}
+
+    class _C:
+        def __init__(self, routes, default):
+            self._routes, self._default = routes, default
+
+        def get(self, url):
+            return self._routes.get(_up(url).path, self._default)
+
+    routes = {
+        "/vwr-nonexistent-auth-7c3f": _R(404, "nf"),
+        "/admin": _R(200, "<html>admin panel with plenty of unique content here</html>"),
+        "/dashboard": _R(302, ""),   # ログインへリダイレクト＝保護
+        "/settings": _R(403, ""),    # 認証要求＝保護
+    }
+    f = Findings()
+    check_auth_routes("https://s/", [], _C(routes, _R(404, "nf")), f)
+    affected = " ".join(a for i in f.as_list() for a in i["affected"])
+    assert "/admin" in affected          # 200 の機微パス＝露出疑い
+    assert "/dashboard" not in affected  # 302 は保護＝検出しない
+    assert "/settings" not in affected   # 403 は保護
+
+
+def test_route_disclosure_filters_and_aggregates():
+    from checks import check_route_disclosure, Findings
+    pages = [{"url": "https://s/login", "route_markers": {
+        "ziggy": [
+            {"name": "login", "uri": "login"},
+            {"name": "admin.users.index", "uri": "admin/users"},
+            {"name": "data.export", "uri": "data/export"},
+        ],
+        "api_paths": ["/api/generate-report", "/api/login"],
+        "next_data": False, "inertia_url": None,
+    }}]
+    f = Findings()
+    check_route_disclosure(pages, f)
+    items = f.as_list()
+    # 機微ルート 3 件（admin.users.index / data.export / /api/generate-report）を 1 所見に集約。
+    # 期待ルート login / /api/login は列挙しない。
+    assert len(items) == 1
+    assert "3 件" in items[0]["evidence"]
+    assert "admin" in items[0]["evidence"]
+
+
 def test_scoring_assigns_cvss_and_summary(findings):
     doc = {"target": "http://test", "findings": findings}
     scored = scoring_mod.score_all(doc)
@@ -212,12 +425,178 @@ def test_detects_permissions_policy(findings):
     assert "missing-permissions-policy" in _check_ids(findings)
 
 
+def test_header_supplements_coop_and_xss_legacy():
+    from checks import check_security_headers, Findings
+    # COOP 欠如 → missing-coop、X-XSS-Protection 有効値 → xss-protection-legacy
+    f = Findings()
+    check_security_headers({"url": "https://x/"}, {"x-xss-protection": "1; mode=block"}, f)
+    ids = {i["check_id"] for i in f.as_list()}
+    assert "missing-coop" in ids and "xss-protection-legacy" in ids
+    # COOP 設定済み・X-XSS-Protection: 0（推奨値）は指摘しない
+    f2 = Findings()
+    check_security_headers({"url": "https://x/"},
+                           {"x-xss-protection": "0", "cross-origin-opener-policy": "same-origin"}, f2)
+    ids2 = {i["check_id"] for i in f2.as_list()}
+    assert "missing-coop" not in ids2 and "xss-protection-legacy" not in ids2
+
+
+def test_check_dnssec_with_fake_resolver():
+    from checks import check_dnssec, Findings
+    # 署名なし（DNSKEY/DS 双方空）→ 検出
+    f = Findings()
+    check_dnssec("https://example.com/", f, query=lambda n, t: [])
+    assert "dnssec-missing" in {i["check_id"] for i in f.as_list()}
+    # 署名あり（DNSKEY あり）→ 検出しない
+    f2 = Findings()
+    check_dnssec("https://example.com/", f2,
+                 query=lambda n, t: ["257 3 13 abc"] if t == "DNSKEY" else [])
+    assert not f2.as_list()
+
+
+def test_classify_cert_error():
+    from checks import _classify_cert_error
+    assert "ホスト名不一致" in _classify_cert_error("Hostname mismatch, certificate is not valid for 'x'")
+    assert "期限切れ" in _classify_cert_error("certificate has expired")
+    assert "自己署名" in _classify_cert_error("self-signed certificate")
+    assert "チェーン" in _classify_cert_error("unable to get local issuer certificate")
+    assert "有効期間前" in _classify_cert_error("certificate is not yet valid")
+    assert _classify_cert_error("some other verify failure")  # フォールバックも文字列を返す
+
+
+def test_check_cert_validity_emits_on_verification_error():
+    import ssl
+    from checks import check_cert_validity, Findings
+
+    def bad_verify(host, port):
+        e = ssl.SSLCertVerificationError("certificate verify failed")
+        e.verify_message = "Hostname mismatch, certificate is not valid for 'x'"
+        raise e
+
+    f = Findings()
+    check_cert_validity("https://x.test/", f, verify=bad_verify)
+    items = f.as_list()
+    assert "tls-cert-invalid" in {i["check_id"] for i in items}
+    assert "ホスト名不一致" in items[0]["evidence"]
+    # 検証成功 → 何も出さない
+    f2 = Findings()
+    check_cert_validity("https://x.test/", f2, verify=lambda h, p: True)
+    assert not f2.as_list()
+    # http は対象外
+    f3 = Findings()
+    check_cert_validity("http://x.test/", f3, verify=bad_verify)
+    assert not f3.as_list()
+
+
 def test_safe_methods_enforced_in_code():
     from checks import _SafeClient, UnsafeMethodError
     sc = _SafeClient(client=None, delay=0)  # ガードは送信前に効くため _c は不要
     for bad in ("POST", "PUT", "DELETE", "PATCH"):
         with pytest.raises(UnsafeMethodError):
             sc.request(bad, "http://example.test/")
+
+
+def test_active_auth_client_guard():
+    # 能動認証 client は POST 限定・login URL 限定。ガードは送信前に効くため下位 client は不要。
+    from checks import _ActiveAuthClient, ActiveAuthViolation
+    ac = _ActiveAuthClient(client=None, login_url="https://s/login", hard_cap=8)
+    for bad in ("GET", "PUT", "DELETE", "HEAD", "OPTIONS"):
+        with pytest.raises(ActiveAuthViolation):
+            ac.request(bad, "https://s/login")
+    with pytest.raises(ActiveAuthViolation):
+        ac.post("https://s/other")  # login URL 以外への POST は拒否
+
+
+def test_active_auth_client_hard_cap():
+    from checks import _ActiveAuthClient, ActiveAuthViolation
+
+    class _Raw:
+        def post(self, url, **kw):
+            class _R:
+                status_code, headers = 200, {}
+            return _R()
+
+    ac = _ActiveAuthClient(_Raw(), "https://s/login", hard_cap=2)
+    ac.post("https://s/login")
+    ac.post("https://s/login")
+    with pytest.raises(ActiveAuthViolation):
+        ac.post("https://s/login")  # client 側 blast-radius バックストップ
+
+
+def test_login_rate_limit_logic():
+    from checks import check_login_rate_limit, Findings
+
+    class _R:
+        def __init__(self, status, headers=None):
+            self.status_code, self.headers = status, headers or {}
+
+    class _NoThrottle:
+        def post(self, url, **kw):
+            return _R(200)
+
+    f = Findings()
+    check_login_rate_limit(_NoThrottle(), "https://s/login", f, max_attempts=8)
+    assert "no-rate-limit" in {i["check_id"] for i in f.as_list()}
+
+    class _Throttle:
+        def __init__(self):
+            self.n = 0
+
+        def post(self, url, **kw):
+            self.n += 1
+            return _R(429) if self.n >= 2 else _R(200)
+
+    f2 = Findings()
+    check_login_rate_limit(_Throttle(), "https://s/login", f2, max_attempts=8)
+    assert not f2.as_list()  # スロットリング有 → 検出しない
+
+    class _Csrf:
+        def post(self, url, **kw):
+            return _R(419)  # 前段で CSRF 拒否 → レート制限に未到達
+
+    f3 = Findings()
+    check_login_rate_limit(_Csrf(), "https://s/login", f3, max_attempts=8)
+    assert not f3.as_list()  # 偽陽性回避
+
+
+def test_login_rate_limit_clamps_to_hard_cap():
+    from checks import check_login_rate_limit, Findings, _LOGIN_HARD_CAP
+
+    class _Counter:
+        def __init__(self):
+            self.n = 0
+
+        def post(self, url, **kw):
+            self.n += 1
+
+            class _R:
+                status_code, headers = 200, {}
+            return _R()
+
+    c = _Counter()
+    check_login_rate_limit(c, "https://s/login", Findings(), max_attempts=100)
+    assert c.n == _LOGIN_HARD_CAP  # 100 要求でもハードキャップ 8 にクランプ
+
+
+def test_csrf_enforcement_logic():
+    from checks import check_csrf_enforcement, Findings
+
+    class _R:
+        def __init__(self, status):
+            self.status_code, self.headers = status, {}
+
+    class _C:
+        def __init__(self, status):
+            self._s = status
+
+        def post(self, url, **kw):
+            return _R(self._s)
+
+    f = Findings()
+    check_csrf_enforcement(_C(200), "https://s/login", f)
+    assert "csrf-not-enforced" in {i["check_id"] for i in f.as_list()}  # 受理 → 検出
+    f2 = Findings()
+    check_csrf_enforcement(_C(419), "https://s/login", f2)
+    assert not f2.as_list()  # 419 拒否 → CSRF 実効
 
 
 class _FakeResp:
@@ -304,11 +683,25 @@ def test_coverage_ledger_statuses(crawl_data):
     assert len(rows) == len(LEDGER_GROUPS)
     # ヘッダ群は検出あり（フィクスチャに欠落ヘッダ多数）
     assert rows["security-headers"]["status"] == "finding"
+    # ルート露出群は検出あり（Ziggy blob の機微ルート）
+    assert rows["route-disclosure"]["status"] == "finding"
+    # 指紋群は検出あり（Laravel 指紋）、EOL 群は実施済み・問題なし（TestServer は EOL 表に不一致）
+    assert rows["stack-fingerprint"]["status"] == "finding"
+    assert rows["eol-runtime"]["status"] == "clean"
+    # JS 秘密・ソースマップは検出あり（app.js に sk_live と .map）、auth-routes は機微パス無し
+    assert rows["js-secrets"]["status"] == "finding"
+    assert rows["source-map"]["status"] == "finding"
+    assert rows["auth-routes"]["status"] == "clean"
+    # Phase 3 能動認証は既定 OFF → 未実施（opt-in）
+    assert rows["login-rate-limit"]["status"] == "skipped"
+    assert rows["csrf-enforcement"]["status"] == "skipped"
     # http 対象なので TLS は未実施
     assert rows["tls-cert"]["status"] == "skipped"
     assert rows["tls-protocol"]["status"] == "skipped"
+    assert rows["tls-cert-validity"]["status"] == "skipped"
     # ローカル/IP 対象なので DNS は未実施（外部ネットワークを叩かない）
     assert rows["dns-email-auth"]["status"] == "skipped"
+    assert rows["dnssec"]["status"] == "skipped"
     # 実施済みで所見の無い群（例: forms は GET 検索のみ）は「問題なし(clean)」
     statuses = {r["status"] for r in rows.values()}
     assert "clean" in statuses
@@ -331,9 +724,43 @@ def test_coverage_ledger_no_html_is_skipped_not_clean():
     assert rows["security-headers"]["status"] == "skipped"
     assert rows["sri"]["status"] == "skipped"
     assert rows["verbose-error"]["status"] == "skipped"
-    # 空データでも実行される群（cookies/forms）は clean（実施済み・所見なし）
-    assert rows["cookies"]["status"] == "clean"
-    assert rows["forms"]["status"] == "clean"
+    # G1: 応答ページが 1 件も無ければ cookies/forms 等の実データ依存群も clean にしない
+    # （空入力＝未観測 ≠ 問題なし。旧実装の false clean を是正）。
+    assert rows["cookies"]["status"] == "skipped"
+    assert rows["forms"]["status"] == "skipped"
+
+
+def test_g1_unreachable_target_gates_clean_and_grade():
+    # G1 回帰（jbr 実データ再現）: 主要ページが TLS 証明書エラーで未ロード（status=None・error）の
+    # とき、データ依存群を false clean にせず、採点も A- 等を出さず「要再診断」にゲートする。
+    from checks import run_checks, Ledger
+    from scoring import score_all
+    # http + 非ルータブル IP を用い、run_checks が実ネットワークを一切叩かない条件で
+    # ゲート経路のみを検証する（TLS/DNS は scheme=http / IP のため未接続）。error 文字列は
+    # jbr の実データ（証明書検証失敗）を模す。
+    crawl = {"scope": {"target": "http://192.0.2.1/", "hosts": ["192.0.2.1"]},
+             "pages": [{"url": "http://192.0.2.1/",
+                        "error": "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed"}],
+             "cookies": [], "forms": []}
+    led = Ledger()
+    findings = run_checks(crawl, timeout=5, active=True, ledger=led)
+    rows = {r["id"]: r for r in led.rows()}
+    # データ依存群・能動群は clean でなく skipped（未観測）
+    for gid in ("cookies", "outdated-libs", "route-disclosure", "stack-fingerprint",
+                "eol-runtime", "forms", "cors", "exposed-files", "js-secrets", "auth-routes"):
+        assert rows[gid]["status"] == "skipped", f"{gid} should be skipped (unreachable)"
+    # 信頼性メタが False
+    assert led.assessment["data_reliable"] is False
+    assert led.assessment["pages_responded"] == 0
+    # 採点ゲート: グレードは A- を出さず「要再診断」、スコアは None
+    doc = {"target": "https://x.test/", "scope": crawl["scope"], "findings": findings,
+           "coverage": led.rows(), "assessment": led.assessment}
+    scored = score_all(doc)
+    s = scored["summary"]
+    assert s["assessment_incomplete"] is True
+    assert s["security_score"] is None
+    assert s["grade"] not in ("A+", "A", "A-", "B+", "B")
+    assert "要再診断" in s["grade_rating"]
 
 
 def test_registrable_domain_expanded_ccTLDs():
@@ -355,6 +782,9 @@ def test_coverage_flows_into_report(crawl_data):
     html = render_report.render(score_all(doc), narrative={}, tools_used=[])
     assert "診断項目カバレッジ台帳" in html
     assert "問題なし" in html or "未実施" in html
+    # 新 kind="active-auth" の台帳行が日本語ラベル「能動認証」で表示される（テンプレ追随の
+    # 回帰防止）。修正前は kind セルが生の "active-auth" になり「能動認証」は現れなかった。
+    assert "能動認証" in html
 
 
 def test_registrable_domain_multilabel():
@@ -478,3 +908,4 @@ def test_no_finding_leaks_raw_secret_values(findings):
     blob = " ".join(f["evidence"] for f in findings)
     assert "supersecret" not in blob
     assert "DB_PASSWORD=pw" not in blob
+    assert ("sk_" + "live_0123456789") not in blob  # JS 内の秘密も生値を載せない

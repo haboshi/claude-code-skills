@@ -60,6 +60,24 @@ skills/web-vuln-report/
   無効化を要求しない方針転換のため）。
 - **CVSS 較正の誠実性（v0.3）**: `info-disclosure-banner` は VC:L→VC:N（Info）に是正（バージョン
   文字列は機密データでない）。偵察系の較正は機械的一律変更でなく個別レビューで判断する。
+- **単一アプリ深掘り（v0.4）**: `crawl` が各ページの `script_srcs` と inline ルート blob
+  （Ziggy/Inertia/Next マーカー）を**構造化フィールドで捕捉**（本文は保持しない）。`checks` は
+  解析専任で、`route-disclosure`（機微ルートを1所見に集約・disclosure 止まり 6.3）、
+  `stack-fingerprint`（情報 0.0）、`eol-runtime`（内蔵オフライン EOL 表・「脆弱」断定回避）、
+  `js-secret-exposure`（上限付き外部 JS 取得＝same-origin+CDN allowlist・高特異度パターン・
+  **公開鍵 pk_live/AIza は誤検知せず生値非掲載** 8.7）、`unauth-sensitive-route`、
+  `sourcemap-exposure`（version:3 実体確認で HTML フォールバック除去）、`dnssec-missing`、
+  ヘッダ補完（`missing-coop`/`xss-protection-legacy`）を追加。`check_outdated_libraries` は
+  汎用版数抽出＋危殆版下限表に是正（`jquery/2.` 見逃しバグ修正）。
+- **能動認証は opt-in・隔離設計（v0.4 Phase 3）**: `no-rate-limit`/`csrf-not-enforced` は既定 OFF。
+  `--active-auth`＋`--authorized-active`（書面認可）＋`--login-url`＋in-scope の**二重ゲート**を
+  満たしたときのみ、`_SafeClient` とは別クラスの `_ActiveAuthClient`（**login への POST 限定**・
+  他メソッド/他 URL 拒否・client 側ハードキャップ）で実行する。**`_SafeClient` の GET 強制境界は
+  緩めない・迂回しない**。レート制限は実在アカウント不使用・試行 min(要求,8) クランプ・419/403
+  前段拒否は判定保留（偽陽性回避）。TLS 暗号スイート列挙は偽陰性回避のため内蔵せず testssl.sh へ委譲。
+- **新規チェックは全て台帳に登録**: `LEDGER_GROUPS`＋`_GROUP_CHECK_IDS`＋`_CHECK_TO_GROUP` を網羅し、
+  未マップの check_id（沈黙で不可視化）をゼロに保つ。catalog の `cvss`/`cvss_score` は cvss ライブラリ
+  実算出と完全一致（`test_catalog_scores_match_cvss4_library` が全 42 件を検算）。
 - **CVE 網羅を誇張しない**: 内蔵チェックは構成/衛生面の指摘。CVE 級は外部ツール併用時のみ、
   報告書の制約事項に明記。
 - **所見は集約**: scoring.merge_findings が同一 check_id+title を1件に束ね該当箇所を列挙

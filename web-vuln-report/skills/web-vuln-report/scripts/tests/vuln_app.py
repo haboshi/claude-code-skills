@@ -22,7 +22,11 @@ from urllib.parse import urlparse, parse_qs
 
 INDEX_HTML = """<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8">
 <title>Vuln Test App</title>
-<script src="/static/jquery-1.8.3.min.js"></script></head>
+<meta name="csrf-token" content="tok123">
+<script src="/static/jquery-1.8.3.min.js"></script>
+<script src="/static/app.js"></script>
+<script>const Ziggy = {"url":"http:\\/\\/localhost","port":null,"defaults":{},"routes":{"login":{"uri":"login","methods":["GET"]},"admin.users.index":{"uri":"admin\\/users","methods":["GET"]},"data.export":{"uri":"data\\/export","methods":["GET"]},"storage.download":{"uri":"storage\\/download\\/{file}","methods":["GET"]}}};
+const api = "/api/generate-report";</script></head>
 <body><h1>テストアプリ</h1>
 <a href="/search?q=hello">検索</a>
 <a href="/go?url=/next">遷移</a>
@@ -42,8 +46,11 @@ class VulnHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Server", "TestServer/1.2.3")  # バージョン露出
         if cookies:
-            # 意図的に Secure/HttpOnly/SameSite を欠落
+            # 意図的に Secure/HttpOnly/SameSite を欠落。Laravel 指紋用に XSRF-TOKEN /
+            # laravel_session も併せて発行する（フレームワーク指紋テスト用）。
             self.send_header("Set-Cookie", "SESSIONID=abc123; Path=/")
+            self.send_header("Set-Cookie", "XSRF-TOKEN=eyJ0b2tlbiI6IngifQ; Path=/")
+            self.send_header("Set-Cookie", "laravel_session=abc; Path=/")
         # セキュリティヘッダは意図的に付与しない
         self.end_headers()
         self.wfile.write(data)
@@ -72,6 +79,19 @@ class VulnHandler(BaseHTTPRequestHandler):
             self._send(200, "ref: refs/heads/main\n", ctype="text/plain")
         elif path == "/.env":
             self._send(200, "SECRET_KEY=supersecret\nDB_PASSWORD=pw\n", ctype="text/plain")
+        elif path == "/static/app.js":
+            # 真の秘密様（sk_live）＋公開クライアント鍵（pk_live/AIza=誤検知しない）＋ sourceMappingURL。
+            # リテラル秘密トークンを避け連結生成する（secret-scanning 誤検知の回避。実行時値は同一）。
+            sk = "sk_" + "live_" + "0123456789abcdefABCDEFGHIJ"
+            pk = "pk_" + "live_" + "0123456789abcdefABCDEFGHIJ"
+            gk = "AIza" + "SyA1234567890abcdefghijklmnopqrstuv"
+            body = (f'/* app */ var s="{sk}";var pub="{pk}";var g="{gk}";\n'
+                    '//# sourceMappingURL=app.js.map')
+            self._send(200, body, ctype="application/javascript")
+        elif path == "/static/app.js.map":
+            self._send(200, '{"version":3,"file":"app.js","sources":["a.ts"],'
+                            '"names":[],"mappings":"AAAA","sourcesContent":["const x=1"]}',
+                       ctype="application/json")
         elif path.startswith("/static/"):
             self._send(200, "/* jquery 1.8.3 */", ctype="application/javascript")
         else:

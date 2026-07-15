@@ -1,0 +1,10 @@
+# web-vuln-report のコア依存（すべてピュア Python・コンパイル不要）
+# uv が無い環境（Genspark 等）では:  python3 -m pip install --quiet --user -r requirements.txt
+httpx
+beautifulsoup4
+jinja2
+cvss
+
+# PDF 化のみネイティブ依存（cairo/pango）が必要。環境にあれば追加で:
+#   python3 -m pip install weasyprint
+# 無ければ HTML を最終成果物とする（PDF はベストエフォート）。

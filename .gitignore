@@ -1,5 +1,6 @@
 # Python
 __pycache__/
+.pytest_cache/
 *.py[cod]
 *$py.class
 *.so
@@ -30,6 +31,8 @@ node_modules/
 # Output
 *.pdf
 output/
+# 例外: web-vuln-report の同梱サンプル報告書 PDF は成果物として追跡する
+!web-vuln-report/skills/web-vuln-report/examples/report.pdf
 
 # Logs
 *.log
@@ -46,3 +49,11 @@ mission-brief.md
 
 # Serena IDE
 .serena/
+
+# ビルド成果物（Genspark 用バンドル・package_genspark_skill.py で再生成可）
+*.skill
+
+# 中間生成物（examples の再現時に出るが成果物ではない）
+web-vuln-report/skills/web-vuln-report/examples/crawl.json
+web-vuln-report/skills/web-vuln-report/examples/findings.json
+web-vuln-report/skills/web-vuln-report/examples/ext_findings.json

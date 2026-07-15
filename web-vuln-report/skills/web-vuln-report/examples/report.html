@@ -1,0 +1,1012 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>脆弱性診断報告書 - http://127.0.0.1:8899</title>
+<style>/* web-vuln-report 報告書スタイル
+ * A4 印刷（weasyprint 69）向けに設計。画面閲覧も両立。自己完結（システムフォントのみ）。
+ * デザイン方針: 静かな権威と安心感。抑制的な配色、ハイラインの罫線、一貫した垂直リズム、
+ * ランニングヘッダ/フッタ、重大度スパイン、タブラー数字。
+ */
+
+:root {
+    --ink:        #1b2733;   /* 本文 */
+    --ink-soft:   #45535f;   /* 補助テキスト */
+    --muted:      #7c8894;   /* ラベル・脚注 */
+    --navy:       #0f2e4a;   /* 構造色（見出し・罫線アクセント） */
+    --navy-2:     #163e63;
+    --line:       #e3e7eb;   /* ハイライン */
+    --line-2:     #d3dae0;
+    --paper:      #ffffff;
+    --panel:      #f6f8fa;   /* 淡い面 */
+    --panel-2:    #eef2f6;
+
+    --crit:       #9b1c1c;
+    --high:       #d1410c;   /* 赤みの強い橙（Medium と明確に区別） */
+    --med:        #b8860b;   /* 金色寄りの琥珀（スパイン・数字用） */
+    --med-pill:   #eab308;   /* Medium ピル背景（濃色文字で使用） */
+    --low:        #1d4e89;
+    --info:       #5b6b7a;
+
+    --gothic: 'Hiragino Kaku Gothic ProN', 'YuGothic', 'Yu Gothic', 'Noto Sans CJK JP', sans-serif;
+    --mincho: 'Hiragino Mincho ProN', 'YuMincho', 'Yu Mincho', 'Noto Serif CJK JP', serif;
+    --mono: 'SF Mono', 'Menlo', 'Consolas', monospace;
+}
+
+/* ===== ページ: ランニングヘッダ/フッタ ===== */
+@page {
+    size: A4;
+    margin: 1.9cm 1.5cm 1.7cm 1.5cm;
+
+    @top-left {
+        content: "脆弱性診断報告書";
+        font-family: var(--gothic);
+        font-size: 7.5pt; letter-spacing: 0.08em; color: #9aa5b0;
+        vertical-align: bottom; padding-bottom: 3pt;
+    }
+    @top-right {
+        content: string(doc-section, start);  /* ページ先頭で有効な章に同期 */
+        font-family: var(--gothic);
+        font-size: 7.5pt; letter-spacing: 0.02em; color: #9aa5b0;
+        vertical-align: bottom; padding-bottom: 3pt;
+    }
+    @bottom-left {
+        content: "機密 / CONFIDENTIAL";
+        font-family: var(--gothic); font-size: 7pt; letter-spacing: 0.06em; color: #a7b0ba;
+        vertical-align: top; padding-top: 4pt;
+    }
+    @bottom-center {
+        content: counter(page) " / " counter(pages);
+        font-family: var(--gothic); font-size: 8pt; color: #7c8894;
+        vertical-align: top; padding-top: 4pt;
+    }
+    @bottom-right {
+        content: string(doc-id);
+        font-family: var(--mono); font-size: 7pt; color: #a7b0ba;
+        vertical-align: top; padding-top: 4pt;
+    }
+}
+/* 表紙: ヘッダ/フッタなし・広めの余白 */
+@page :first {
+    margin: 2.2cm 1.8cm 2.0cm 1.8cm;
+    @top-left { content: ""; }
+    @top-right { content: ""; }
+    @bottom-left { content: ""; }
+    @bottom-center { content: ""; }
+    @bottom-right { content: ""; }
+}
+
+* { box-sizing: border-box; }
+
+html { color: var(--ink); }
+
+body {
+    font-family: var(--gothic);
+    font-size: 10pt;
+    line-height: 1.72;
+    color: var(--ink);
+    -weasy-hyphens: none;
+}
+@media screen {
+    body { max-width: 820px; margin: 0 auto; padding: 2rem 1.5rem; background: #fff; }
+}
+
+p { margin: 0.55em 0; }
+strong { font-weight: 700; }
+a { color: var(--low); text-decoration: none; word-break: break-all; }
+
+/* ラベル/アイブロウ */
+.eyebrow {
+    font-family: var(--gothic); font-size: 8pt; font-weight: 700;
+    letter-spacing: 0.34em; color: var(--muted); text-transform: uppercase;
+}
+
+/* ===== セクション見出し（番号は CSS カウンタ・ランニングヘッダは見出しのみ） ===== */
+body { counter-reset: sec; }
+h2 {
+    string-set: doc-section content(text);  /* ::before の番号は含めない＝ヘッダは見出しのみ */
+    font-family: var(--gothic); font-weight: 700; font-size: 14.5pt;
+    color: var(--navy); margin: 1.9em 0 0.9em;
+    padding-bottom: 0.35em; border-bottom: 1.5px solid var(--navy);
+    page-break-after: avoid; letter-spacing: 0.01em;
+}
+h2.numbered { counter-increment: sec; }
+h2.numbered::before {
+    content: counter(sec) "\00a0\00a0\00a0";
+    color: var(--navy); font-variant-numeric: tabular-nums;
+}
+h3 {
+    font-family: var(--gothic); font-weight: 700; font-size: 11pt;
+    color: var(--navy-2); margin: 1.2em 0 0.5em; page-break-after: avoid;
+}
+h4 { font-family: var(--gothic); font-weight: 700; font-size: 10pt; color: var(--ink); margin: 1em 0 0.4em; }
+
+/* ===== 表紙 ===== */
+.cover { page-break-after: always; padding-top: 1.2cm; }
+.cover .rule-top { height: 3px; background: var(--navy); width: 100%; margin-bottom: 1.4cm; }
+.cover .mark { text-align: center; margin-bottom: 0.9cm; }
+.cover .mark svg { width: 62px; height: 62px; }
+.cover .doc-type {
+    text-align: center; font-family: var(--gothic); font-size: 10pt; font-weight: 700;
+    letter-spacing: 0.42em; color: var(--muted); text-transform: uppercase;
+}
+.cover h1 {
+    text-align: center; font-family: var(--gothic); font-weight: 700;
+    font-size: 27pt; color: var(--navy); margin: 0.5em 0 0.35em; letter-spacing: 0.04em;
+}
+.cover .subtitle { text-align: center; font-family: var(--mincho); font-size: 11pt; color: var(--ink-soft); margin-bottom: 1.1cm; }
+.cover .target-plate {
+    text-align: center; font-family: var(--mono); font-size: 12pt; color: var(--navy);
+    background: var(--panel); border: 1px solid var(--line-2); border-radius: 6px;
+    padding: 0.7em 1em; margin: 0 auto 1.5cm; max-width: 82%; word-break: break-all;
+}
+.cover .meta-card {
+    max-width: 82%; margin: 0 auto; border-top: 1px solid var(--line-2);
+    border-bottom: 1px solid var(--line-2);
+}
+.cover .meta-card dl { display: table; width: 100%; margin: 0; }
+.cover .meta-card .row { display: table-row; }
+.cover .meta-card dt, .cover .meta-card dd {
+    display: table-cell; padding: 0.5em 0.2em; font-size: 9.5pt; vertical-align: top;
+    border-bottom: 1px solid var(--line);
+}
+.cover .meta-card dt { font-family: var(--gothic); color: var(--muted); width: 28%; white-space: nowrap; letter-spacing: 0.04em; }
+.cover .meta-card dd { color: var(--ink); }
+.cover .meta-card .row:last-child dt, .cover .meta-card .row:last-child dd { border-bottom: none; }
+.cover .seal {
+    text-align: center; margin-top: 1.5cm;
+}
+.cover .seal .badge {
+    display: inline-block; border: 1.5px solid var(--crit); color: var(--crit);
+    font-family: var(--gothic); font-weight: 700; font-size: 10pt; letter-spacing: 0.14em;
+    padding: 0.4em 1.4em; border-radius: 3px;
+}
+.cover .handling {
+    max-width: 74%; margin: 0.9cm auto 0; font-family: var(--gothic); font-size: 7.5pt;
+    color: var(--muted); line-height: 1.7; text-align: center;
+}
+/* 表紙下部の意匠モチーフ: 重大度スケールの極細セグメント＋準拠表記 */
+.cover .system-note { max-width: 62%; margin: 1.2cm auto 0; text-align: center; }
+.cover .system-note .scale { display: flex; height: 4px; border-radius: 2px; overflow: hidden; }
+.cover .system-note .scale span { flex: 1; }
+.cover .system-note .caption {
+    margin-top: 0.5em; font-family: var(--gothic); font-size: 7pt; letter-spacing: 0.22em;
+    color: var(--muted); text-transform: uppercase;
+}
+
+/* ===== 目次 ===== */
+.toc { page-break-after: always; }
+.toc ol { list-style: none; margin: 0.6em 0 0; padding: 0; }
+.toc li { border-bottom: 1px solid var(--line); }
+.toc a { display: flex; align-items: baseline; width: 100%; color: inherit; padding: 0.6em 0; }
+.toc .n { font-family: var(--gothic); font-weight: 700; color: var(--navy); min-width: 2.2em; font-variant-numeric: tabular-nums; }
+.toc .t { font-family: var(--gothic); color: var(--ink); font-size: 10.5pt; }
+.toc .leader { flex: 1; border-bottom: 1px dotted var(--line-2); margin: 0 0.6em 4px; }
+.toc a::after { content: target-counter(attr(href), page); font-family: var(--mono); color: var(--muted); font-size: 9pt; }
+
+/* 重大度凡例（目次ページ下部） */
+.legend { margin-top: 1.5cm; border-top: 1px solid var(--line-2); padding-top: 1rem; }
+.legend .eyebrow { display: block; margin-bottom: 0.7rem; }
+.legend .lrow { display: flex; align-items: baseline; gap: 0.9rem; padding: 0.42em 0; border-bottom: 1px solid var(--line); }
+.legend .lrow .pill { flex: 0 0 6.6em; text-align: center; }
+.legend .lrow .rng { flex: 0 0 8.4em; white-space: nowrap; font-family: var(--mono); font-size: 8.5pt; color: var(--muted); }
+.legend .lrow .rng .u { font-family: var(--gothic); font-size: 7pt; color: #9aa5b0; letter-spacing: 0.1em; }
+.legend .lrow .desc { flex: 1; font-size: 9pt; color: var(--ink-soft); }
+
+/* ===== エグゼクティブ: 総合評価ヒーロー（verdict・A＝安全） ===== */
+.verdict {
+    display: flex; gap: 1.5rem; align-items: stretch;
+    border: 1px solid var(--line-2); border-radius: 12px; padding: 1.3rem 1.5rem;
+    margin: 0.8rem 0 0.9rem; page-break-inside: avoid;
+    background: linear-gradient(180deg, #ffffff 0%, #fafbfd 100%);
+}
+/* グレードマーク（刻印風・階調と区切り線で風格を出す） */
+.verdict-mark {
+    flex: 0 0 auto; width: 116px; border-radius: 12px; color: #fff;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0.7rem 0;
+    background-image: linear-gradient(160deg, rgba(255,255,255,0.12) 0%, rgba(0,0,0,0.16) 100%);
+}
+.verdict-mark .vg { font-family: var(--gothic); font-weight: 700; font-size: 54pt; line-height: 0.82; letter-spacing: -0.01em; }
+.verdict-mark .vdiv { width: 46px; height: 1px; background: rgba(255,255,255,0.34); margin: 0.55rem 0 0.4rem; }
+.verdict-mark .vs { font-family: var(--gothic); font-size: 7.5pt; letter-spacing: 0.06em; opacity: 0.92; }
+.verdict-mark .vs strong { font-family: var(--mono); font-size: 9pt; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* 本文（結論→意味→スケール→根拠） */
+.verdict-main { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+.verdict-eyebrow { font-family: var(--gothic); font-size: 8pt; letter-spacing: 0.22em; color: var(--muted); text-transform: uppercase; }
+.verdict-rating { font-family: var(--gothic); font-weight: 700; font-size: 21pt; line-height: 1.1; margin-top: 0.12rem; }
+.verdict-say { font-size: 9.5pt; color: var(--ink-soft); margin: 0.4rem 0 0.85rem; line-height: 1.5; }
+/* グレードスケール（安全→危険の色ランプ・現在地を塗りつぶし） */
+.verdict-scale { display: flex; align-items: center; gap: 3px; }
+.verdict-scale .vt { font-family: var(--gothic); font-size: 8pt; border-radius: 4px;
+    padding: 0.2em 0.5em; min-width: 2em; text-align: center; }
+/* 非活性チップは緑→黄→赤の滑らかなランプ（帯として一続きに読ませる） */
+.verdict-scale .vt-A { color: #2e7d4f; background: #e9f3ee; }
+.verdict-scale .vt-B { color: #5a8a2e; background: #eef4e2; }
+.verdict-scale .vt-C { color: #a07d00; background: #f6efd6; }
+.verdict-scale .vt-D { color: #b5410c; background: #f7e9e0; }
+.verdict-scale .vt-F { color: #9b1c1c; background: #f6e6e6; }
+.verdict-scale .vt.on { color: #fff; font-weight: 700; }
+.verdict-scale .vt.on.grade-A { background: #2e7d4f; }
+.verdict-scale .vt.on.grade-B { background: #2f7e8c; }
+.verdict-scale .vt.on.grade-C { background: #b8860b; }
+.verdict-scale .vt.on.grade-D { background: #c2410c; }
+.verdict-scale .vt.on.grade-F { background: #9b1c1c; }
+.verdict-scale .vt-cap { font-family: var(--gothic); font-size: 7.5pt; font-weight: 700; letter-spacing: 0.1em; color: var(--ink-soft); padding: 0 0.2rem; }
+/* 統計（重複しない指標・列を細罫で区切る） */
+.verdict-stats { display: flex; margin-top: 0.85rem; padding-top: 0.75rem; border-top: 1px solid var(--line); }
+.verdict-stats .vstat { display: flex; flex-direction: column; padding: 0 1.7rem; }
+.verdict-stats .vstat:first-child { padding-left: 0; }
+.verdict-stats .vstat + .vstat { border-left: 1px solid var(--line); }
+.verdict-stats .vstat em { font-style: normal; font-family: var(--gothic); font-weight: 700; font-size: 16pt;
+    color: var(--ink); line-height: 1; font-variant-numeric: tabular-nums; }
+.verdict-stats .vstat small { font-family: var(--gothic); font-size: 7pt; letter-spacing: 0.05em; color: var(--muted); margin-top: 4px; }
+/* キャップ注記（ヒーロー外・独立行） */
+.verdict-cap { font-family: var(--gothic); font-size: 8pt; color: var(--muted); margin: 0 0 1rem; }
+
+/* グレード配色（A=緑 → F=赤）: 背景(-)とテキスト(-t）。背景は background-color で階調を合成可能に */
+.grade-A { background-color: #2e7d4f; } .grade-A-t { color: #2e7d4f; }
+.grade-B { background-color: #2f7e8c; } .grade-B-t { color: #2f7e8c; }
+.grade-C { background-color: #b8860b; } .grade-C-t { color: #b8860b; }
+.grade-D { background-color: #c2410c; } .grade-D-t { color: #c2410c; }
+.grade-F { background-color: #9b1c1c; } .grade-F-t { color: #9b1c1c; }
+
+/* ===== 重大度サマリ（セルグリッド） ===== */
+.sev-grid { display: table; width: 100%; border-collapse: separate; border-spacing: 6px 0; margin: 0.6rem 0 0.4rem; }
+.sev-grid .cell { display: table-cell; width: 20%; text-align: center; border: 1px solid var(--line-2);
+    border-top-width: 3px; border-radius: 6px; padding: 0.5rem 0.2rem; }
+.sev-grid .cell.c-Critical { border-top-color: var(--crit); }
+.sev-grid .cell.c-High { border-top-color: var(--high); }
+.sev-grid .cell.c-Medium { border-top-color: var(--med); }
+.sev-grid .cell.c-Low { border-top-color: var(--low); }
+.sev-grid .cell.c-Info { border-top-color: var(--info); }
+.sev-grid .k { font-family: var(--gothic); font-size: 8pt; color: var(--muted); }
+.sev-grid .k .en { display: block; font-size: 6.5pt; letter-spacing: 0.12em; text-transform: uppercase; }
+.sev-grid .v { font-family: var(--gothic); font-weight: 700; font-size: 20pt; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.sev-grid .v.c-Critical { color: var(--crit); }
+.sev-grid .v.c-High { color: var(--high); }
+.sev-grid .v.c-Medium { color: var(--med); }
+.sev-grid .v.c-Low { color: var(--low); }
+.sev-grid .v.c-Info { color: var(--info); }
+
+/* ===== 重大度ピル ===== */
+.pill { display: inline-block; padding: 0.12em 0.7em; border-radius: 999px; color: #fff;
+    font-family: var(--gothic); font-size: 8pt; font-weight: 700; letter-spacing: 0.04em; white-space: nowrap; }
+.pill.s-Critical { background: var(--crit); }
+.pill.s-High { background: var(--high); }
+.pill.s-Medium { background: var(--med-pill); color: #422f00; }  /* 濃色文字でコントラスト確保 */
+.pill.s-Low { background: var(--low); }
+.pill.s-Info { background: var(--info); }
+
+/* ===== テーブル（ハイライン） ===== */
+table { border-collapse: collapse; width: 100%; margin: 0.8em 0; font-size: 9pt; }
+thead { display: table-header-group; }
+th { font-family: var(--gothic); font-weight: 700; color: var(--navy); text-align: left;
+    background: var(--panel); border-bottom: 1.5px solid var(--line-2); padding: 7px 10px; letter-spacing: 0.02em; }
+td { padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top;
+    overflow-wrap: anywhere; word-break: break-word; }
+tr { page-break-inside: avoid; }
+tbody tr:nth-child(even) td { background: #fbfcfd; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--mono); white-space: nowrap; }
+th.num { width: 3.4em; }
+.data-table td:first-child { font-family: var(--mono); font-size: 8.5pt; color: var(--ink-soft); }
+/* 主要検出事項表: ID を折り返さない（VWR-001 の縦割れ防止） */
+.findings-summary th:first-child, .findings-summary td:first-child { white-space: nowrap; width: 4.6em; }
+.findings-summary th:nth-child(2), .findings-summary td:nth-child(2) { width: 4.6em; white-space: nowrap; }
+.findings-summary th:last-child, .findings-summary td:last-child { white-space: nowrap; width: 6em; font-family: var(--mono); font-size: 8.5pt; color: var(--ink-soft); }
+
+/* キー/バリューの定義表（範囲と手法）: 定義表はハイライン統一（ゼブラ無し） */
+.kv { border-top: 1px solid var(--line-2); }
+.kv table { margin: 0; }
+.kv th { width: 30%; background: var(--panel); border-bottom: 1px solid var(--line); font-weight: 700; }
+.kv td { border-bottom: 1px solid var(--line); }
+.kv tbody tr:nth-child(even) td { background: transparent; }
+
+/* ===== ナラティブ（総括・ロードマップ） ===== */
+.narrative { border-left: 3px solid var(--navy); background: var(--panel); border-radius: 0 6px 6px 0;
+    padding: 0.8rem 1.1rem; margin: 0.9rem 0; page-break-inside: avoid; }
+.narrative p { margin: 0.4em 0; }
+.narrative ol { margin: 0.3em 0; padding-left: 1.4em; }
+.narrative ol li { margin: 0.35em 0; }
+
+/* ===== 所見カード ===== */
+.finding { border: 1px solid var(--line); border-left: 4px solid var(--info); border-radius: 7px;
+    padding: 0.62rem 1rem; margin: 0.52rem 0; page-break-inside: avoid; background: var(--paper); }
+.finding.b-Critical { border-left-color: var(--crit); }
+.finding.b-High { border-left-color: var(--high); }
+.finding.b-Medium { border-left-color: var(--med); }
+.finding.b-Low { border-left-color: var(--low); }
+.finding.b-Info { border-left-color: var(--info); }
+.finding .fhead { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-bottom: 0.45em; }
+.finding .fid { font-family: var(--mono); font-size: 8.5pt; color: var(--muted); }
+.finding h3.ftitle { margin: 0.1em 0 0.45em; font-size: 12pt; color: var(--ink); }
+.chip { font-family: var(--gothic); font-size: 8pt; color: var(--ink-soft);
+    background: var(--panel-2); border-radius: 4px; padding: 0.1em 0.55em; letter-spacing: 0.02em; }
+.chip.mono { font-family: var(--mono); font-size: 7.5pt; }
+.finding .fhead .taxo { margin-left: auto; display: flex; gap: 0.4rem; }
+.finding .fdesc { margin: 0.15em 0 0.4em; color: var(--ink-soft); }
+.finding dl.fmeta { display: table; width: 100%; margin: 0.3em 0; }
+.finding dl.fmeta .r { display: table-row; }
+.finding dl.fmeta dt { display: table-cell; width: 7.5em; white-space: nowrap; font-family: var(--gothic);
+    font-size: 8.5pt; color: var(--muted); padding: 0.18em 0.8em 0.18em 0; vertical-align: top; letter-spacing: 0.03em; }
+.finding dl.fmeta dd { display: table-cell; margin: 0; font-size: 9.5pt; vertical-align: top; }
+.finding .evidence { background: var(--panel); border: 1px solid var(--line); border-radius: 5px;
+    padding: 0.45em 0.7em; margin: 0.4em 0; font-family: var(--mono); font-size: 8pt; line-height: 1.5;
+    white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; color: var(--ink-soft); }
+.finding .remediation { border-left: 3px solid #2e7d4f; background: #f1f7f3; border-radius: 0 5px 5px 0;
+    padding: 0.4em 0.8em; margin: 0.4em 0; font-size: 9.5pt; }
+.finding .remediation strong { color: #1f5e3a; }
+.finding .refs { font-size: 8pt; color: var(--muted); margin-top: 0.4em; }
+
+.affected code { font-family: var(--mono); font-size: 8.5pt; color: var(--navy-2); }
+code { font-family: var(--mono); font-size: 8.5pt; background: var(--panel-2); padding: 0.08em 0.35em; border-radius: 3px; }
+
+ul, ol { padding-left: 1.4em; }
+li { margin: 0.25em 0; }
+
+.disclaimer { font-size: 8.5pt; color: var(--muted); border-top: 1px solid var(--line);
+    margin-top: 1.3rem; padding-top: 0.7rem; line-height: 1.65; page-break-before: avoid; }
+
+.note { font-size: 9pt; color: var(--muted); }
+</style>
+<style>.doc-id-src { string-set: doc-id content(text); }</style>
+</head>
+<body>
+
+
+
+<!-- ===== 表紙 ===== -->
+<section class="cover">
+  <div class="rule-top"></div>
+  <div class="mark">
+    <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="security shield">
+      <path d="M32 3 L57 12 V33 C57 47 46 57 32 62 C18 57 7 47 7 33 V12 Z" fill="#0f2e4a"/>
+      <path d="M32 3 L57 12 V33 C57 47 46 57 32 62 C18 57 7 47 7 33 V12 Z" fill="none" stroke="#163e63" stroke-width="0.6"/>
+      <path d="M21.5 33 l7 7 l14.5 -16.5" stroke="#ffffff" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </svg>
+  </div>
+  <div class="doc-type">Security Assessment Report</div>
+  <h1>脆弱性診断報告書</h1>
+  <div class="subtitle">Web アプリケーション セキュリティ診断</div>
+
+  <div class="target-plate">http://127.0.0.1:8899</div>
+
+  <div class="meta-card">
+    <dl>
+      <div class="row"><dt>診断対象</dt><dd>http://127.0.0.1:8899</dd></div>
+      <div class="row"><dt>診断実施日</dt><dd>2026-07-15</dd></div>
+      <div class="row"><dt>報告書発行日</dt><dd>2026-07-15</dd></div>
+      <div class="row"><dt>実施者</dt><dd>AllAmbitious セキュリティ診断チーム</dd></div>
+      <div class="row"><dt>認可の根拠</dt><dd>社内検証環境（ローカルフィクスチャ・書面認可相当）</dd></div>
+      <div class="row"><dt>文書番号</dt><dd class="doc-id-src">WVR-20260715</dd></div>
+    </dl>
+  </div>
+
+  <div class="seal"><span class="badge">CONFIDENTIAL ／ 取扱注意</span></div>
+  <div class="handling">
+    本報告書は診断対象組織の機密情報を含みます。関係者以外への開示・複製・二次配布を禁じます。
+    記載の検出事項は診断時点のスナップショットであり、対策実装後の再診断を推奨します。
+  </div>
+
+  <div class="system-note">
+    <div class="scale">
+      <span style="background:#9b1c1c"></span><span style="background:#d1410c"></span><span style="background:#eab308"></span><span style="background:#1d4e89"></span><span style="background:#5b6b7a"></span>
+    </div>
+    <div class="caption">OWASP Top 10:2025 ／ CVSS 4.0 ／ WSTG ／ ASVS 5.0.0 準拠</div>
+  </div>
+</section>
+
+<!-- ===== 目次 ===== -->
+<section class="toc">
+  <div class="eyebrow">Contents</div>
+  <h2 id="toc-h">目次</h2>
+  <ol>
+    <li><a href="#sec-summary"><span class="n">1</span><span class="t">エグゼクティブサマリ</span><span class="leader"></span></a></li>
+    <li><a href="#sec-scope"><span class="n">2</span><span class="t">診断範囲と手法</span><span class="leader"></span></a></li>
+    <li><a href="#sec-findings"><span class="n">3</span><span class="t">検出事項の詳細</span><span class="leader"></span></a></li>
+    <li><a href="#sec-appendix"><span class="n">4</span><span class="t">付録</span><span class="leader"></span></a></li>
+  </ol>
+
+  <div class="legend">
+    <span class="eyebrow">重大度の凡例 ／ Severity Legend</span>
+    <div class="lrow"><span class="pill s-Critical">緊急 Critical</span><span class="rng"><span class="u">CVSS</span> 9.0–10.0</span><span class="desc">即時対応。悪用が容易で影響が甚大。</span></div>
+    <div class="lrow"><span class="pill s-High">重要 High</span><span class="rng"><span class="u">CVSS</span> 7.0–8.9</span><span class="desc">優先対応。重大な情報漏洩・侵害の起点となりうる。</span></div>
+    <div class="lrow"><span class="pill s-Medium">警告 Medium</span><span class="rng"><span class="u">CVSS</span> 4.0–6.9</span><span class="desc">計画的に是正。多層防御の不足など。</span></div>
+    <div class="lrow"><span class="pill s-Low">注意 Low</span><span class="rng"><span class="u">CVSS</span> 0.1–3.9</span><span class="desc">影響は限定的。ベストプラクティスからの逸脱。</span></div>
+    <div class="lrow"><span class="pill s-Info">情報 Info</span><span class="rng">—</span><span class="desc">参考情報。直接の脆弱性ではない。</span></div>
+    <p class="note" style="margin-top:0.8rem;">深刻度は <strong>CVSS 4.0 基本値（CVSS-B）</strong>で評価し、検出事項を OWASP Top 10:2025 / CWE で分類、診断手法は WSTG、検証要件は ASVS 5.0.0 を参照する。総合評価は<strong>セキュリティグレード（A＝安全 〜 F＝危険）</strong>で示し、満点 100 からの減点式スコアと最も重い所見による上限（キャップ）で決定する（A に近いほど安全）。</p>
+  </div>
+</section>
+
+<!-- ===== 1. エグゼクティブサマリ ===== -->
+<h2 class="numbered" id="sec-summary">エグゼクティブサマリ</h2>
+
+
+
+<div class="verdict">
+  <div class="verdict-mark grade-F">
+    <div class="vg">F</div>
+    <div class="vdiv"></div>
+    <div class="vs">スコア <strong>27</strong> / 100</div>
+  </div>
+  <div class="verdict-main">
+    <div class="verdict-eyebrow">総合セキュリティ評価</div>
+    <div class="verdict-rating grade-F-t">危険</div>
+    <p class="verdict-say">早急に対応すべき深刻な問題が確認されました。</p>
+    <div class="verdict-scale">
+      <span class="vt-cap">安全</span>
+      
+      
+      
+      <span class="vt vt-A">A+</span>
+      
+      
+      
+      <span class="vt vt-A">A</span>
+      
+      
+      
+      <span class="vt vt-B">B</span>
+      
+      
+      
+      <span class="vt vt-C">C</span>
+      
+      
+      
+      <span class="vt vt-D">D</span>
+      
+      
+      
+      <span class="vt vt-F on grade-F">F</span>
+      
+      <span class="vt-cap">危険</span>
+    </div>
+    <div class="verdict-stats">
+      <span class="vstat"><em class="grade-F-t">1</em><small>要優先対応（緊急・重要）</small></span>
+      <span class="vstat"><em>8.7</em><small>最大 CVSS-B（4.0）</small></span>
+      <span class="vstat"><em>4</em><small>診断ページ数</small></span>
+    </div>
+  </div>
+</div>
+<p class="verdict-cap">緊急（Critical）級の脆弱性は検出されていません。低評価は重要（High）級所見と設定不備の累積によるものです。</p>
+
+
+<div class="narrative"><p>本診断では、認可された検証環境に対し非破壊手法で 14 件の指摘事項を検出した。最も優先度が高いのは <strong>機微ファイル（<code>.git</code>／<code>.env</code>）の公開</strong>（VWR-001, CVSS 7.5）であり、ソースコードや認証情報の漏洩に直結しうるため即時是正を要する。次いで、<strong>入力値の無害化されない反射</strong>（反射型 XSS の兆候）、<strong>オープンリダイレクト</strong>、<strong>危険な HTTP メソッドの有効化</strong>が、フィッシングやセッション窃取の起点となりうる。</p><p>全体傾向として、セキュリティヘッダ（CSP・X-Content-Type-Options・クリックジャッキング対策）の未整備が全ページに横断し、多層防御が不足している。これらは単体の深刻度は中〜低だが、XSS 等の一次脆弱性と組み合わさると被害を拡大させる。まずは高深刻度の情報漏洩を塞ぎ、続いてヘッダ・Cookie 属性の全面適用へ進む二段構えを推奨する。</p></div>
+
+
+<h3>重大度別サマリ</h3>
+<div class="sev-grid">
+  
+  <div class="cell c-Critical">
+    <div class="k">緊急<span class="en">Critical</span></div>
+    <div class="v c-Critical">0</div>
+  </div>
+  
+  <div class="cell c-High">
+    <div class="k">重要<span class="en">High</span></div>
+    <div class="v c-High">1</div>
+  </div>
+  
+  <div class="cell c-Medium">
+    <div class="k">警告<span class="en">Medium</span></div>
+    <div class="v c-Medium">5</div>
+  </div>
+  
+  <div class="cell c-Low">
+    <div class="k">注意<span class="en">Low</span></div>
+    <div class="v c-Low">8</div>
+  </div>
+  
+  <div class="cell c-Info">
+    <div class="k">情報<span class="en">Info</span></div>
+    <div class="v c-Info">0</div>
+  </div>
+  
+</div>
+
+<h3>主要な検出事項</h3>
+<table class="data-table findings-summary">
+  <thead><tr><th>ID</th><th>重大度</th><th class="num">CVSS</th><th>所見</th><th>OWASP</th></tr></thead>
+  <tbody>
+  
+    <tr>
+      <td>VWR-001</td>
+      <td><span class="pill s-High">重要</span></td>
+      <td class="num">8.7</td>
+      <td>機微ファイル/ディレクトリの公開</td>
+      <td>A01:2025</td>
+    </tr>
+  
+    <tr>
+      <td>VWR-002</td>
+      <td><span class="pill s-Medium">警告</span></td>
+      <td class="num">6.9</td>
+      <td>サーバ/フレームワークのバージョン露出</td>
+      <td>A01:2025</td>
+    </tr>
+  
+    <tr>
+      <td>VWR-003</td>
+      <td><span class="pill s-Medium">警告</span></td>
+      <td class="num">6.9</td>
+      <td>ディレクトリリスティングが有効</td>
+      <td>A01:2025</td>
+    </tr>
+  
+    <tr>
+      <td>VWR-004</td>
+      <td><span class="pill s-Medium">警告</span></td>
+      <td class="num">6.9</td>
+      <td>危険な HTTP メソッドが有効（TRACE/PUT/DELETE 等）</td>
+      <td>A02:2025</td>
+    </tr>
+  
+    <tr>
+      <td>VWR-005</td>
+      <td><span class="pill s-Medium">警告</span></td>
+      <td class="num">5.1</td>
+      <td>オープンリダイレクトの可能性</td>
+      <td>A01:2025</td>
+    </tr>
+  
+    <tr>
+      <td>VWR-006</td>
+      <td><span class="pill s-Medium">警告</span></td>
+      <td class="num">5.1</td>
+      <td>入力値の無害化されない反射（XSS の兆候）</td>
+      <td>A05:2025</td>
+    </tr>
+  
+    <tr>
+      <td>VWR-007</td>
+      <td><span class="pill s-Low">注意</span></td>
+      <td class="num">2.3</td>
+      <td>Referrer-Policy 未設定</td>
+      <td>A01:2025</td>
+    </tr>
+  
+    <tr>
+      <td>VWR-008</td>
+      <td><span class="pill s-Low">注意</span></td>
+      <td class="num">2.1</td>
+      <td>X-Content-Type-Options: nosniff 未設定</td>
+      <td>A02:2025</td>
+    </tr>
+  
+  </tbody>
+</table>
+
+
+<h3>改善ロードマップ ／ 優先度</h3>
+<div class="narrative"><ol><li><strong>即時（〜1週間）:</strong> <code>.git</code>／<code>.env</code> 等の機微ファイルを公開領域から除去し、Web サーバで拒否設定。漏洩した可能性のある認証情報はローテーションする。</li><li><strong>短期（〜1か月）:</strong> 反射型 XSS・オープンリダイレクトの入力/出力検証を実装。不要な HTTP メソッド（TRACE/PUT/DELETE）を無効化。</li><li><strong>中期（〜3か月）:</strong> セキュリティヘッダ（CSP を Report-Only から段階導入、X-Content-Type-Options、X-Frame-Options、Referrer-Policy）と Cookie 属性（Secure/HttpOnly/SameSite）を全面適用。クライアントライブラリを最新化し SCA を CI に組み込む。</li><li><strong>継続:</strong> 是正後の再診断と、リリースパイプラインへの自動セキュリティチェック統合。</li></ol></div>
+
+
+<!-- ===== 2. 診断範囲と手法 ===== -->
+<h2 class="numbered" id="sec-scope">診断範囲と手法</h2>
+<div class="kv">
+<table>
+  <tbody>
+    <tr><th>診断対象</th><td>http://127.0.0.1:8899</td></tr>
+    <tr><th>スコープ（ホスト）</th><td>127.0.0.1</td></tr>
+    <tr><th>巡回ページ数</th><td>4</td></tr>
+    <tr><th>診断方式</th><td>ハイブリッド（内蔵チェック）／ 非破壊</td></tr>
+    <tr><th>使用ツール</th><td>内蔵チェックエンジン</td></tr>
+    <tr><th>認可の根拠</th><td>社内検証環境（ローカルフィクスチャ・書面認可相当）</td></tr>
+    <tr><th>実施日時</th><td>2026-07-14 18:37 (UTC)</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3>診断手法と評価基準（準拠標準）</h3>
+<p>本診断は次の標準に準拠する。診断手法は <strong>OWASP WSTG</strong>（Web Security Testing Guide、
+非破壊で機械的に検証可能な項目に限定）に基づき、検出事項を <strong>OWASP Top 10:2025</strong>（現行
+公開版）と CWE で分類、深刻度は <strong>CVSS 4.0 基本値（CVSS-B）</strong>で評価し、検証要件は
+<strong>OWASP ASVS 5.0.0</strong>（該当する要件番号・レベルを所見に併記）を参照する。診断は認可された
+範囲に限定し、データ改変・サービス妨害・破壊的操作を伴わない非破壊手法で実施している。</p>
+<p class="note">補足: (1) CVSS 4.0 のスコアは CVSS 3.1 と互換性がない（同一事象でも数値が異なる）。
+本報告書は Base のみ（CVSS-B、脅威情勢 E は最悪ケース前提）を用いる。 (2) 一部のチェック（CSP・
+一部セキュリティヘッダ・SRI・混在コンテンツ）は WSTG v4.2 に専用テスト ID が無く、独自根拠で診断
+している。 (3) CWE は本スキル独自付与（ASVS 5.0 は CWE 公式マッピングを廃止）。 (4) 自動・非破壊診断
+は ASVS の技術検証の一部であり、ASVS 認証・OWASP トラストマークを意味しない。</p>
+
+<h3>制約事項・免責</h3>
+<ul>
+  <li>本診断は非破壊の観測・安全な能動プローブに基づく。認証後領域や業務ロジックの詳細な検査
+      （手動ペネトレーションテスト）は範囲外である。</li>
+  <li>「古いコンポーネント」等の CVE 級判定は、外部脆弱性データベース（nuclei 等）を併用した項目に限る。
+      内蔵チェックのみの結果は構成・衛生面の指摘であり、個別 CVE の成立を保証するものではない。</li>
+  <li>検出事項は診断時点のスナップショットであり、以降の変更は反映されない。</li>
+</ul>
+
+<!-- ===== 3. 検出事項の詳細 ===== -->
+<h2 class="numbered" id="sec-findings">検出事項の詳細</h2>
+
+
+<div class="finding b-High">
+  <div class="fhead">
+    <span class="pill s-High">重要 / High</span>
+    <span class="fid">VWR-001</span>
+    <span class="chip">CVSS-B 8.7</span>
+    <span class="chip">確度 High</span>
+    
+  </div>
+  <h3 class="ftitle">機微ファイル/ディレクトリの公開</h3>
+  <p class="fdesc">`.git`/`.env`/バックアップ等の機微ファイルが公開領域から取得可能。</p>
+  <dl class="fmeta">
+    <div class="r"><dt>分類</dt><dd>A01:2025-アクセス制御の不備 ／ CWE-538</dd></div>
+    <div class="r"><dt>準拠参照</dt><dd>WSTG: WSTG-CONF-04 ／ ASVS: v5.0.0-13.4.1 (L1)</dd></div>
+    <div class="r"><dt>影響</dt><dd>ソースコード・認証情報・内部設定が漏洩し、深刻な侵害の起点となる。</dd></div>
+    <div class="r"><dt>対象</dt><dd class="affected"><code>http://127.0.0.1:8899/.git/HEAD</code><br><code>http://127.0.0.1:8899/.env</code></dd></div>
+    <div class="r"><dt>CVSS ベクタ</dt><dd><span class="chip mono">CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N</span></dd></div>
+  </dl>
+  <div class="evidence">HTTP 200 で取得可能（署名一致: &#39;ref: &#39;）
+（該当 2 箇所。詳細は「対象」欄を参照）</div>
+  <div class="remediation"><strong>推奨対策：</strong>当該ファイル/ディレクトリを公開領域から除去し、Web サーバで拒否する。</div>
+  
+  <div class="refs">参考: <a href="https://cwe.mitre.org/data/definitions/538.html">https://cwe.mitre.org/data/definitions/538.html</a></div>
+  
+</div>
+
+<div class="finding b-Medium">
+  <div class="fhead">
+    <span class="pill s-Medium">警告 / Medium</span>
+    <span class="fid">VWR-002</span>
+    <span class="chip">CVSS-B 6.9</span>
+    <span class="chip">確度 Medium</span>
+    
+  </div>
+  <h3 class="ftitle">サーバ/フレームワークのバージョン露出</h3>
+  <p class="fdesc">Server/X-Powered-By 等でソフトウェアとバージョンが露出し、既知脆弱性の 標的選定を容易にしている。</p>
+  <dl class="fmeta">
+    <div class="r"><dt>分類</dt><dd>A01:2025-アクセス制御の不備 ／ CWE-200</dd></div>
+    <div class="r"><dt>準拠参照</dt><dd>WSTG: WSTG-INFO-02 ／ ASVS: v5.0.0-13.4.6 (L3)</dd></div>
+    <div class="r"><dt>影響</dt><dd>攻撃者による脆弱性探索の効率化。</dd></div>
+    <div class="r"><dt>対象</dt><dd class="affected"><code>http://127.0.0.1:8899</code><br><code>http://127.0.0.1:8899/search?q=hello</code><br><code>http://127.0.0.1:8899/go?url=/next</code><br><code>http://127.0.0.1:8899/files/</code></dd></div>
+    <div class="r"><dt>CVSS ベクタ</dt><dd><span class="chip mono">CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N</span></dd></div>
+  </dl>
+  <div class="evidence">バージョン露出: BaseHTTP/0.6 Python/3.11.15, TestServer/1.2.3
+（該当 4 箇所。詳細は「対象」欄を参照）</div>
+  <div class="remediation"><strong>推奨対策：</strong>バージョン情報の露出を抑制する（トークン非表示・バナー抑制）。</div>
+  
+  <div class="refs">参考: <a href="https://cwe.mitre.org/data/definitions/200.html">https://cwe.mitre.org/data/definitions/200.html</a></div>
+  
+</div>
+
+<div class="finding b-Medium">
+  <div class="fhead">
+    <span class="pill s-Medium">警告 / Medium</span>
+    <span class="fid">VWR-003</span>
+    <span class="chip">CVSS-B 6.9</span>
+    <span class="chip">確度 High</span>
+    
+  </div>
+  <h3 class="ftitle">ディレクトリリスティングが有効</h3>
+  <p class="fdesc">自動インデックス表示が有効で、意図しないファイル一覧が閲覧できる。</p>
+  <dl class="fmeta">
+    <div class="r"><dt>分類</dt><dd>A01:2025-アクセス制御の不備 ／ CWE-548</dd></div>
+    <div class="r"><dt>準拠参照</dt><dd>WSTG: WSTG-CONF-04 ／ ASVS: v5.0.0-13.4.3 (L2)</dd></div>
+    <div class="r"><dt>影響</dt><dd>非公開ファイルの発見・情報収集を容易にする。</dd></div>
+    <div class="r"><dt>対象</dt><dd class="affected"><code>http://127.0.0.1:8899/files/</code></dd></div>
+    <div class="r"><dt>CVSS ベクタ</dt><dd><span class="chip mono">CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N</span></dd></div>
+  </dl>
+  <div class="evidence">自動インデックス表示の兆候（&#39;Index of /&#39;）</div>
+  <div class="remediation"><strong>推奨対策：</strong>Web サーバの自動インデックスを無効化する（`Options -Indexes` 等）。</div>
+  
+  <div class="refs">参考: <a href="https://cwe.mitre.org/data/definitions/548.html">https://cwe.mitre.org/data/definitions/548.html</a></div>
+  
+</div>
+
+<div class="finding b-Medium">
+  <div class="fhead">
+    <span class="pill s-Medium">警告 / Medium</span>
+    <span class="fid">VWR-004</span>
+    <span class="chip">CVSS-B 6.9</span>
+    <span class="chip">確度 High</span>
+    
+  </div>
+  <h3 class="ftitle">危険な HTTP メソッドが有効（TRACE/PUT/DELETE 等）</h3>
+  <p class="fdesc">OPTIONS 応答で TRACE/PUT/DELETE 等が許可されている。</p>
+  <dl class="fmeta">
+    <div class="r"><dt>分類</dt><dd>A02:2025-セキュリティの設定ミス（暫定・2025 CWE リスト未確認） ／ CWE-650</dd></div>
+    <div class="r"><dt>準拠参照</dt><dd>WSTG: WSTG-CONF-06 ／ ASVS: v5.0.0-13.4.4 (L2)</dd></div>
+    <div class="r"><dt>影響</dt><dd>Cross-Site Tracing や意図しないリソース操作の余地がある。</dd></div>
+    <div class="r"><dt>対象</dt><dd class="affected"><code>http://127.0.0.1:8899</code></dd></div>
+    <div class="r"><dt>CVSS ベクタ</dt><dd><span class="chip mono">CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:L/VI:L/VA:N/SC:N/SI:N/SA:N</span></dd></div>
+  </dl>
+  <div class="evidence">Allow ヘッダに危険メソッド: TRACE, PUT</div>
+  <div class="remediation"><strong>推奨対策：</strong>不要な HTTP メソッドを無効化し、必要なものだけ許可する。</div>
+  
+  <div class="refs">参考: <a href="https://cwe.mitre.org/data/definitions/650.html">https://cwe.mitre.org/data/definitions/650.html</a></div>
+  
+</div>
+
+<div class="finding b-Medium">
+  <div class="fhead">
+    <span class="pill s-Medium">警告 / Medium</span>
+    <span class="fid">VWR-005</span>
+    <span class="chip">CVSS-B 5.1</span>
+    <span class="chip">確度 Medium</span>
+    
+  </div>
+  <h3 class="ftitle">オープンリダイレクトの可能性</h3>
+  <p class="fdesc">リダイレクト先パラメータが検証されず、任意 URL へ誘導できる兆候がある。</p>
+  <dl class="fmeta">
+    <div class="r"><dt>分類</dt><dd>A01:2025-アクセス制御の不備 ／ CWE-601</dd></div>
+    <div class="r"><dt>準拠参照</dt><dd>WSTG: WSTG-CLNT-04 ／ ASVS: v5.0.0-3.7.2 (L2)</dd></div>
+    <div class="r"><dt>影響</dt><dd>フィッシングや OAuth トークン窃取の踏み台になりうる。</dd></div>
+    <div class="r"><dt>対象</dt><dd class="affected"><code>http://127.0.0.1:8899/go?url=https%3A%2F%2Fvwr-redirect-probe.example.org%2F</code></dd></div>
+    <div class="r"><dt>CVSS ベクタ</dt><dd><span class="chip mono">CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:A/VC:N/VI:N/VA:N/SC:L/SI:L/SA:N</span></dd></div>
+  </dl>
+  <div class="evidence">パラメータ &#39;url&#39; がリダイレクト先に反映（Location=https://vwr-redirect-probe.example.org/）</div>
+  <div class="remediation"><strong>推奨対策：</strong>リダイレクト先を相対パスまたは許可リストに限定する。</div>
+  
+  <div class="refs">参考: <a href="https://cwe.mitre.org/data/definitions/601.html">https://cwe.mitre.org/data/definitions/601.html</a></div>
+  
+</div>
+
+<div class="finding b-Medium">
+  <div class="fhead">
+    <span class="pill s-Medium">警告 / Medium</span>
+    <span class="fid">VWR-006</span>
+    <span class="chip">CVSS-B 5.1</span>
+    <span class="chip">確度 Medium</span>
+    
+  </div>
+  <h3 class="ftitle">入力値の無害化されない反射（XSS の兆候）</h3>
+  <p class="fdesc">無害な検査マーカーが HTML エスケープされずに応答へ反射している。反射型 XSS の疑い。</p>
+  <dl class="fmeta">
+    <div class="r"><dt>分類</dt><dd>A05:2025-インジェクション ／ CWE-79</dd></div>
+    <div class="r"><dt>準拠参照</dt><dd>WSTG: WSTG-INPV-01 ／ ASVS: v5.0.0-1.2.1 (L1)</dd></div>
+    <div class="r"><dt>影響</dt><dd>スクリプト注入によりセッション窃取・改竄・なりすましが生じうる。</dd></div>
+    <div class="r"><dt>対象</dt><dd class="affected"><code>http://127.0.0.1:8899/search?q=vwrPROBE9137%3C%22%27</code></dd></div>
+    <div class="r"><dt>CVSS ベクタ</dt><dd><span class="chip mono">CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:A/VC:N/VI:N/VA:N/SC:L/SI:L/SA:N</span></dd></div>
+  </dl>
+  <div class="evidence">パラメータ &#39;q&#39; の値が無害化されず反射（マーカー検出）</div>
+  <div class="remediation"><strong>推奨対策：</strong>出力コンテキストに応じたエスケープ/サニタイズを施し、CSP を併用する。</div>
+  
+  <div class="refs">参考: <a href="https://owasp.org/www-community/attacks/xss/">https://owasp.org/www-community/attacks/xss/</a></div>
+  
+</div>
+
+<div class="finding b-Low">
+  <div class="fhead">
+    <span class="pill s-Low">注意 / Low</span>
+    <span class="fid">VWR-007</span>
+    <span class="chip">CVSS-B 2.3</span>
+    <span class="chip">確度 Medium</span>
+    
+  </div>
+  <h3 class="ftitle">Referrer-Policy 未設定</h3>
+  <p class="fdesc">リファラ制御が無く、URL に含まれる機微情報が外部サイトへ送出される余地がある。</p>
+  <dl class="fmeta">
+    <div class="r"><dt>分類</dt><dd>A01:2025-アクセス制御の不備 ／ CWE-200</dd></div>
+    <div class="r"><dt>準拠参照</dt><dd>WSTG: 該当なし（独自根拠） ／ ASVS: v5.0.0-3.4.5 (L2)</dd></div>
+    <div class="r"><dt>影響</dt><dd>トークンや内部パスを含む URL が第三者に漏れうる。</dd></div>
+    <div class="r"><dt>対象</dt><dd class="affected"><code>http://127.0.0.1:8899</code><br><code>http://127.0.0.1:8899/search?q=hello</code><br><code>http://127.0.0.1:8899/go?url=/next</code><br><code>http://127.0.0.1:8899/files/</code></dd></div>
+    <div class="r"><dt>CVSS ベクタ</dt><dd><span class="chip mono">CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:P/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N</span></dd></div>
+  </dl>
+  <div class="evidence">Referrer-Policy が未設定
+（該当 4 箇所。詳細は「対象」欄を参照）</div>
+  <div class="remediation"><strong>推奨対策：</strong>`Referrer-Policy: strict-origin-when-cross-origin` 等を設定する。</div>
+  
+  <div class="refs">参考: <a href="https://owasp.org/www-project-secure-headers/">https://owasp.org/www-project-secure-headers/</a></div>
+  
+</div>
+
+<div class="finding b-Low">
+  <div class="fhead">
+    <span class="pill s-Low">注意 / Low</span>
+    <span class="fid">VWR-008</span>
+    <span class="chip">CVSS-B 2.1</span>
+    <span class="chip">確度 High</span>
+    
+  </div>
+  <h3 class="ftitle">X-Content-Type-Options: nosniff 未設定</h3>
+  <p class="fdesc">MIME スニッフィング抑止ヘッダが無く、ブラウザがコンテンツ型を誤推定して スクリプトとして解釈する余地がある。</p>
+  <dl class="fmeta">
+    <div class="r"><dt>分類</dt><dd>A02:2025-セキュリティの設定ミス ／ CWE-16</dd></div>
+    <div class="r"><dt>準拠参照</dt><dd>WSTG: 該当なし（独自根拠） ／ ASVS: v5.0.0-3.4.4 (L2)</dd></div>
+    <div class="r"><dt>影響</dt><dd>アップロードファイル等を悪用したコンテンツ実行の一因となりうる。</dd></div>
+    <div class="r"><dt>対象</dt><dd class="affected"><code>http://127.0.0.1:8899</code><br><code>http://127.0.0.1:8899/search?q=hello</code><br><code>http://127.0.0.1:8899/go?url=/next</code><br><code>http://127.0.0.1:8899/files/</code></dd></div>
+    <div class="r"><dt>CVSS ベクタ</dt><dd><span class="chip mono">CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:A/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N</span></dd></div>
+  </dl>
+  <div class="evidence">X-Content-Type-Options: nosniff が未設定
+（該当 4 箇所。詳細は「対象」欄を参照）</div>
+  <div class="remediation"><strong>推奨対策：</strong>全応答に `X-Content-Type-Options: nosniff` を付与する。</div>
+  
+  <div class="refs">参考: <a href="https://owasp.org/www-project-secure-headers/">https://owasp.org/www-project-secure-headers/</a></div>
+  
+</div>
+
+<div class="finding b-Low">
+  <div class="fhead">
+    <span class="pill s-Low">注意 / Low</span>
+    <span class="fid">VWR-009</span>
+    <span class="chip">CVSS-B 2.1</span>
+    <span class="chip">確度 High</span>
+    
+  </div>
+  <h3 class="ftitle">Content-Security-Policy (CSP) 未設定</h3>
+  <p class="fdesc">CSP が無く、XSS 等のスクリプト注入に対する多層防御が欠如している。</p>
+  <dl class="fmeta">
+    <div class="r"><dt>分類</dt><dd>A06:2025-安全でない設計 ／ CWE-693</dd></div>
+    <div class="r"><dt>準拠参照</dt><dd>WSTG: 該当なし（独自根拠） ／ ASVS: v5.0.0-3.4.3 (L2)</dd></div>
+    <div class="r"><dt>影響</dt><dd>XSS の被害範囲を限定できず、任意スクリプト実行の影響が拡大しうる。</dd></div>
+    <div class="r"><dt>対象</dt><dd class="affected"><code>http://127.0.0.1:8899</code><br><code>http://127.0.0.1:8899/search?q=hello</code><br><code>http://127.0.0.1:8899/go?url=/next</code><br><code>http://127.0.0.1:8899/files/</code></dd></div>
+    <div class="r"><dt>CVSS ベクタ</dt><dd><span class="chip mono">CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:A/VC:L/VI:L/VA:N/SC:N/SI:N/SA:N</span></dd></div>
+  </dl>
+  <div class="evidence">Content-Security-Policy ヘッダが存在しない
+（該当 4 箇所。詳細は「対象」欄を参照）</div>
+  <div class="remediation"><strong>推奨対策：</strong>適切な `Content-Security-Policy` を段階的に導入する（まず `default-src &#39;self&#39;` を Report-Only で検証）。</div>
+  
+  <div class="refs">参考: <a href="https://owasp.org/www-community/controls/Content_Security_Policy">https://owasp.org/www-community/controls/Content_Security_Policy</a></div>
+  
+</div>
+
+<div class="finding b-Low">
+  <div class="fhead">
+    <span class="pill s-Low">注意 / Low</span>
+    <span class="fid">VWR-010</span>
+    <span class="chip">CVSS-B 2.1</span>
+    <span class="chip">確度 High</span>
+    
+  </div>
+  <h3 class="ftitle">クリックジャッキング対策（X-Frame-Options / frame-ancestors）未設定</h3>
+  <p class="fdesc">フレーム埋め込み制限が無く、UI を重ねてユーザー操作を騙し取るクリックジャッキングが可能。</p>
+  <dl class="fmeta">
+    <div class="r"><dt>分類</dt><dd>A06:2025-安全でない設計 ／ CWE-1021</dd></div>
+    <div class="r"><dt>準拠参照</dt><dd>WSTG: WSTG-CLNT-09 ／ ASVS: v5.0.0-3.4.6 (L2)</dd></div>
+    <div class="r"><dt>影響</dt><dd>利用者の意図しない操作（送金・設定変更等）を誘発されうる。</dd></div>
+    <div class="r"><dt>対象</dt><dd class="affected"><code>http://127.0.0.1:8899</code><br><code>http://127.0.0.1:8899/search?q=hello</code><br><code>http://127.0.0.1:8899/go?url=/next</code><br><code>http://127.0.0.1:8899/files/</code></dd></div>
+    <div class="r"><dt>CVSS ベクタ</dt><dd><span class="chip mono">CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:A/VC:N/VI:L/VA:N/SC:N/SI:N/SA:N</span></dd></div>
+  </dl>
+  <div class="evidence">X-Frame-Options も CSP frame-ancestors も未設定
+（該当 4 箇所。詳細は「対象」欄を参照）</div>
+  <div class="remediation"><strong>推奨対策：</strong>`X-Frame-Options: DENY`（または `SAMEORIGIN`）と CSP `frame-ancestors &#39;self&#39;` を設定する。</div>
+  
+  <div class="refs">参考: <a href="https://owasp.org/www-community/attacks/Clickjacking">https://owasp.org/www-community/attacks/Clickjacking</a></div>
+  
+</div>
+
+<div class="finding b-Low">
+  <div class="fhead">
+    <span class="pill s-Low">注意 / Low</span>
+    <span class="fid">VWR-011</span>
+    <span class="chip">CVSS-B 2.1</span>
+    <span class="chip">確度 Low</span>
+    
+  </div>
+  <h3 class="ftitle">Permissions-Policy（旧 Feature-Policy）未設定</h3>
+  <p class="fdesc">ブラウザ機能（カメラ・位置情報・全画面等）の利用制限ポリシーが未設定で、埋め込みコンテンツや XSS 時に機能を濫用される余地がある。</p>
+  <dl class="fmeta">
+    <div class="r"><dt>分類</dt><dd>A06:2025-安全でない設計 ／ CWE-693</dd></div>
+    <div class="r"><dt>準拠参照</dt><dd>WSTG: 該当なし（独自根拠） ／ ASVS: 該当なし</dd></div>
+    <div class="r"><dt>影響</dt><dd>第三者コンテンツによるカメラ/位置情報等の機能濫用の一因となりうる。</dd></div>
+    <div class="r"><dt>対象</dt><dd class="affected"><code>http://127.0.0.1:8899</code><br><code>http://127.0.0.1:8899/search?q=hello</code><br><code>http://127.0.0.1:8899/go?url=/next</code><br><code>http://127.0.0.1:8899/files/</code></dd></div>
+    <div class="r"><dt>CVSS ベクタ</dt><dd><span class="chip mono">CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:A/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N</span></dd></div>
+  </dl>
+  <div class="evidence">Permissions-Policy（旧 Feature-Policy）が未設定
+（該当 4 箇所。詳細は「対象」欄を参照）</div>
+  <div class="remediation"><strong>推奨対策：</strong>`Permissions-Policy` で不要なブラウザ機能を明示的に無効化する。</div>
+  
+  <div class="refs">参考: <a href="https://owasp.org/www-project-secure-headers/">https://owasp.org/www-project-secure-headers/</a></div>
+  
+</div>
+
+<div class="finding b-Low">
+  <div class="fhead">
+    <span class="pill s-Low">注意 / Low</span>
+    <span class="fid">VWR-012</span>
+    <span class="chip">CVSS-B 2.1</span>
+    <span class="chip">確度 Medium</span>
+    
+  </div>
+  <h3 class="ftitle">Cookie に HttpOnly 属性が無い</h3>
+  <p class="fdesc">HttpOnly が無く、XSS 発生時に JavaScript から Cookie を読み取られる。</p>
+  <dl class="fmeta">
+    <div class="r"><dt>分類</dt><dd>A02:2025-セキュリティの設定ミス ／ CWE-1004</dd></div>
+    <div class="r"><dt>準拠参照</dt><dd>WSTG: WSTG-SESS-02 ／ ASVS: v5.0.0-3.3.4 (L2)</dd></div>
+    <div class="r"><dt>影響</dt><dd>XSS と組み合わせてセッションクッキーが窃取される。</dd></div>
+    <div class="r"><dt>対象</dt><dd class="affected"><code>http://127.0.0.1:8899</code></dd></div>
+    <div class="r"><dt>CVSS ベクタ</dt><dd><span class="chip mono">CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:A/VC:N/VI:N/VA:N/SC:L/SI:N/SA:N</span></dd></div>
+  </dl>
+  <div class="evidence">Cookie &#39;SESSIONID&#39; に HttpOnly 属性が無い</div>
+  <div class="remediation"><strong>推奨対策：</strong>認証系 Cookie に `HttpOnly` 属性を付与する。</div>
+  
+  <div class="refs">参考: <a href="https://owasp.org/www-community/HttpOnly">https://owasp.org/www-community/HttpOnly</a></div>
+  
+</div>
+
+<div class="finding b-Low">
+  <div class="fhead">
+    <span class="pill s-Low">注意 / Low</span>
+    <span class="fid">VWR-013</span>
+    <span class="chip">CVSS-B 2.1</span>
+    <span class="chip">確度 Medium</span>
+    
+  </div>
+  <h3 class="ftitle">Cookie に SameSite 属性が無い</h3>
+  <p class="fdesc">SameSite が未指定で、CSRF に対する既定防御が弱い。</p>
+  <dl class="fmeta">
+    <div class="r"><dt>分類</dt><dd>A01:2025-アクセス制御の不備 ／ CWE-1275</dd></div>
+    <div class="r"><dt>準拠参照</dt><dd>WSTG: WSTG-SESS-02 ／ ASVS: v5.0.0-3.3.2 (L2)</dd></div>
+    <div class="r"><dt>影響</dt><dd>クロスサイトリクエストフォージェリの成立余地が広がる。</dd></div>
+    <div class="r"><dt>対象</dt><dd class="affected"><code>http://127.0.0.1:8899</code></dd></div>
+    <div class="r"><dt>CVSS ベクタ</dt><dd><span class="chip mono">CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:A/VC:N/VI:L/VA:N/SC:N/SI:N/SA:N</span></dd></div>
+  </dl>
+  <div class="evidence">Cookie &#39;SESSIONID&#39; に SameSite 属性が無い</div>
+  <div class="remediation"><strong>推奨対策：</strong>`SameSite=Lax`（または要件に応じ `Strict`）を設定する。</div>
+  
+  <div class="refs">参考: <a href="https://owasp.org/www-community/SameSite">https://owasp.org/www-community/SameSite</a></div>
+  
+</div>
+
+<div class="finding b-Low">
+  <div class="fhead">
+    <span class="pill s-Low">注意 / Low</span>
+    <span class="fid">VWR-014</span>
+    <span class="chip">CVSS-B 2.1</span>
+    <span class="chip">確度 Low</span>
+    
+  </div>
+  <h3 class="ftitle">古い可能性のあるクライアントライブラリの使用</h3>
+  <p class="fdesc">既知の古いバージョン痕跡を持つ JS ライブラリを検出。CVE 断定には外部 DB （nuclei 等）併用が必要。</p>
+  <dl class="fmeta">
+    <div class="r"><dt>分類</dt><dd>A03:2025-ソフトウェアサプライチェーンの障害 ／ CWE-1104</dd></div>
+    <div class="r"><dt>準拠参照</dt><dd>WSTG: 該当なし（独自根拠） ／ ASVS: v5.0.0-15.2.1 (L1)</dd></div>
+    <div class="r"><dt>影響</dt><dd>既知脆弱性を含む場合、XSS/プロトタイプ汚染等の影響を受けうる。</dd></div>
+    <div class="r"><dt>対象</dt><dd class="affected"><code>http://127.0.0.1:8899</code></dd></div>
+    <div class="r"><dt>CVSS ベクタ</dt><dd><span class="chip mono">CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:A/VC:L/VI:L/VA:N/SC:N/SI:N/SA:N</span></dd></div>
+  </dl>
+  <div class="evidence">古い可能性のあるライブラリ参照: js: /static/jquery-1.8.3.min.js</div>
+  <div class="remediation"><strong>推奨対策：</strong>依存ライブラリを最新の安定版へ更新し、SCA を継続導入する。</div>
+  
+  <div class="refs">参考: <a href="https://owasp.org/www-project-dependency-check/">https://owasp.org/www-project-dependency-check/</a></div>
+  
+</div>
+
+
+
+<!-- ===== 4. 付録 ===== -->
+<h2 class="numbered" id="sec-appendix">付録</h2>
+<h3>4.1 巡回したエンドポイント（抜粋）</h3>
+<table class="data-table">
+  <thead><tr><th>URL</th><th class="num">状態</th><th>技術情報</th></tr></thead>
+  <tbody>
+  
+    <tr>
+      <td>http://127.0.0.1:8899</td>
+      <td class="num">200</td>
+      <td>Server: BaseHTTP/0.6 Python/3.11.15, TestServer/1.2.3; js: /static/jquery-1.8.3.min.js</td>
+    </tr>
+  
+    <tr>
+      <td>http://127.0.0.1:8899/search?q=hello</td>
+      <td class="num">200</td>
+      <td>Server: BaseHTTP/0.6 Python/3.11.15, TestServer/1.2.3</td>
+    </tr>
+  
+    <tr>
+      <td>http://127.0.0.1:8899/go?url=/next</td>
+      <td class="num">302</td>
+      <td>Server: BaseHTTP/0.6 Python/3.11.15</td>
+    </tr>
+  
+    <tr>
+      <td>http://127.0.0.1:8899/files/</td>
+      <td class="num">200</td>
+      <td>Server: BaseHTTP/0.6 Python/3.11.15, TestServer/1.2.3</td>
+    </tr>
+  
+  </tbody>
+</table>
+
+
+<div class="disclaimer">
+  本報告書は http://127.0.0.1:8899 に対する認可済み脆弱性診断（文書番号 WVR-20260715）の結果であり、記載情報は
+  機密として取り扱うこと。診断は非破壊手法で実施し、検出事項は診断時点のものである。対策の実装後は
+  再診断を推奨する。使用ツール: 内蔵チェックエンジン。
+</div>
+
+</body>
+</html>

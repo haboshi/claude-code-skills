@@ -1,0 +1,470 @@
+{
+  "target": "http://127.0.0.1:8899",
+  "scope": {
+    "target": "http://127.0.0.1:8899",
+    "hosts": [
+      "127.0.0.1"
+    ],
+    "authorized_by": "社内検証環境（ローカルフィクスチャ・書面認可相当）",
+    "respect_robots": false,
+    "rate_per_sec": 0.0,
+    "max_pages": 30,
+    "max_depth": 3,
+    "started_at": "2026-07-14T18:37:37.517547+00:00",
+    "user_agent": "web-vuln-report/0.1 (authorized security assessment; +non-destructive)",
+    "finished_at": "2026-07-14T18:37:37.577118+00:00",
+    "pages_crawled": 4
+  },
+  "findings": [
+    {
+      "id": "VWR-001",
+      "check_id": "exposed-sensitive-file",
+      "title": "機微ファイル/ディレクトリの公開",
+      "owasp": "A01:2025-アクセス制御の不備",
+      "cwe": "CWE-538",
+      "wstg": "WSTG-CONF-04",
+      "asvs": "v5.0.0-13.4.1 (L1)",
+      "cvss_vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N",
+      "cvss_score": 8.7,
+      "confidence": "High",
+      "affected": [
+        "http://127.0.0.1:8899/.git/HEAD",
+        "http://127.0.0.1:8899/.env"
+      ],
+      "evidence": "HTTP 200 で取得可能（署名一致: 'ref: '）\n（該当 2 箇所。詳細は「対象」欄を参照）",
+      "description": "`.git`/`.env`/バックアップ等の機微ファイルが公開領域から取得可能。",
+      "impact": "ソースコード・認証情報・内部設定が漏洩し、深刻な侵害の起点となる。",
+      "remediation": "当該ファイル/ディレクトリを公開領域から除去し、Web サーバで拒否する。",
+      "references": [
+        "https://cwe.mitre.org/data/definitions/538.html"
+      ],
+      "source": "core",
+      "severity": "High",
+      "severity_ja": "重要"
+    },
+    {
+      "id": "VWR-002",
+      "check_id": "info-disclosure-banner",
+      "title": "サーバ/フレームワークのバージョン露出",
+      "owasp": "A01:2025-アクセス制御の不備",
+      "cwe": "CWE-200",
+      "wstg": "WSTG-INFO-02",
+      "asvs": "v5.0.0-13.4.6 (L3)",
+      "cvss_vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N",
+      "cvss_score": 6.9,
+      "confidence": "Medium",
+      "affected": [
+        "http://127.0.0.1:8899",
+        "http://127.0.0.1:8899/search?q=hello",
+        "http://127.0.0.1:8899/go?url=/next",
+        "http://127.0.0.1:8899/files/"
+      ],
+      "evidence": "バージョン露出: BaseHTTP/0.6 Python/3.11.15, TestServer/1.2.3\n（該当 4 箇所。詳細は「対象」欄を参照）",
+      "description": "Server/X-Powered-By 等でソフトウェアとバージョンが露出し、既知脆弱性の 標的選定を容易にしている。",
+      "impact": "攻撃者による脆弱性探索の効率化。",
+      "remediation": "バージョン情報の露出を抑制する（トークン非表示・バナー抑制）。",
+      "references": [
+        "https://cwe.mitre.org/data/definitions/200.html"
+      ],
+      "source": "core",
+      "severity": "Medium",
+      "severity_ja": "警告"
+    },
+    {
+      "id": "VWR-003",
+      "check_id": "directory-listing",
+      "title": "ディレクトリリスティングが有効",
+      "owasp": "A01:2025-アクセス制御の不備",
+      "cwe": "CWE-548",
+      "wstg": "WSTG-CONF-04",
+      "asvs": "v5.0.0-13.4.3 (L2)",
+      "cvss_vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N",
+      "cvss_score": 6.9,
+      "confidence": "High",
+      "affected": [
+        "http://127.0.0.1:8899/files/"
+      ],
+      "evidence": "自動インデックス表示の兆候（'Index of /'）",
+      "description": "自動インデックス表示が有効で、意図しないファイル一覧が閲覧できる。",
+      "impact": "非公開ファイルの発見・情報収集を容易にする。",
+      "remediation": "Web サーバの自動インデックスを無効化する（`Options -Indexes` 等）。",
+      "references": [
+        "https://cwe.mitre.org/data/definitions/548.html"
+      ],
+      "source": "core",
+      "severity": "Medium",
+      "severity_ja": "警告"
+    },
+    {
+      "id": "VWR-004",
+      "check_id": "risky-http-method",
+      "title": "危険な HTTP メソッドが有効（TRACE/PUT/DELETE 等）",
+      "owasp": "A02:2025-セキュリティの設定ミス（暫定・2025 CWE リスト未確認）",
+      "cwe": "CWE-650",
+      "wstg": "WSTG-CONF-06",
+      "asvs": "v5.0.0-13.4.4 (L2)",
+      "cvss_vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:L/VI:L/VA:N/SC:N/SI:N/SA:N",
+      "cvss_score": 6.9,
+      "confidence": "High",
+      "affected": [
+        "http://127.0.0.1:8899"
+      ],
+      "evidence": "Allow ヘッダに危険メソッド: TRACE, PUT",
+      "description": "OPTIONS 応答で TRACE/PUT/DELETE 等が許可されている。",
+      "impact": "Cross-Site Tracing や意図しないリソース操作の余地がある。",
+      "remediation": "不要な HTTP メソッドを無効化し、必要なものだけ許可する。",
+      "references": [
+        "https://cwe.mitre.org/data/definitions/650.html"
+      ],
+      "source": "core",
+      "severity": "Medium",
+      "severity_ja": "警告"
+    },
+    {
+      "id": "VWR-005",
+      "check_id": "open-redirect",
+      "title": "オープンリダイレクトの可能性",
+      "owasp": "A01:2025-アクセス制御の不備",
+      "cwe": "CWE-601",
+      "wstg": "WSTG-CLNT-04",
+      "asvs": "v5.0.0-3.7.2 (L2)",
+      "cvss_vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:A/VC:N/VI:N/VA:N/SC:L/SI:L/SA:N",
+      "cvss_score": 5.1,
+      "confidence": "Medium",
+      "affected": [
+        "http://127.0.0.1:8899/go?url=https%3A%2F%2Fvwr-redirect-probe.example.org%2F"
+      ],
+      "evidence": "パラメータ 'url' がリダイレクト先に反映（Location=https://vwr-redirect-probe.example.org/）",
+      "description": "リダイレクト先パラメータが検証されず、任意 URL へ誘導できる兆候がある。",
+      "impact": "フィッシングや OAuth トークン窃取の踏み台になりうる。",
+      "remediation": "リダイレクト先を相対パスまたは許可リストに限定する。",
+      "references": [
+        "https://cwe.mitre.org/data/definitions/601.html"
+      ],
+      "source": "core",
+      "severity": "Medium",
+      "severity_ja": "警告"
+    },
+    {
+      "id": "VWR-006",
+      "check_id": "reflected-input",
+      "title": "入力値の無害化されない反射（XSS の兆候）",
+      "owasp": "A05:2025-インジェクション",
+      "cwe": "CWE-79",
+      "wstg": "WSTG-INPV-01",
+      "asvs": "v5.0.0-1.2.1 (L1)",
+      "cvss_vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:A/VC:N/VI:N/VA:N/SC:L/SI:L/SA:N",
+      "cvss_score": 5.1,
+      "confidence": "Medium",
+      "affected": [
+        "http://127.0.0.1:8899/search?q=vwrPROBE9137%3C%22%27"
+      ],
+      "evidence": "パラメータ 'q' の値が無害化されず反射（マーカー検出）",
+      "description": "無害な検査マーカーが HTML エスケープされずに応答へ反射している。反射型 XSS の疑い。",
+      "impact": "スクリプト注入によりセッション窃取・改竄・なりすましが生じうる。",
+      "remediation": "出力コンテキストに応じたエスケープ/サニタイズを施し、CSP を併用する。",
+      "references": [
+        "https://owasp.org/www-community/attacks/xss/"
+      ],
+      "source": "core",
+      "severity": "Medium",
+      "severity_ja": "警告"
+    },
+    {
+      "id": "VWR-007",
+      "check_id": "missing-referrer-policy",
+      "title": "Referrer-Policy 未設定",
+      "owasp": "A01:2025-アクセス制御の不備",
+      "cwe": "CWE-200",
+      "wstg": null,
+      "asvs": "v5.0.0-3.4.5 (L2)",
+      "cvss_vector": "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:P/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N",
+      "cvss_score": 2.3,
+      "confidence": "Medium",
+      "affected": [
+        "http://127.0.0.1:8899",
+        "http://127.0.0.1:8899/search?q=hello",
+        "http://127.0.0.1:8899/go?url=/next",
+        "http://127.0.0.1:8899/files/"
+      ],
+      "evidence": "Referrer-Policy が未設定\n（該当 4 箇所。詳細は「対象」欄を参照）",
+      "description": "リファラ制御が無く、URL に含まれる機微情報が外部サイトへ送出される余地がある。",
+      "impact": "トークンや内部パスを含む URL が第三者に漏れうる。",
+      "remediation": "`Referrer-Policy: strict-origin-when-cross-origin` 等を設定する。",
+      "references": [
+        "https://owasp.org/www-project-secure-headers/"
+      ],
+      "source": "core",
+      "severity": "Low",
+      "severity_ja": "注意"
+    },
+    {
+      "id": "VWR-008",
+      "check_id": "missing-xcto",
+      "title": "X-Content-Type-Options: nosniff 未設定",
+      "owasp": "A02:2025-セキュリティの設定ミス",
+      "cwe": "CWE-16",
+      "wstg": null,
+      "asvs": "v5.0.0-3.4.4 (L2)",
+      "cvss_vector": "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:A/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N",
+      "cvss_score": 2.1,
+      "confidence": "High",
+      "affected": [
+        "http://127.0.0.1:8899",
+        "http://127.0.0.1:8899/search?q=hello",
+        "http://127.0.0.1:8899/go?url=/next",
+        "http://127.0.0.1:8899/files/"
+      ],
+      "evidence": "X-Content-Type-Options: nosniff が未設定\n（該当 4 箇所。詳細は「対象」欄を参照）",
+      "description": "MIME スニッフィング抑止ヘッダが無く、ブラウザがコンテンツ型を誤推定して スクリプトとして解釈する余地がある。",
+      "impact": "アップロードファイル等を悪用したコンテンツ実行の一因となりうる。",
+      "remediation": "全応答に `X-Content-Type-Options: nosniff` を付与する。",
+      "references": [
+        "https://owasp.org/www-project-secure-headers/"
+      ],
+      "source": "core",
+      "severity": "Low",
+      "severity_ja": "注意"
+    },
+    {
+      "id": "VWR-009",
+      "check_id": "missing-csp",
+      "title": "Content-Security-Policy (CSP) 未設定",
+      "owasp": "A06:2025-安全でない設計",
+      "cwe": "CWE-693",
+      "wstg": null,
+      "asvs": "v5.0.0-3.4.3 (L2)",
+      "cvss_vector": "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:A/VC:L/VI:L/VA:N/SC:N/SI:N/SA:N",
+      "cvss_score": 2.1,
+      "confidence": "High",
+      "affected": [
+        "http://127.0.0.1:8899",
+        "http://127.0.0.1:8899/search?q=hello",
+        "http://127.0.0.1:8899/go?url=/next",
+        "http://127.0.0.1:8899/files/"
+      ],
+      "evidence": "Content-Security-Policy ヘッダが存在しない\n（該当 4 箇所。詳細は「対象」欄を参照）",
+      "description": "CSP が無く、XSS 等のスクリプト注入に対する多層防御が欠如している。",
+      "impact": "XSS の被害範囲を限定できず、任意スクリプト実行の影響が拡大しうる。",
+      "remediation": "適切な `Content-Security-Policy` を段階的に導入する（まず `default-src 'self'` を Report-Only で検証）。",
+      "references": [
+        "https://owasp.org/www-community/controls/Content_Security_Policy"
+      ],
+      "source": "core",
+      "severity": "Low",
+      "severity_ja": "注意"
+    },
+    {
+      "id": "VWR-010",
+      "check_id": "missing-frame-options",
+      "title": "クリックジャッキング対策（X-Frame-Options / frame-ancestors）未設定",
+      "owasp": "A06:2025-安全でない設計",
+      "cwe": "CWE-1021",
+      "wstg": "WSTG-CLNT-09",
+      "asvs": "v5.0.0-3.4.6 (L2)",
+      "cvss_vector": "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:A/VC:N/VI:L/VA:N/SC:N/SI:N/SA:N",
+      "cvss_score": 2.1,
+      "confidence": "High",
+      "affected": [
+        "http://127.0.0.1:8899",
+        "http://127.0.0.1:8899/search?q=hello",
+        "http://127.0.0.1:8899/go?url=/next",
+        "http://127.0.0.1:8899/files/"
+      ],
+      "evidence": "X-Frame-Options も CSP frame-ancestors も未設定\n（該当 4 箇所。詳細は「対象」欄を参照）",
+      "description": "フレーム埋め込み制限が無く、UI を重ねてユーザー操作を騙し取るクリックジャッキングが可能。",
+      "impact": "利用者の意図しない操作（送金・設定変更等）を誘発されうる。",
+      "remediation": "`X-Frame-Options: DENY`（または `SAMEORIGIN`）と CSP `frame-ancestors 'self'` を設定する。",
+      "references": [
+        "https://owasp.org/www-community/attacks/Clickjacking"
+      ],
+      "source": "core",
+      "severity": "Low",
+      "severity_ja": "注意"
+    },
+    {
+      "id": "VWR-011",
+      "check_id": "missing-permissions-policy",
+      "title": "Permissions-Policy（旧 Feature-Policy）未設定",
+      "owasp": "A06:2025-安全でない設計",
+      "cwe": "CWE-693",
+      "wstg": null,
+      "asvs": "該当なし",
+      "cvss_vector": "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:A/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N",
+      "cvss_score": 2.1,
+      "confidence": "Low",
+      "affected": [
+        "http://127.0.0.1:8899",
+        "http://127.0.0.1:8899/search?q=hello",
+        "http://127.0.0.1:8899/go?url=/next",
+        "http://127.0.0.1:8899/files/"
+      ],
+      "evidence": "Permissions-Policy（旧 Feature-Policy）が未設定\n（該当 4 箇所。詳細は「対象」欄を参照）",
+      "description": "ブラウザ機能（カメラ・位置情報・全画面等）の利用制限ポリシーが未設定で、埋め込みコンテンツや XSS 時に機能を濫用される余地がある。",
+      "impact": "第三者コンテンツによるカメラ/位置情報等の機能濫用の一因となりうる。",
+      "remediation": "`Permissions-Policy` で不要なブラウザ機能を明示的に無効化する。",
+      "references": [
+        "https://owasp.org/www-project-secure-headers/"
+      ],
+      "source": "core",
+      "severity": "Low",
+      "severity_ja": "注意"
+    },
+    {
+      "id": "VWR-012",
+      "check_id": "cookie-no-httponly",
+      "title": "Cookie に HttpOnly 属性が無い",
+      "owasp": "A02:2025-セキュリティの設定ミス",
+      "cwe": "CWE-1004",
+      "wstg": "WSTG-SESS-02",
+      "asvs": "v5.0.0-3.3.4 (L2)",
+      "cvss_vector": "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:A/VC:N/VI:N/VA:N/SC:L/SI:N/SA:N",
+      "cvss_score": 2.1,
+      "confidence": "Medium",
+      "affected": [
+        "http://127.0.0.1:8899"
+      ],
+      "evidence": "Cookie 'SESSIONID' に HttpOnly 属性が無い",
+      "description": "HttpOnly が無く、XSS 発生時に JavaScript から Cookie を読み取られる。",
+      "impact": "XSS と組み合わせてセッションクッキーが窃取される。",
+      "remediation": "認証系 Cookie に `HttpOnly` 属性を付与する。",
+      "references": [
+        "https://owasp.org/www-community/HttpOnly"
+      ],
+      "source": "core",
+      "severity": "Low",
+      "severity_ja": "注意"
+    },
+    {
+      "id": "VWR-013",
+      "check_id": "cookie-no-samesite",
+      "title": "Cookie に SameSite 属性が無い",
+      "owasp": "A01:2025-アクセス制御の不備",
+      "cwe": "CWE-1275",
+      "wstg": "WSTG-SESS-02",
+      "asvs": "v5.0.0-3.3.2 (L2)",
+      "cvss_vector": "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:A/VC:N/VI:L/VA:N/SC:N/SI:N/SA:N",
+      "cvss_score": 2.1,
+      "confidence": "Medium",
+      "affected": [
+        "http://127.0.0.1:8899"
+      ],
+      "evidence": "Cookie 'SESSIONID' に SameSite 属性が無い",
+      "description": "SameSite が未指定で、CSRF に対する既定防御が弱い。",
+      "impact": "クロスサイトリクエストフォージェリの成立余地が広がる。",
+      "remediation": "`SameSite=Lax`（または要件に応じ `Strict`）を設定する。",
+      "references": [
+        "https://owasp.org/www-community/SameSite"
+      ],
+      "source": "core",
+      "severity": "Low",
+      "severity_ja": "注意"
+    },
+    {
+      "id": "VWR-014",
+      "check_id": "outdated-library",
+      "title": "古い可能性のあるクライアントライブラリの使用",
+      "owasp": "A03:2025-ソフトウェアサプライチェーンの障害",
+      "cwe": "CWE-1104",
+      "wstg": null,
+      "asvs": "v5.0.0-15.2.1 (L1)",
+      "cvss_vector": "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:A/VC:L/VI:L/VA:N/SC:N/SI:N/SA:N",
+      "cvss_score": 2.1,
+      "confidence": "Low",
+      "affected": [
+        "http://127.0.0.1:8899"
+      ],
+      "evidence": "古い可能性のあるライブラリ参照: js: /static/jquery-1.8.3.min.js",
+      "description": "既知の古いバージョン痕跡を持つ JS ライブラリを検出。CVE 断定には外部 DB （nuclei 等）併用が必要。",
+      "impact": "既知脆弱性を含む場合、XSS/プロトタイプ汚染等の影響を受けうる。",
+      "remediation": "依存ライブラリを最新の安定版へ更新し、SCA を継続導入する。",
+      "references": [
+        "https://owasp.org/www-project-dependency-check/"
+      ],
+      "source": "core",
+      "severity": "Low",
+      "severity_ja": "注意"
+    }
+  ],
+  "summary": {
+    "total": 14,
+    "by_severity": {
+      "Critical": 0,
+      "High": 1,
+      "Medium": 5,
+      "Low": 8,
+      "Info": 0
+    },
+    "by_severity_ja": {
+      "緊急": 0,
+      "重要": 1,
+      "警告": 5,
+      "注意": 8,
+      "情報": 0
+    },
+    "owasp_coverage": {
+      "A01:2025-アクセス制御の不備": 6,
+      "A02:2025-セキュリティの設定ミス": 2,
+      "A02:2025-セキュリティの設定ミス（暫定・2025 CWE リスト未確認）": 1,
+      "A03:2025-ソフトウェアサプライチェーンの障害": 1,
+      "A05:2025-インジェクション": 1,
+      "A06:2025-安全でない設計": 3
+    },
+    "max_cvss": 8.7,
+    "risk_score": 100,
+    "risk_rating": "高い",
+    "security_score": 27,
+    "grade": "F",
+    "grade_base": "F",
+    "grade_capped": false,
+    "grade_rating": "危険",
+    "grade_meaning": "早急に対応すべき深刻な問題が確認されました。",
+    "grade_context": "緊急（Critical）級の脆弱性は検出されていません。低評価は重要（High）級所見と設定不備の累積によるものです。",
+    "severe_present": true,
+    "worst_severity": "High",
+    "worst_severity_ja": "重要"
+  },
+  "scored_at": "2026-07-14T18:37:37.599626+00:00",
+  "pages": [
+    {
+      "url": "http://127.0.0.1:8899",
+      "status": 200,
+      "content_type": "text/html; charset=utf-8",
+      "server": "BaseHTTP/0.6 Python/3.11.15, TestServer/1.2.3",
+      "technologies": [
+        "Server: BaseHTTP/0.6 Python/3.11.15, TestServer/1.2.3",
+        "js: /static/jquery-1.8.3.min.js"
+      ],
+      "title": "Vuln Test App"
+    },
+    {
+      "url": "http://127.0.0.1:8899/search?q=hello",
+      "status": 200,
+      "content_type": "text/html; charset=utf-8",
+      "server": "BaseHTTP/0.6 Python/3.11.15, TestServer/1.2.3",
+      "technologies": [
+        "Server: BaseHTTP/0.6 Python/3.11.15, TestServer/1.2.3"
+      ],
+      "title": ""
+    },
+    {
+      "url": "http://127.0.0.1:8899/go?url=/next",
+      "status": 302,
+      "content_type": "",
+      "server": "BaseHTTP/0.6 Python/3.11.15",
+      "technologies": [
+        "Server: BaseHTTP/0.6 Python/3.11.15"
+      ]
+    },
+    {
+      "url": "http://127.0.0.1:8899/files/",
+      "status": 200,
+      "content_type": "text/html; charset=utf-8",
+      "server": "BaseHTTP/0.6 Python/3.11.15, TestServer/1.2.3",
+      "technologies": [
+        "Server: BaseHTTP/0.6 Python/3.11.15, TestServer/1.2.3"
+      ],
+      "title": "Directory listing for /files/"
+    }
+  ]
+}

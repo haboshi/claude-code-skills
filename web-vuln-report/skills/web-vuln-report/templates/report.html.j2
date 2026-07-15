@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>脆弱性診断報告書 - {{ target }}</title>
+<style>{{ css|safe }}</style>
+<style>.doc-id-src { string-set: doc-id content(text); }</style>
+</head>
+<body>
+
+{% set doc_id = "WVR-" ~ issued_date|replace("-", "") %}
+
+<!-- ===== 表紙 ===== -->
+<section class="cover">
+  <div class="rule-top"></div>
+  <div class="mark">
+    <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="security shield">
+      <path d="M32 3 L57 12 V33 C57 47 46 57 32 62 C18 57 7 47 7 33 V12 Z" fill="#0f2e4a"/>
+      <path d="M32 3 L57 12 V33 C57 47 46 57 32 62 C18 57 7 47 7 33 V12 Z" fill="none" stroke="#163e63" stroke-width="0.6"/>
+      <path d="M21.5 33 l7 7 l14.5 -16.5" stroke="#ffffff" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </svg>
+  </div>
+  <div class="doc-type">Security Assessment Report</div>
+  <h1>脆弱性診断報告書</h1>
+  <div class="subtitle">Web アプリケーション セキュリティ診断</div>
+
+  <div class="target-plate">{{ target }}</div>
+
+  <div class="meta-card">
+    <dl>
+      <div class="row"><dt>診断対象</dt><dd>{{ target }}</dd></div>
+      <div class="row"><dt>診断実施日</dt><dd>{{ assessed_date }}</dd></div>
+      <div class="row"><dt>報告書発行日</dt><dd>{{ issued_date }}</dd></div>
+      {% if assessor %}<div class="row"><dt>実施者</dt><dd>{{ assessor }}</dd></div>{% endif %}
+      <div class="row"><dt>認可の根拠</dt><dd>{{ authorized_by }}</dd></div>
+      <div class="row"><dt>文書番号</dt><dd class="doc-id-src">{{ doc_id }}</dd></div>
+    </dl>
+  </div>
+
+  <div class="seal"><span class="badge">CONFIDENTIAL ／ 取扱注意</span></div>
+  <div class="handling">
+    本報告書は診断対象組織の機密情報を含みます。関係者以外への開示・複製・二次配布を禁じます。
+    記載の検出事項は診断時点のスナップショットであり、対策実装後の再診断を推奨します。
+  </div>
+
+  <div class="system-note">
+    <div class="scale">
+      <span style="background:#9b1c1c"></span><span style="background:#d1410c"></span><span style="background:#eab308"></span><span style="background:#1d4e89"></span><span style="background:#5b6b7a"></span>
+    </div>
+    <div class="caption">OWASP Top 10:2025 ／ CVSS 4.0 ／ WSTG ／ ASVS 5.0.0 準拠</div>
+  </div>
+</section>
+
+<!-- ===== 目次 ===== -->
+<section class="toc">
+  <div class="eyebrow">Contents</div>
+  <h2 id="toc-h">目次</h2>
+  <ol>
+    <li><a href="#sec-summary"><span class="n">1</span><span class="t">エグゼクティブサマリ</span><span class="leader"></span></a></li>
+    <li><a href="#sec-scope"><span class="n">2</span><span class="t">診断範囲と手法</span><span class="leader"></span></a></li>
+    <li><a href="#sec-findings"><span class="n">3</span><span class="t">検出事項の詳細</span><span class="leader"></span></a></li>
+    <li><a href="#sec-appendix"><span class="n">4</span><span class="t">付録</span><span class="leader"></span></a></li>
+  </ol>
+
+  <div class="legend">
+    <span class="eyebrow">重大度の凡例 ／ Severity Legend</span>
+    <div class="lrow"><span class="pill s-Critical">緊急 Critical</span><span class="rng"><span class="u">CVSS</span> 9.0–10.0</span><span class="desc">即時対応。悪用が容易で影響が甚大。</span></div>
+    <div class="lrow"><span class="pill s-High">重要 High</span><span class="rng"><span class="u">CVSS</span> 7.0–8.9</span><span class="desc">優先対応。重大な情報漏洩・侵害の起点となりうる。</span></div>
+    <div class="lrow"><span class="pill s-Medium">警告 Medium</span><span class="rng"><span class="u">CVSS</span> 4.0–6.9</span><span class="desc">計画的に是正。多層防御の不足など。</span></div>
+    <div class="lrow"><span class="pill s-Low">注意 Low</span><span class="rng"><span class="u">CVSS</span> 0.1–3.9</span><span class="desc">影響は限定的。ベストプラクティスからの逸脱。</span></div>
+    <div class="lrow"><span class="pill s-Info">情報 Info</span><span class="rng">—</span><span class="desc">参考情報。直接の脆弱性ではない。</span></div>
+    <p class="note" style="margin-top:0.8rem;">深刻度は <strong>CVSS 4.0 基本値（CVSS-B）</strong>で評価し、検出事項を OWASP Top 10:2025 / CWE で分類、診断手法は WSTG、検証要件は ASVS 5.0.0 を参照する。総合評価は<strong>セキュリティグレード（A＝安全 〜 F＝危険）</strong>で示し、満点 100 からの減点式スコアと最も重い所見による上限（キャップ）で決定する（A に近いほど安全）。</p>
+  </div>
+</section>
+
+<!-- ===== 1. エグゼクティブサマリ ===== -->
+<h2 class="numbered" id="sec-summary">エグゼクティブサマリ</h2>
+
+{% set g = summary.grade %}
+{% set gl = g[0] %}
+<div class="verdict">
+  <div class="verdict-mark grade-{{ gl }}">
+    <div class="vg">{{ g }}</div>
+    <div class="vdiv"></div>
+    <div class="vs">スコア <strong>{{ summary.security_score }}</strong> / 100</div>
+  </div>
+  <div class="verdict-main">
+    <div class="verdict-eyebrow">総合セキュリティ評価</div>
+    <div class="verdict-rating grade-{{ gl }}-t">{{ summary.grade_rating }}</div>
+    <p class="verdict-say">{{ summary.grade_meaning }}</p>
+    <div class="verdict-scale">
+      <span class="vt-cap">安全</span>
+      {% for tier in ['A+','A','B','C','D','F'] %}
+      {% set tl = tier[0] %}
+      {% set on = (tier == g) or (tier == gl and g != 'A+') %}
+      <span class="vt vt-{{ tl }}{% if on %} on grade-{{ gl }}{% endif %}">{{ tier }}</span>
+      {% endfor %}
+      <span class="vt-cap">危険</span>
+    </div>
+    <div class="verdict-stats">
+      <span class="vstat"><em class="grade-{{ gl }}-t">{{ summary.by_severity.Critical + summary.by_severity.High }}</em><small>要優先対応（緊急・重要）</small></span>
+      <span class="vstat"><em>{{ "%.1f"|format(summary.max_cvss) }}</em><small>最大 CVSS-B（4.0）</small></span>
+      <span class="vstat"><em>{{ scope.pages_crawled|default('—') }}</em><small>診断ページ数</small></span>
+    </div>
+  </div>
+</div>
+{% if summary.grade_context %}<p class="verdict-cap">{{ summary.grade_context }}</p>{% endif %}
+
+{% if narrative.executive %}
+<div class="narrative">{{ narrative.executive|safe }}</div>
+{% endif %}
+
+<h3>重大度別サマリ</h3>
+<div class="sev-grid">
+  {% for k, ja in [("Critical","緊急"),("High","重要"),("Medium","警告"),("Low","注意"),("Info","情報")] %}
+  <div class="cell c-{{ k }}">
+    <div class="k">{{ ja }}<span class="en">{{ k }}</span></div>
+    <div class="v c-{{ k }}">{{ summary.by_severity[k] }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+<h3>主要な検出事項</h3>
+<table class="data-table findings-summary">
+  <thead><tr><th>ID</th><th>重大度</th><th class="num">CVSS</th><th>所見</th><th>OWASP</th></tr></thead>
+  <tbody>
+  {% for f in findings[:8] %}
+    <tr>
+      <td>{{ f.id }}</td>
+      <td><span class="pill s-{{ f.severity }}">{{ f.severity_ja }}</span></td>
+      <td class="num">{{ "%.1f"|format(f.cvss_score) if f.cvss_score is not none else "—" }}</td>
+      <td>{{ f.title }}</td>
+      <td>{{ f.owasp.split('-')[0] }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+{% if narrative.roadmap %}
+<h3>改善ロードマップ ／ 優先度</h3>
+<div class="narrative">{{ narrative.roadmap|safe }}</div>
+{% endif %}
+
+<!-- ===== 2. 診断範囲と手法 ===== -->
+<h2 class="numbered" id="sec-scope">診断範囲と手法</h2>
+<div class="kv">
+<table>
+  <tbody>
+    <tr><th>診断対象</th><td>{{ target }}</td></tr>
+    <tr><th>スコープ（ホスト）</th><td>{{ scope.hosts|join(', ') }}</td></tr>
+    <tr><th>巡回ページ数</th><td>{{ scope.pages_crawled|default('—') }}</td></tr>
+    <tr><th>診断方式</th><td>ハイブリッド（内蔵チェック{% if tools_used %} + 外部ツール併用{% endif %}）／ 非破壊</td></tr>
+    <tr><th>使用ツール</th><td>{{ tools_used|join(', ') if tools_used else '内蔵チェックエンジン' }}</td></tr>
+    <tr><th>認可の根拠</th><td>{{ authorized_by }}</td></tr>
+    <tr><th>実施日時</th><td>{{ assessed_datetime or scope.started_at or assessed_date }}</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3>診断手法と評価基準（準拠標準）</h3>
+<p>本診断は次の標準に準拠する。診断手法は <strong>OWASP WSTG</strong>（Web Security Testing Guide、
+非破壊で機械的に検証可能な項目に限定）に基づき、検出事項を <strong>OWASP Top 10:2025</strong>（現行
+公開版）と CWE で分類、深刻度は <strong>CVSS 4.0 基本値（CVSS-B）</strong>で評価し、検証要件は
+<strong>OWASP ASVS 5.0.0</strong>（該当する要件番号・レベルを所見に併記）を参照する。診断は認可された
+範囲に限定し、データ改変・サービス妨害・破壊的操作を伴わない非破壊手法で実施している。</p>
+<p class="note">補足: (1) CVSS 4.0 のスコアは CVSS 3.1 と互換性がない（同一事象でも数値が異なる）。
+本報告書は Base のみ（CVSS-B、脅威情勢 E は最悪ケース前提）を用いる。 (2) 一部のチェック（CSP・
+一部セキュリティヘッダ・SRI・混在コンテンツ）は WSTG v4.2 に専用テスト ID が無く、独自根拠で診断
+している。 (3) CWE は本スキル独自付与（ASVS 5.0 は CWE 公式マッピングを廃止）。 (4) 自動・非破壊診断
+は ASVS の技術検証の一部であり、ASVS 認証・OWASP トラストマークを意味しない。</p>
+
+<h3>制約事項・免責</h3>
+<ul>
+  <li>本診断は非破壊の観測・安全な能動プローブに基づく。認証後領域や業務ロジックの詳細な検査
+      （手動ペネトレーションテスト）は範囲外である。</li>
+  <li>「古いコンポーネント」等の CVE 級判定は、外部脆弱性データベース（nuclei 等）を併用した項目に限る。
+      内蔵チェックのみの結果は構成・衛生面の指摘であり、個別 CVE の成立を保証するものではない。</li>
+  <li>検出事項は診断時点のスナップショットであり、以降の変更は反映されない。</li>
+</ul>
+
+<!-- ===== 3. 検出事項の詳細 ===== -->
+<h2 class="numbered" id="sec-findings">検出事項の詳細</h2>
+{% if findings %}
+{% for f in findings %}
+<div class="finding b-{{ f.severity }}">
+  <div class="fhead">
+    <span class="pill s-{{ f.severity }}">{{ f.severity_ja }} / {{ f.severity }}</span>
+    <span class="fid">{{ f.id }}</span>
+    <span class="chip">CVSS-B {{ "%.1f"|format(f.cvss_score) if f.cvss_score is not none else "未算出" }}</span>
+    <span class="chip">確度 {{ f.confidence }}</span>
+    {% if f.source != 'core' %}<span class="chip">検出 {{ f.source }}</span>{% endif %}
+  </div>
+  <h3 class="ftitle">{{ f.title }}</h3>
+  {% if f.description %}<p class="fdesc">{{ f.description }}</p>{% endif %}
+  <dl class="fmeta">
+    <div class="r"><dt>分類</dt><dd>{{ f.owasp }} ／ {{ f.cwe }}</dd></div>
+    <div class="r"><dt>準拠参照</dt><dd>WSTG: {{ f.wstg if f.wstg else '該当なし（独自根拠）' }} ／ ASVS: {{ f.asvs if f.asvs else '該当なし' }}</dd></div>
+    <div class="r"><dt>影響</dt><dd>{{ f.impact }}</dd></div>
+    <div class="r"><dt>対象</dt><dd class="affected">{% for a in f.affected %}<code>{{ a }}</code>{% if not loop.last %}<br>{% endif %}{% endfor %}</dd></div>
+    <div class="r"><dt>CVSS ベクタ</dt><dd><span class="chip mono">{{ f.cvss_vector }}</span></dd></div>
+  </dl>
+  <div class="evidence">{{ f.evidence }}</div>
+  <div class="remediation"><strong>推奨対策：</strong>{{ f.remediation }}</div>
+  {% if f.references %}
+  <div class="refs">参考: {% for r in f.references %}<a href="{{ r }}">{{ r }}</a>{% if not loop.last %} ／ {% endif %}{% endfor %}</div>
+  {% endif %}
+</div>
+{% endfor %}
+{% else %}
+<p>本診断の範囲では、報告すべき所見は検出されなかった。</p>
+{% endif %}
+
+<!-- ===== 4. 付録 ===== -->
+<h2 class="numbered" id="sec-appendix">付録</h2>
+<h3>4.1 巡回したエンドポイント（抜粋）</h3>
+<table class="data-table">
+  <thead><tr><th>URL</th><th class="num">状態</th><th>技術情報</th></tr></thead>
+  <tbody>
+  {% for p in pages[:40] %}
+    <tr>
+      <td>{{ p.url }}</td>
+      <td class="num">{{ p.status|default('ERR') }}</td>
+      <td>{{ p.technologies|join('; ') if p.technologies else '—' }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% if pages|length > 40 %}<p class="note">他 {{ pages|length - 40 }} 件は省略。</p>{% endif %}
+
+<div class="disclaimer">
+  本報告書は {{ target }} に対する認可済み脆弱性診断（文書番号 {{ doc_id }}）の結果であり、記載情報は
+  機密として取り扱うこと。診断は非破壊手法で実施し、検出事項は診断時点のものである。対策の実装後は
+  再診断を推奨する。使用ツール: {{ tools_used|join(', ') if tools_used else '内蔵チェックエンジン' }}。
+</div>
+
+</body>
+</html>

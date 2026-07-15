@@ -639,7 +639,7 @@ li { margin: 0.25em 0; }
     <div class="r"><dt>対象</dt><dd class="affected"><code>http://127.0.0.1:8899/.git/HEAD</code><br><code>http://127.0.0.1:8899/.env</code></dd></div>
     <div class="r"><dt>CVSS ベクタ</dt><dd><span class="chip mono">CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N</span></dd></div>
   </dl>
-  <div class="evidence">HTTP 200 で取得可能（署名一致: 'ref: '）
+  <div class="evidence">HTTP 200 で取得可能（署名一致: &#39;ref: &#39;）
 （該当 2 箇所。詳細は「対象」欄を参照）</div>
   <div class="remediation"><strong>推奨対策：</strong>当該ファイル/ディレクトリを公開領域から除去し、Web サーバで拒否する。</div>
   
@@ -689,7 +689,7 @@ li { margin: 0.25em 0; }
     <div class="r"><dt>対象</dt><dd class="affected"><code>http://127.0.0.1:8899/files/</code></dd></div>
     <div class="r"><dt>CVSS ベクタ</dt><dd><span class="chip mono">CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N</span></dd></div>
   </dl>
-  <div class="evidence">自動インデックス表示の兆候（'Index of /'）</div>
+  <div class="evidence">自動インデックス表示の兆候（&#39;Index of /&#39;）</div>
   <div class="remediation"><strong>推奨対策：</strong>Web サーバの自動インデックスを無効化する（`Options -Indexes` 等）。</div>
   
   <div class="refs">参考: <a href="https://cwe.mitre.org/data/definitions/548.html">https://cwe.mitre.org/data/definitions/548.html</a></div>
@@ -737,7 +737,7 @@ li { margin: 0.25em 0; }
     <div class="r"><dt>対象</dt><dd class="affected"><code>http://127.0.0.1:8899/go?url=https%3A%2F%2Fvwr-redirect-probe.example.org%2F</code></dd></div>
     <div class="r"><dt>CVSS ベクタ</dt><dd><span class="chip mono">CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:A/VC:N/VI:N/VA:N/SC:L/SI:L/SA:N</span></dd></div>
   </dl>
-  <div class="evidence">パラメータ 'url' がリダイレクト先に反映（Location=https://vwr-redirect-probe.example.org/）</div>
+  <div class="evidence">パラメータ &#39;url&#39; がリダイレクト先に反映（Location=https://vwr-redirect-probe.example.org/）</div>
   <div class="remediation"><strong>推奨対策：</strong>リダイレクト先を相対パスまたは許可リストに限定する。</div>
   
   <div class="refs">参考: <a href="https://cwe.mitre.org/data/definitions/601.html">https://cwe.mitre.org/data/definitions/601.html</a></div>
@@ -761,7 +761,7 @@ li { margin: 0.25em 0; }
     <div class="r"><dt>対象</dt><dd class="affected"><code>http://127.0.0.1:8899/search?q=vwrPROBE9137%3C%22%27</code></dd></div>
     <div class="r"><dt>CVSS ベクタ</dt><dd><span class="chip mono">CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:A/VC:N/VI:N/VA:N/SC:L/SI:L/SA:N</span></dd></div>
   </dl>
-  <div class="evidence">パラメータ 'q' の値が無害化されず反射（マーカー検出）</div>
+  <div class="evidence">パラメータ &#39;q&#39; の値が無害化されず反射（マーカー検出）</div>
   <div class="remediation"><strong>推奨対策：</strong>出力コンテキストに応じたエスケープ/サニタイズを施し、CSP を併用する。</div>
   
   <div class="refs">参考: <a href="https://owasp.org/www-community/attacks/xss/">https://owasp.org/www-community/attacks/xss/</a></div>
@@ -837,7 +837,7 @@ li { margin: 0.25em 0; }
   </dl>
   <div class="evidence">Content-Security-Policy ヘッダが存在しない
 （該当 4 箇所。詳細は「対象」欄を参照）</div>
-  <div class="remediation"><strong>推奨対策：</strong>適切な `Content-Security-Policy` を段階的に導入する（まず `default-src 'self'` を Report-Only で検証）。</div>
+  <div class="remediation"><strong>推奨対策：</strong>適切な `Content-Security-Policy` を段階的に導入する（まず `default-src &#39;self&#39;` を Report-Only で検証）。</div>
   
   <div class="refs">参考: <a href="https://owasp.org/www-community/controls/Content_Security_Policy">https://owasp.org/www-community/controls/Content_Security_Policy</a></div>
   
@@ -862,7 +862,7 @@ li { margin: 0.25em 0; }
   </dl>
   <div class="evidence">X-Frame-Options も CSP frame-ancestors も未設定
 （該当 4 箇所。詳細は「対象」欄を参照）</div>
-  <div class="remediation"><strong>推奨対策：</strong>`X-Frame-Options: DENY`（または `SAMEORIGIN`）と CSP `frame-ancestors 'self'` を設定する。</div>
+  <div class="remediation"><strong>推奨対策：</strong>`X-Frame-Options: DENY`（または `SAMEORIGIN`）と CSP `frame-ancestors &#39;self&#39;` を設定する。</div>
   
   <div class="refs">参考: <a href="https://owasp.org/www-community/attacks/Clickjacking">https://owasp.org/www-community/attacks/Clickjacking</a></div>
   
@@ -910,7 +910,7 @@ li { margin: 0.25em 0; }
     <div class="r"><dt>対象</dt><dd class="affected"><code>http://127.0.0.1:8899</code></dd></div>
     <div class="r"><dt>CVSS ベクタ</dt><dd><span class="chip mono">CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:A/VC:N/VI:N/VA:N/SC:L/SI:N/SA:N</span></dd></div>
   </dl>
-  <div class="evidence">Cookie 'SESSIONID' に HttpOnly 属性が無い</div>
+  <div class="evidence">Cookie &#39;SESSIONID&#39; に HttpOnly 属性が無い</div>
   <div class="remediation"><strong>推奨対策：</strong>認証系 Cookie に `HttpOnly` 属性を付与する。</div>
   
   <div class="refs">参考: <a href="https://owasp.org/www-community/HttpOnly">https://owasp.org/www-community/HttpOnly</a></div>
@@ -934,7 +934,7 @@ li { margin: 0.25em 0; }
     <div class="r"><dt>対象</dt><dd class="affected"><code>http://127.0.0.1:8899</code></dd></div>
     <div class="r"><dt>CVSS ベクタ</dt><dd><span class="chip mono">CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:A/VC:N/VI:L/VA:N/SC:N/SI:N/SA:N</span></dd></div>
   </dl>
-  <div class="evidence">Cookie 'SESSIONID' に SameSite 属性が無い</div>
+  <div class="evidence">Cookie &#39;SESSIONID&#39; に SameSite 属性が無い</div>
   <div class="remediation"><strong>推奨対策：</strong>`SameSite=Lax`（または要件に応じ `Strict`）を設定する。</div>
   
   <div class="refs">参考: <a href="https://owasp.org/www-community/SameSite">https://owasp.org/www-community/SameSite</a></div>

@@ -28,7 +28,7 @@ skills/web-vuln-report/
 │   ├── package_genspark_skill.py   # .skill バンドル生成（パス相対化）
 │   └── tests/                      # ローカル脆弱フィクスチャによる結合テスト
 ├── templates/  report.html.j2 / report.css   # 報告書テンプレート（印刷CSSは自己完結）
-├── references/ check-catalog.md / cvss-guide.md / report-standard.md
+├── references/ check-catalog.md / cvss-guide.md / report-standard.md / standards-mapping.md
 └── examples/   report.html / report.pdf / *.json  # フィクスチャに対するサンプル
 ```
 
@@ -44,7 +44,12 @@ skills/web-vuln-report/
   weasyprint 等が無い環境では HTML を最終成果物にする（PDF はベストエフォート）。
 - **PDF の印刷 CSS は自己完結**: pdf-creator-jp の @page/表/画像制御を report.css に複製
   （バンドル可搬性のためプラグイン依存にしない）。
-- **CVSS は cvss ライブラリに委譲**（ベクタ計算を手実装しない）。
+- **CVSS 4.0（CVSS-B）**: 算出は cvss ライブラリ（CVSS4）に委譲。ただし catalog に**事前計算スコアを
+  同梱**するためランタイムはライブラリ不要（外部ツール所見のみ算出。不在なら黙って Medium にせず
+  「未算出」明示）。3.1 とスコア非互換。標準対応（OWASP Top 10:2025/WSTG v4.2/ASVS 5.0.0）は
+  catalog と references/standards-mapping.md が正。
+- **報告書 HTML は autoescape=True**: 対象由来データを確実にエスケープ（格納型 XSS 防止）。信頼できる
+  自前 CSS・narrative のみ `|safe`。
 - **CVE 網羅を誇張しない**: 内蔵チェックは構成/衛生面の指摘。CVE 級は外部ツール併用時のみ、
   報告書の制約事項に明記。
 - **所見は集約**: scoring.merge_findings が同一 check_id+title を1件に束ね該当箇所を列挙

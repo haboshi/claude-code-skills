@@ -276,6 +276,25 @@ def test_sri_flags_cross_origin_only():
     assert "missing-sri" not in {x["check_id"] for x in f2.as_list()}
 
 
+def test_report_escapes_target_data_xss():
+    # 対象由来データ（evidence・affected 等）が HTML エスケープされ格納型 XSS を防ぐこと、
+    # かつ信頼できる CSS（|safe）は壊れないこと。
+    from scoring import score_all
+    import render_report
+    doc = {"target": "http://x", "scope": {"hosts": ["x"]}, "findings": [{
+        "check_id": "reflected-input", "title": "t", "owasp": "A05:2025-インジェクション",
+        "cwe": "CWE-79", "cvss_vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:A/VC:N/VI:N/VA:N/SC:L/SI:L/SA:N",
+        "cvss_score": 5.1, "confidence": "Medium",
+        "affected": ["http://x/?q=<script>alert(1)</script>"],
+        "evidence": "reflected <script>alert('xss')</script>", "description": "d", "impact": "i",
+        "remediation": "r", "references": [], "source": "core",
+        "wstg": "WSTG-INPV-01", "asvs": "v5.0.0-1.2.1 (L1)"}]}
+    html = render_report.render(score_all(doc), narrative={}, tools_used=[])
+    assert "<script>alert" not in html          # 生スクリプトが出力されない
+    assert "&lt;script&gt;" in html             # エスケープ済み
+    assert "@page" in html                      # CSS（|safe）は壊れていない
+
+
 def test_no_finding_leaks_raw_secret_values(findings):
     # 検出はするが、evidence にパスワード平文をそのまま載せない（署名/存在のみ）
     blob = " ".join(f["evidence"] for f in findings)

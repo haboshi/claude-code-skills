@@ -23,7 +23,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 try:
-    from jinja2 import Environment, FileSystemLoader, select_autoescape
+    from jinja2 import Environment, FileSystemLoader
 except ImportError as e:  # pragma: no cover
     print(f"[render] 依存不足: {e}\n  uv run --with jinja2 render_report.py ... で実行してください。",
           file=sys.stderr)
@@ -60,9 +60,13 @@ def _fmt_datetime(iso: str | None) -> str:
 
 def render(scored: dict, narrative: dict | None = None, assessor: str = "",
            tools_used: list[str] | None = None, issued_date: str | None = None) -> str:
+    # 報告書は常に HTML。診断対象由来のデータ（URL・証跡・タイトル等）を確実にエスケープするため
+    # autoescape を無条件に有効化する。select_autoescape はテンプレート拡張子 .html.j2 の末尾が
+    # .j2 のためマッチせず無効化されてしまい、対象由来データが未エスケープで出力される
+    # 格納型 XSS の穴になっていた。信頼できる HTML（自前 CSS・narrative）だけ個別に |safe を付す。
     env = Environment(
         loader=FileSystemLoader(str(TEMPLATES_DIR)),
-        autoescape=select_autoescape(["html", "xml"]),
+        autoescape=True,
     )
     template = env.get_template("report.html.j2")
     css = (TEMPLATES_DIR / "report.css").read_text(encoding="utf-8")

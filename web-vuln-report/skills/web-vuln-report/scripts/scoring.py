@@ -101,9 +101,12 @@ def _incomplete_grade(by_sev: dict[str, int]) -> dict:
     }
 
 
-def compute_grade(findings: list[dict], by_sev: dict[str, int], reliable: bool = True) -> dict:
+def compute_grade(findings: list[dict], by_sev: dict[str, int], reliable: bool = True,
+                  inconclusive: int = 0) -> dict:
     if not reliable:
-        return _incomplete_grade(by_sev)
+        g = _incomplete_grade(by_sev)
+        g["inconclusive_count"] = inconclusive
+        return g
     deduction = sum(SEV_DEDUCTION.get(f.get("severity", "Info"), 0)
                     * CONF_FACTOR.get(f.get("confidence", "High"), 1.0) for f in findings)
     security_score = max(0, round(100 - deduction))
@@ -130,6 +133,13 @@ def compute_grade(findings: list[dict], by_sev: dict[str, int], reliable: bool =
     else:
         context = ""
 
+    # 判定保留（inconclusive）項目があるときは、総合評価が「全項目検査済みで安全」と誤読される
+    # のを防ぐ注記を出す。判定保留は clean（安全確認済み）に算入せずグレードを不当に高くしない。
+    if inconclusive > 0:
+        note = (f"一部項目（{inconclusive} 件）は判定保留です（レート制限層に到達できず要手動確認）。"
+                f"これらは「問題なし」に算入しておらず、総合評価は残る検査結果に基づきます。")
+        context = (context + " " + note).strip() if context else note
+
     return {
         "security_score": security_score,
         "grade": grade,
@@ -142,6 +152,7 @@ def compute_grade(findings: list[dict], by_sev: dict[str, int], reliable: bool =
         "worst_severity": worst,
         "worst_severity_ja": SEVERITY_JA.get(worst, "情報"),
         "assessment_incomplete": False,
+        "inconclusive_count": inconclusive,
     }
 
 
@@ -222,7 +233,7 @@ def merge_findings(findings: list[dict]) -> list[dict]:
     return merged
 
 
-def aggregate(findings: list[dict], reliable: bool = True) -> dict:
+def aggregate(findings: list[dict], reliable: bool = True, inconclusive: int = 0) -> dict:
     by_sev = {s: 0 for s in SEVERITY_ORDER}
     owasp_cov: dict[str, int] = {}
     max_score = 0.0
@@ -260,7 +271,7 @@ def aggregate(findings: list[dict], reliable: bool = True) -> dict:
         "risk_score": risk_score,   # 後方互換のため保持（表示には用いない）
         "risk_rating": rating,
     }
-    summary.update(compute_grade(findings, by_sev, reliable=reliable))
+    summary.update(compute_grade(findings, by_sev, reliable=reliable, inconclusive=inconclusive))
     return summary
 
 
@@ -276,9 +287,12 @@ def score_all(data: dict) -> dict:
     # G1: 診断信頼性フラグ（assessment.data_reliable）が明示 False のときだけグレードをゲート。
     # フラグ不在（直接 score_all を呼ぶ既存呼び出し）は従来通り信頼扱い（後方互換）。
     reliable = data.get("assessment", {}).get("data_reliable", True)
+    # 判定保留（inconclusive）項目数を台帳から数え、採点の注記に反映する（clean には算入しない）。
+    inconclusive = sum(1 for c in data.get("coverage", [])
+                       if isinstance(c, dict) and c.get("status") == "inconclusive")
     out = dict(data)
     out["findings"] = findings
-    out["summary"] = aggregate(findings, reliable=reliable)
+    out["summary"] = aggregate(findings, reliable=reliable, inconclusive=inconclusive)
     out["scored_at"] = datetime.now(timezone.utc).isoformat()
     return out
 

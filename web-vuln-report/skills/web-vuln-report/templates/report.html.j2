@@ -201,6 +201,7 @@
 <p class="note">実施 {{ coverage_summary.total }} 項目 —
   検出あり {{ coverage_summary.by_status.get('finding', 0) }} ／
   問題なし {{ coverage_summary.by_status.get('clean', 0) }} ／
+  判定保留 {{ coverage_summary.by_status.get('inconclusive', 0) }} ／
   エラー {{ coverage_summary.by_status.get('error', 0) }} ／
   未実施 {{ coverage_summary.by_status.get('skipped', 0) }}</p>
 {% endif %}

@@ -114,8 +114,8 @@ xcto / cookie-secure / cookie-httponly / cors / samesite-none の系統のみ。
 #### cookie-no-httponly — Cookie に HttpOnly 属性が無い
 - CWE: CWE-1004 / WSTG: WSTG-SESS-02 / ASVS: v5.0.0-3.3.4 (L2)
 - CVSS-B: `CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:A/VC:N/VI:N/VA:N/SC:L/SI:N/SA:N`（2.1）
-- 観測: HttpOnly が無く、XSS 発生時に JavaScript から Cookie を読み取られる。
-- 対策: 認証系 Cookie に `HttpOnly` 属性を付与する。
+- 観測: HttpOnly が無く、XSS 発生時に JavaScript から Cookie を読み取られる。CSRF トークン系 Cookie（`XSRF-TOKEN`/`csrf-token`/`x-csrf-token`/`_csrf`/`csrftoken` 等）は SPA が JS で読んで `X-XSRF-TOKEN`/`_token` に載せる前提で**意図的に JS 読取可**（HttpOnly 不可）であり、cookie-no-httponly の**対象から除外**する（誤検知回避）。Secure/SameSite の検査は継続。
+- 対策: 認証系 Cookie に `HttpOnly` 属性を付与する（CSRF トークン Cookie は除く）。
 
 #### cors-misconfig — CORS の設定ミス（任意オリジン反射 + credentials 許可）
 - CWE: CWE-942 / WSTG: WSTG-CLNT-07 / ASVS: v5.0.0-3.4.2 (L1)
@@ -286,7 +286,7 @@ xcto / cookie-secure / cookie-httponly / cors / samesite-none の系統のみ。
 #### no-rate-limit — ログイン試行のレート制限が観測されない（v0.4・能動 opt-in）
 - CWE: CWE-307 / WSTG: 該当なし / ASVS: v5.0.0-2.2.1 (L1)
 - CVSS-B: `CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:N/VC:L/VI:L/VA:N/SC:N/SI:N/SA:N`（6.3）
-- 観測: **既定 OFF の opt-in 能動テスト**。存在しないランダム資格情報で login へ上限付き（min(要求,8)）POST し、429/スロットリングの有無を観測。**実在アカウントを一切使わない（アカウントロック回避）**。419/403 で前段拒否される場合はレート制限に未到達として判定を保留（偽陽性回避）。`_ActiveAuthClient` で POST・login URL 限定に隔離。
+- 観測: **既定 OFF の opt-in 能動テスト**。存在しないランダム資格情報で login へ上限付き（min(要求,8)）POST し、429/スロットリングの有無を観測。**実在アカウントを一切使わない（アカウントロック回避）**。CSRF 実効の web フォーム（Laravel 等）では素 POST が 419 で前段遮断されレート制限層に到達できないため、**POST の前に login ページを GET（読み取り専用・非破壊）してセッション/CSRF トークンを取得**する（`XSRF-TOKEN` Cookie を URL デコードして `X-XSRF-TOKEN` ヘッダに、`<meta name="csrf-token">`/hidden `_token` を `_token` フィールドに載せる）。トークン取得後もなお 419/403 で全て前段拒否されレート制限層へ到達できない場合は、**clean（問題なし）と区別して「判定保留（inconclusive）」**とする（偽陽性・偽陰性の双方を回避）。GET は `_SafeClient`、POST は `_ActiveAuthClient`（POST・login URL 限定）で隔離し、両者は同一 httpx.Client の Cookie ジャーを共有する。
 - 対策: 認証エンドポイントに IP/アカウント単位のレート制限・バックオフ、必要に応じ CAPTCHA/MFA を導入。
 
 ---

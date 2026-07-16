@@ -75,6 +75,19 @@ skills/web-vuln-report/
   他メソッド/他 URL 拒否・client 側ハードキャップ）で実行する。**`_SafeClient` の GET 強制境界は
   緩めない・迂回しない**。レート制限は実在アカウント不使用・試行 min(要求,8) クランプ・419/403
   前段拒否は判定保留（偽陽性回避）。TLS 暗号スイート列挙は偽陰性回避のため内蔵せず testssl.sh へ委譲。
+- **CSRF トークン取得つき能動レート制限 + 判定保留区分（v0.4.1）**: CSRF 実効の web フォーム
+  （Laravel 等）では素 POST が 419 で前段遮断されレート制限層に到達できないため、`check_login_rate_limit`
+  は POST の前に `_acquire_login_csrf` で **login ページを GET（読み取り専用）してセッション/CSRF
+  トークンを取得**する（`XSRF-TOKEN` Cookie を URL デコードして `X-XSRF-TOKEN`、`meta csrf-token`/
+  hidden `_token` を `_token` フィールドへ）。`sc`（GET）と `aac`（POST）は同一 httpx.Client の Cookie
+  ジャーを共有。**GET 取得は blast radius を広げない**（login ページ 1 回＋必要時のみ sanctum csrf-cookie）・
+  取得失敗は素 POST へ安全にフォールバック・`_ActiveAuthClient` の POST 限定は不変。到達し 429 無し→
+  `finding`、throttle 検知→`clean`、未到達→**`inconclusive`（判定保留）**を返し、run_checks が
+  login-rate-limit 群を **明示 record**（generic finalize が clean に丸めるのを防ぐ）。`LEDGER_STATUS_JA`
+  に `inconclusive: 判定保留` を追加、`scoring` は inconclusive を clean に算入せず grade_context に
+  「一部項目は判定保留（要手動確認）」を注記（グレードを不当に高くしない）。テンプレは `cov-inconclusive`
+  中間色で描画。cookie-no-httponly は CSRF トークン系 Cookie（`XSRF-TOKEN` 等）を**誤検知除外**
+  （設計上 JS 読取が正当。Secure/SameSite は継続検査）。
 - **新規チェックは全て台帳に登録**: `LEDGER_GROUPS`＋`_GROUP_CHECK_IDS`＋`_CHECK_TO_GROUP` を網羅し、
   未マップの check_id（沈黙で不可視化）をゼロに保つ。catalog の `cvss`/`cvss_score` は cvss ライブラリ
   実算出と完全一致（`test_catalog_scores_match_cvss4_library` が全 42 件を検算）。

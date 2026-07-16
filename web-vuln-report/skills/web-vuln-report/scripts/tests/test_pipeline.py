@@ -1009,6 +1009,15 @@ def test_active_auth_inconclusive_ledger_when_csrf_wall(crawl_data, server):
     rows = {r["id"]: r for r in led.rows()}
     assert rows["login-rate-limit"]["status"] == "inconclusive"
     assert rows["login-rate-limit"]["status_ja"] == "判定保留"
+    # 実 run の台帳（led.rows()）→ score_all → grade_context まで判定保留が伝播することを
+    # end-to-end で確認する（手組み dict でなく実 coverage 由来で注記が出る）。
+    from scoring import score_all
+    doc = {"target": server, "scope": {"hosts": ["127.0.0.1"]}, "findings": findings,
+           "coverage": led.rows(), "coverage_summary": led.summary(),
+           "assessment": led.assessment}
+    scored = score_all(doc)
+    assert scored["summary"]["inconclusive_count"] >= 1
+    assert "判定保留" in scored["summary"]["grade_context"]
 
 
 def test_compute_grade_inconclusive_note():

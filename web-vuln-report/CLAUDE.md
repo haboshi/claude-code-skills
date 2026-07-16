@@ -88,11 +88,25 @@ skills/web-vuln-report/
   「一部項目は判定保留（要手動確認）」を注記（グレードを不当に高くしない）。テンプレは `cov-inconclusive`
   中間色で描画。cookie-no-httponly は CSRF トークン系 Cookie（`XSRF-TOKEN` 等）を**誤検知除外**
   （設計上 JS 読取が正当。Secure/SameSite は継続検査）。
+- **単一組織スコープの深掘り（v0.5）**: 4 検出を追加（安全境界・非破壊・非egress は不変）。
+  `subdomain-takeover`（受動・High 8.7）: 対象＋観測済み同一登録ドメインのホストの CNAME 鎖を dnspython で
+  解決し、既知テイクオーバー可能サービス内蔵テーブルを指し**かつ**未所有フィンガープリント応答に一致した
+  ときのみ提示（両方一致で FP 回避・DNS 照会と GET のみ・crawl.py は変更せず script_srcs/form host から
+  同一組織ホストを収集）。`js-known-cve`（受動・非egress）: 検出 JS 版数を retire.js 形式の内蔵オフライン
+  署名DB（`references/js-vuln-signatures.json`・snapshot 2026-07）と突合し具体 CVE を提示。ライブ照会せず、
+  DB severity に応じ **per-finding で CVSS ベクタ/スコア/タイトルを原子的に上書き**（`_JS_CVE_SEVERITY_VECTORS`・
+  cvss ライブラリで検算済み・lib×版数ごとに一意タイトルで merge 衝突回避）。`csp-bypassable`（受動）:
+  `default-src` フォールバックを考慮した CSP 解析で明確なバイパス条件のみ 1 所見に集約。`user-enumeration`
+  （opt-in 能動・Medium 6.3）: `--active-auth` 二重ゲート内・非存在アカウントのみで login/reset の存在露呈を
+  観測。**csrf/rate-limit と client cap を食い合わないよう独立 `_ActiveAuthClient` を使用**し、到達不能は
+  `inconclusive` を**明示 record**（clean に丸めない）。generic override で FP 抑制・確度 Low。`--reset-url`
+  （既定 OFF・in-scope 必須）を追加。台帳グループ 4 群を新設（`csp-analysis`/`js-known-cve`/`subdomain-takeover`/
+  `user-enumeration`）。
 - **新規チェックは全て台帳に登録**: `LEDGER_GROUPS`＋`_GROUP_CHECK_IDS`＋`_CHECK_TO_GROUP` を網羅し、
   未マップの check_id（沈黙で不可視化）をゼロに保つ。catalog の `cvss`/`cvss_score` は cvss ライブラリ
-  実算出と完全一致（`test_catalog_scores_match_cvss4_library` が全 42 件を検算）。
+  実算出と完全一致（`test_catalog_scores_match_cvss4_library` が全 47 件を検算）。
 - **CVE 網羅を誇張しない**: 内蔵チェックは構成/衛生面の指摘。CVE 級は外部ツール併用時のみ、
-  報告書の制約事項に明記。
+  ないし `js-known-cve` の内蔵署名DB 照合時のみ提示し、報告書の制約事項に明記。
 - **所見は集約**: scoring.merge_findings が同一 check_id+title を1件に束ね該当箇所を列挙
   （ページ単位の重複計上を防ぐ）。
 

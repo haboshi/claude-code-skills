@@ -61,6 +61,13 @@ gc_old_state
 # --- 数値 env の検証（typo で比較が壊れて保護が消えるのを防ぐ） ---
 MAX_BLOCKS="${EVALUATOR_GATE_MAX_BLOCKS:-3}"
 case "$MAX_BLOCKS" in ''|*[!0-9]*) MAX_BLOCKS=3 ;; esac
+# セッション内の連続差し戻し上限。MAX_BLOCKS（同一 diff の停滞）は diff ハッシュが
+# 一致し続けることが前提で、別セッションが同じ作業ツリーを触るとハッシュがドリフトして
+# 毎回 fresh eval → カウンタが 1 に戻り、上限に永久に到達しない。ハッシュに依存しない
+# この上限が最後の終端条件になる（ゲートは fail-open 思想であり、無限ループの方が有害）。
+MAX_SESSION_BLOCKS="${EVALUATOR_GATE_MAX_SESSION_BLOCKS:-6}"
+case "$MAX_SESSION_BLOCKS" in ''|*[!0-9]*) MAX_SESSION_BLOCKS=6 ;; esac
+[ "$MAX_SESSION_BLOCKS" -lt 1 ] && MAX_SESSION_BLOCKS=6
 EV_TIMEOUT="${EVALUATOR_GATE_EVAL_TIMEOUT:-240}"
 case "$EV_TIMEOUT" in ''|*[!0-9]*) EV_TIMEOUT=240 ;; esac
 # 評価者に渡すユーザー指示のターン数（証拠 diff 範囲との整合の近似）。暴走防止で上限 20
@@ -91,7 +98,8 @@ state_load "$session_id"
 if [ -n "$ST_PROJECT" ] && [ "$ST_PROJECT" != "$project" ]; then
   ST_LAST_HASH=""; ST_LAST_VERDICT=""; ST_LAST_REASON=""; ST_BLOCK_COUNT=0
   ST_BASELINE_HEAD="$current_head"; ST_EVAL_BASE="$current_head"; ST_UPDATED_EPOCH=0
-  ST_LAST_CLAIM_HASH=""; ST_ALLOWED_SIG=""; ST_BRANCH="$current_br"
+  ST_LAST_CLAIM_HASH=""; ST_ALLOWED_SIG=""; ST_BRANCH="$current_br"; ST_CONSEC_BLOCKS=0
+  # session_start_epoch は引き継ぐ（セッションの時間窓はプロジェクトを跨いでも同じ）
 fi
 
 # 完了主張が差し替わったか（同一内容でも再評価すべきか）を先に判定する。
@@ -153,11 +161,20 @@ if [ "$current_hash" = "$ST_LAST_HASH" ]; then
       # diff が変われば評価パスで 1 から数え直す（セッション累積上限ではない）。
       if [ "$ST_BLOCK_COUNT" -ge "$MAX_BLOCKS" ]; then
         # 縮退での許可は「受理」ではないので allowed_sig は記録しない
+        ST_CONSEC_BLOCKS=0   # 差し戻しを出さないターンなので連続カウンタは切れる
         state_write "$session_id" "$project" "$ST_BASELINE_HEAD" "$current_head" "$current_hash" "$current_claim" \
                     "ALLOW" "" "$ST_BLOCK_COUNT" "capped" "capped" 0 "$current_br" "$ST_ALLOWED_SIG"
         emit_warn_allow "evaluator-gate: 同一の変更に対する差し戻しが上限（${MAX_BLOCKS}回）に到達したため許可に縮退しました。未解消の指摘: $ST_LAST_REASON"
       fi
       nb=$((ST_BLOCK_COUNT + 1))
+      ST_CONSEC_BLOCKS=$((ST_CONSEC_BLOCKS + 1))
+      if [ "$ST_CONSEC_BLOCKS" -gt "$MAX_SESSION_BLOCKS" ]; then
+        pending="$ST_LAST_REASON"
+        ST_CONSEC_BLOCKS=0   # 再武装する（以降のターンを恒久的に素通しにしない）
+        state_write "$session_id" "$project" "$ST_BASELINE_HEAD" "$current_head" "$current_hash" "$current_claim" \
+                    "ALLOW" "" 0 "session-capped" "session-capped" 0 "$current_br" "$ST_ALLOWED_SIG"
+        emit_warn_allow "evaluator-gate: このセッションでの差し戻しが連続 ${MAX_SESSION_BLOCKS} 回に達したため許可に縮退しました。証拠の収集範囲が作業内容と噛み合っていない可能性があります（成果物が作業ツリー外にある・作業ツリーを他セッションと共有している等）。未解消の指摘: $pending"
+      fi
       # eval_base は前進させない（未検証のコミットを取り残さないため）
       state_write "$session_id" "$project" "$ST_BASELINE_HEAD" "$ST_EVAL_BASE" "$current_hash" "$current_claim" \
                   "BLOCK" "$ST_LAST_REASON" "$nb" "cached" "cached" 0 "$current_br" "$ST_ALLOWED_SIG" || {
@@ -212,6 +229,7 @@ tree_dirty=1
 # 黙って ALLOW にすると、そのターンの実作業が無評価で受理されてしまう。
 # 正しい範囲は復元できないので、評価せずに「検証できなかった」ことを可視化して通す。
 if [ -z "$base_ref" ] && [ "$head_reachable" -eq 0 ] && [ -n "${ST_EVAL_BASE}${ST_BASELINE_HEAD}" ]; then
+  ST_CONSEC_BLOCKS=0
   state_write "$session_id" "$project" "$current_head" "$current_head" "$current_hash" "$current_claim" \
               "ALLOW" "" 0 "rewritten" "rewritten" 0 "$current_br" ""
   emit_warn_allow "evaluator-gate: 履歴の書き換え（amend/rebase/reset）を検出したため、このターンの変更は検証できませんでした。ベースラインを現在の HEAD に再設定します。"
@@ -224,6 +242,7 @@ if [ -n "$base_ref" ] && [ "$base_ref" != "$EMPTY_TREE" ]; then
   ncommits=$(git -C "$project" rev-list --count "$base_ref..$current_head" 2>/dev/null || echo 0)
   case "$ncommits" in ''|*[!0-9]*) ncommits=0 ;; esac
   if [ "$ncommits" -gt "${EVALUATOR_GATE_MAX_COMMITS:-50}" ]; then
+    ST_CONSEC_BLOCKS=0
     state_write "$session_id" "$project" "$current_head" "$current_head" "$current_hash" "$current_claim" \
                 "ALLOW" "" 0 "range-too-large" "range-too-large" 0 "$current_br" ""
     emit_warn_allow "evaluator-gate: 起点から ${ncommits} 件のコミットがあり、このターンの作業範囲を特定できないため評価をスキップしました。ベースラインを現在の HEAD に再設定します。"
@@ -232,6 +251,7 @@ fi
 
 if [ "$tree_dirty" -eq 0 ] && [ -z "$base_ref" ]; then
   # クリーン & 評価すべきコミット範囲なし（会話のみ、移動、または起点未記録）
+  ST_CONSEC_BLOCKS=0
   state_write "$session_id" "$project" "${ST_BASELINE_HEAD:-$current_head}" "$current_head" \
               "$current_hash" "$current_claim" "ALLOW" "" 0 "clean" "clean" 0 "$current_br" "$ST_ALLOWED_SIG"
   if [ "$nav_warn" -eq 1 ]; then
@@ -245,6 +265,7 @@ fi
 # ただし完了主張が差し替わって再評価に来た場合（force_eval）は、内容が同じでも評価する。
 change_sig=$(compute_change_sig "$project" "${base_ref:-HEAD}")
 if [ "${force_eval:-0}" -eq 0 ] && [ -n "$ST_ALLOWED_SIG" ] && [ "$change_sig" = "$ST_ALLOWED_SIG" ]; then
+  ST_CONSEC_BLOCKS=0
   state_write "$session_id" "$project" "${ST_BASELINE_HEAD:-$current_head}" "$current_head" \
               "$current_hash" "$current_claim" "ALLOW" "" 0 "same-content" "same-content" 0 "$current_br" "$ST_ALLOWED_SIG"
   exit 0
@@ -256,12 +277,26 @@ wdir=$(mktemp -d "$GATE_TMP_DIR/${session_id}.XXXXXX" 2>/dev/null) || { note "tm
 trap '[ "${EVALUATOR_GATE_KEEP_TMP:-0}" = "1" ] || rm -rf "$wdir"; session_lock_release "$session_id"' EXIT
 
 printf '%s' "$last_msg" > "$wdir/last_msg_raw.txt"
-if ! build_evidence "$project" "$wdir/last_msg_raw.txt" "$wdir" "$base_ref"; then
+
+# 成果物が作業ツリーの外にある場合（隔離 worktree で実装 → push → PR）、`git diff <base>` だけを
+# 証拠にすると申告した変更がどこにも現れず、評価者が正しく「差分に存在しない」と差し戻す。
+# セッション中に更新され HEAD から到達できないローカルブランチを git の ref から検出し、
+# 証拠に加える（検出元は git のみ。ビルダーの申告は参照しない）。失敗しても従来の証拠で続行する。
+: > "$wdir/session-refs.tsv"
+if [ "${EVALUATOR_GATE_REF_DISCOVERY:-1}" = "1" ]; then
+  discover_session_refs "$project" "$ST_SESSION_START_EPOCH" "$current_head" \
+    "${EVALUATOR_GATE_MAX_REFS:-2}" > "$wdir/session-refs.tsv" 2>/dev/null || : > "$wdir/session-refs.tsv"
+  [ -s "$wdir/session-refs.tsv" ] && \
+    note "作業ツリー外のブランチを証拠に追加します: $(cut -f3 "$wdir/session-refs.tsv" | tr '\n' ' ')"
+fi
+
+if ! build_evidence "$project" "$wdir/last_msg_raw.txt" "$wdir" "$base_ref" "$wdir/session-refs.tsv"; then
   note "evidence の生成に失敗したため評価をスキップします（fail-open）"
   exit 0
 fi
-# 生の完了主張を残さない（評価者は cwd 配下のファイルを読める）
-rm -f "$wdir/last_msg_raw.txt"
+# 生の完了主張を残さない（評価者は cwd 配下のファイルを読める）。
+# session-refs.tsv は sanitize を通らない中間ファイル（内容は既に summary/excerpt に反映済み）
+rm -f "$wdir/last_msg_raw.txt" "$wdir/session-refs.tsv"
 
 # ユーザーの元の指示（直近 N ターン）を証拠に加える。評価者に「何を頼まれたか」を与えて
 # 「成果物がリポジトリに出る種類か」を較正させる。抽出は transcript の user ロールのみ。
@@ -283,7 +318,7 @@ fi
 
 # 未 redact の中間ファイルが本当に消えたかを起動前に確認する（rm の失敗を見逃さない）。
 # 1つでも残っていれば、評価者の作業ディレクトリから読まれうるので起動しない。
-for raw in "$wdir/last_msg_raw.txt" "$wdir/tracked.diff"; do
+for raw in "$wdir/last_msg_raw.txt" "$wdir/tracked.diff" "$wdir/session-refs.tsv"; do
   if [ -e "$raw" ]; then
     note "未 redact の中間ファイルを削除できませんでした（$raw）。外部送信せず評価をスキップします"
     exit 0
@@ -355,6 +390,17 @@ if [ "$v_c" = "BLOCK" ] || [ "$v_g" = "BLOCK" ]; then
   else
     nb=1
   fi
+  # 連続差し戻し上限（diff ハッシュに依存しない終端）。共有ツリーのドリフトで毎回
+  # fresh eval になり nb が 1 に戻り続けても、ここで必ず縮退する
+  ST_CONSEC_BLOCKS=$((ST_CONSEC_BLOCKS + 1))
+  if [ "$ST_CONSEC_BLOCKS" -gt "$MAX_SESSION_BLOCKS" ]; then
+    capped_reason="$reason"
+    ST_CONSEC_BLOCKS=0   # 再武装する（以降のターンを恒久的に素通しにしない）
+    state_write "$session_id" "$project" "${ST_BASELINE_HEAD:-$current_head}" "$current_head" \
+                "$current_hash" "$current_claim" "ALLOW" "" 0 "session-capped" "session-capped" \
+                "$dur" "$current_br" "$ST_ALLOWED_SIG"
+    emit_warn_allow "evaluator-gate: このセッションでの差し戻しが連続 ${MAX_SESSION_BLOCKS} 回に達したため許可に縮退しました。証拠の収集範囲が作業内容と噛み合っていない可能性があります（成果物が作業ツリー外にある・作業ツリーを他セッションと共有している等）。未解消の指摘: $(printf '%s' "$capped_reason" | head -c 1500)"
+  fi
   # state 保存が失敗した場合は再ブロックループを止められないため fail-open に倒す
   if state_write "$session_id" "$project" "${ST_BASELINE_HEAD:-$current_head}" "$keep_base" \
                  "$current_hash" "$current_claim" "BLOCK" "$reason" "$nb" "$v_c" "$v_g" "$dur" \
@@ -371,6 +417,7 @@ elif [ "$v_c" = "ALLOW" ] || [ "$v_g" = "ALLOW" ]; then
   # こうすると、その未コミット差分をそのままコミットした次の停止で署名が一致し、
   # 同じ内容を二度評価しない（基準を base_ref にすると commit で署名がずれる）。
   accepted_sig=$(compute_change_sig "$project" "$current_head")
+  ST_CONSEC_BLOCKS=0
   state_write "$session_id" "$project" "${ST_BASELINE_HEAD:-$current_head}" "$current_head" \
               "$current_hash" "$current_claim" "ALLOW" "" 0 "$v_c" "$v_g" "$dur" "$current_br" "$accepted_sig" || \
     note "state 保存に失敗しました（次の停止で再評価されます）"
@@ -378,6 +425,7 @@ elif [ "$v_c" = "ALLOW" ] || [ "$v_g" = "ALLOW" ]; then
 else
   note "Codex/Grok とも利用不可のため fail-open（許可）。codex login status / grok login を確認してください。10分後の停止から再評価します"
   # eval_base は前進させない（復旧後に同じ範囲を再評価できるようにする）
+  ST_CONSEC_BLOCKS=0   # 差し戻しを出していないターンなので連続カウンタは切れる
   state_write "$session_id" "$project" "${ST_BASELINE_HEAD:-$current_head}" "$keep_base" \
               "$current_hash" "$current_claim" "UNAVAILABLE" "" "$ST_BLOCK_COUNT" "unavailable" "unavailable" "$dur" \
               "$current_br" "$ST_ALLOWED_SIG" || note "state 保存に失敗しました"

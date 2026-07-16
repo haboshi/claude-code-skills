@@ -773,6 +773,172 @@ if [ "$(calls)" = "2" ] && grep -q "TURNMARK_3" "$(promptf)" && ! grep -q "TURNM
   ok "T30 INSTRUCTION_TURNS=1 で直近1件のみ（古い指示は含まない）"
 else bad "T30" "m1=$(grep -c TURNMARK_1 "$(promptf)") m3=$(grep -c TURNMARK_3 "$(promptf)")"; fi
 
+# === F1: 作業ツリー外のブランチ（別 worktree で実装 → push → PR）の証拠化（T32 系） ===
+# git worktree は refs / object DB を親リポジトリと共有するため、worktree で作られた
+# ブランチは親リポジトリの refs/heads に現れる。これを証拠にできるかを検証する。
+
+# --- T32: 隔離 worktree のブランチ差分が証拠に含まれる（誤差し戻しインシデントの再現） ---
+S=s32
+git -C "$REPO" checkout -q main 2>/dev/null
+git -C "$REPO" add -A >/dev/null 2>&1; git -C "$REPO" commit -qm "pre-t32" >/dev/null 2>&1
+out=$(startjson $S | run_start)
+WT="$WORK/wt32"
+git -C "$REPO" worktree add -q -b fix/display-order "$WT" >/dev/null 2>&1 || bad "T32-setup" "worktree add 失敗"
+printf 'export const sortOrder = 1; // T32MARK_DELIVERABLE\n' > "$WT/display-order.ts"
+git -C "$WT" add -A >/dev/null; git -C "$WT" commit -qm "fix display order" >/dev/null
+# 親ツリーは別セッションの WIP で汚れている（＝「クリーンだから素通し」の分岐に入らない）
+printf 'other session wip T32MARK_FOREIGN\n' >> "$REPO/base.txt"
+reset_calls
+out=$(stopjson $S "display-order を修正し PR に出しました" | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
+if [ "$(calls)" = "2" ] && grep -q "T32MARK_DELIVERABLE" "$(promptf)" && grep -q "fix/display-order" "$(promptf)"; then
+  ok "T32 worktreeのブランチ差分が証拠に含まれる（作業ツリー外の成果物）"
+else bad "T32" "calls=$(calls) deliverable=$(grep -c T32MARK_DELIVERABLE "$(promptf)")"; fi
+
+# --- T32b: セッション開始より前に更新されたブランチは含めない（時間窓で絞る） ---
+S=s32b
+git -C "$REPO" worktree add -q -b old/stale "$WORK/wt32b" >/dev/null 2>&1 || bad "T32b-setup" "worktree add 失敗"
+printf 'stale work T32BMARK_STALE\n' > "$WORK/wt32b/stale.ts"
+git -C "$WORK/wt32b" add -A >/dev/null
+GIT_COMMITTER_DATE="2020-01-01T00:00:00 +0000" git -C "$WORK/wt32b" commit -qm "stale branch" >/dev/null
+out=$(startjson $S | run_start)
+printf 'wip for t32b\n' >> "$REPO/base.txt"
+reset_calls
+out=$(stopjson $S "実装しました" | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
+if [ "$(calls)" = "2" ] && ! grep -q "T32BMARK_STALE" "$(promptf)"; then
+  ok "T32b セッション開始前のブランチは証拠に含めない（時間窓）"
+else bad "T32b" "calls=$(calls) stale=$(grep -c T32BMARK_STALE "$(promptf)")"; fi
+
+# --- T32c: HEAD から到達可能なブランチは検出しない（主証拠との重複回避） ---
+. "$PLUG/scripts/gate-lib.sh"
+head_now=$(git -C "$REPO" rev-parse HEAD)
+cur_br=$(git -C "$REPO" symbolic-ref --short HEAD 2>/dev/null)
+refs32c=$(discover_session_refs "$REPO" 1 "$head_now" 5)
+if ! printf '%s\n' "$refs32c" | grep -q "	$cur_br$"; then
+  ok "T32c HEADから到達可能なブランチは検出しない（重複回避）"
+else bad "T32c" "refs=$refs32c"; fi
+
+# --- T32d: ブランチ証拠でも機微パスの内容は除外される（pathspec が効いている） ---
+S=s32d
+out=$(startjson $S | run_start)
+WT2="$WORK/wt32d"
+git -C "$REPO" worktree add -q -b feat/with-secret "$WT2" >/dev/null 2>&1 || bad "T32d-setup" "worktree add 失敗"
+printf 'BRANCHENV_MARKER_XYZZY\n' > "$WT2/.env"
+printf 'export const ok = 1; // T32DMARK_CODE\n' > "$WT2/normal.ts"
+git -C "$WT2" add -A -f >/dev/null; git -C "$WT2" commit -qm "add env on branch" >/dev/null
+printf 'wip t32d\n' >> "$REPO/base.txt"
+reset_calls
+out=$(stopjson $S "ブランチで実装しました" | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
+if [ "$(calls)" = "2" ] && grep -q "T32DMARK_CODE" "$(promptf)" && ! grep -q "BRANCHENV_MARKER" "$(promptf)"; then
+  ok "T32d ブランチ証拠でも機微パスの内容は除外される"
+else bad "T32d" "code=$(grep -c T32DMARK_CODE "$(promptf)") leak=$(grep -c BRANCHENV_MARKER "$(promptf)")"; fi
+
+# --- T32e: 検出結果の中間ファイルを評価者の cwd に残さない ---
+W32=$(find "$EVALUATOR_GATE_HOME/tmp" -maxdepth 1 -type d -name "s32d.*" | head -1)
+if [ -n "$W32" ] && [ ! -e "$W32/session-refs.tsv" ]; then
+  ok "T32e session-refs.tsv を評価者cwdに残さない"
+else bad "T32e" "残存=$(ls "$W32" 2>/dev/null | tr '\n' ' ')"; fi
+
+# --- T32f: 統合ブランチ（develop 等）は候補から外す ---
+# 実リポジトリでは他セッションのマージで統合ブランチが頻繁に動き、時間窓を素通りして
+# max 件の枠を食い潰す（本命のブランチが押し出される）。
+S=s32f
+out=$(startjson $S | run_start)
+git -C "$REPO" worktree add -q -b develop "$WORK/wt32f" >/dev/null 2>&1 || bad "T32f-setup" "worktree add 失敗"
+printf 'integration branch T32FMARK_INTEG\n' > "$WORK/wt32f/integ.ts"
+git -C "$WORK/wt32f" add -A >/dev/null; git -C "$WORK/wt32f" commit -qm "integration work" >/dev/null
+printf 'wip t32f\n' >> "$REPO/base.txt"
+reset_calls
+out=$(stopjson $S "実装しました" | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
+if [ "$(calls)" = "2" ] && ! grep -q "T32FMARK_INTEG" "$(promptf)"; then
+  ok "T32f 統合ブランチ(develop)は証拠に含めない"
+else bad "T32f" "calls=$(calls) integ=$(grep -c T32FMARK_INTEG "$(promptf)")"; fi
+
+# --- T32g: 同一コミットを指す別名ブランチを二重に載せない ---
+git -C "$REPO" branch alias/one fix/display-order >/dev/null 2>&1
+git -C "$REPO" branch alias/two fix/display-order >/dev/null 2>&1
+head_now=$(git -C "$REPO" rev-parse HEAD)
+dup32g=$(discover_session_refs "$REPO" 1 "$head_now" 5 | cut -f1 | sort | uniq -d | wc -l | tr -d ' ')
+if [ "$dup32g" = "0" ]; then
+  ok "T32g 同一oidの別名ブランチを二重に載せない"
+else bad "T32g" "重複oid=$dup32g"; fi
+
+# === F2: 連続差し戻しの終端保証（T33 系） ===
+
+# --- T33: diff ハッシュがドリフトし続けても連続上限で必ず終端する（デッドロック防止） ---
+# 別セッションが同じ作業ツリーを触るとハッシュが毎回変わり、同一diff前提の MAX_BLOCKS が
+# 発火しない。ハッシュに依存しない上限が最後の終端条件であることを証明する。
+S=s33
+out=$(startjson $S | run_start)
+export FAKE_CODEX_OUTPUT="BLOCK: 申告した変更が差分に存在しません
+base.txt:1 — 申告のファイルが差分にない — 実装を提示する"
+export FAKE_GROK_OUTPUT="ALLOW: 問題なし"
+blocked33=0; released33=""
+i=0
+while [ "$i" -lt 6 ]; do
+  i=$((i + 1))
+  printf 'drift %s\n' "$i" >> "$REPO/base.txt"   # 毎ターン diff を変える = ハッシュのドリフト
+  out=$(stopjson $S "完了しました" | EVALUATOR_GATE_MAX_SESSION_BLOCKS=3 run_gate)
+  if printf '%s' "$out" | jq -e '.decision=="block"' >/dev/null 2>&1; then
+    blocked33=$((blocked33 + 1))
+  elif printf '%s' "$out" | jq -r '.systemMessage // ""' | grep -q "連続 3 回"; then
+    released33="$i"; break
+  fi
+done
+if [ "$blocked33" = "3" ] && [ "$released33" = "4" ]; then
+  ok "T33 ハッシュがドリフトしても連続差し戻し上限で終端（3回BLOCK→4回目で縮退）"
+else bad "T33" "blocked=$blocked33 released=$released33"; fi
+
+# --- T33b: 縮退後は再武装される（以降のターンを恒久的に素通しにしない） ---
+printf 'after release\n' >> "$REPO/base.txt"
+out=$(stopjson $S "完了しました" | EVALUATOR_GATE_MAX_SESSION_BLOCKS=3 run_gate)
+cb33=$(state_of $S | jq -r '.consec_blocks')
+if printf '%s' "$out" | jq -e '.decision=="block"' >/dev/null 2>&1 && [ "$cb33" = "1" ]; then
+  ok "T33b 縮退後は再武装される（連続カウンタ0から再開）"
+else bad "T33b" "consec_blocks=$cb33 out=$out"; fi
+
+# --- T33c: ALLOW で連続カウンタがリセットされる ---
+export FAKE_CODEX_OUTPUT="ALLOW: 差分と主張が一致"
+printf 'fixed properly\n' >> "$REPO/base.txt"
+out=$(stopjson $S "修正しました" | run_gate)
+if [ "$(state_of $S | jq -r '.consec_blocks')" = "0" ]; then
+  ok "T33c ALLOWで連続カウンタがリセットされる"
+else bad "T33c" "consec_blocks=$(state_of $S | jq -r '.consec_blocks')"; fi
+
+# --- T34: SessionStart が session_start_epoch を記録する（schema 4） ---
+S=s34
+out=$(startjson $S | run_start)
+sse=$(state_of $S | jq -r '.session_start_epoch'); schema=$(state_of $S | jq -r '.schema')
+if [ "$schema" = "4" ] && [ "$sse" != "null" ] && [ "$sse" -gt 0 ] 2>/dev/null; then
+  ok "T34 SessionStart が session_start_epoch を記録（schema 4）"
+else bad "T34" "schema=$schema sse=$sse"; fi
+
+# --- T34b: 旧 schema の state（時間窓なし）ではブランチ検出をしない（全ブランチ混入の防止） ---
+S=s34b
+out=$(startjson $S | run_start)
+sf="$EVALUATOR_GATE_HOME/state/$S.json"
+jq 'del(.session_start_epoch)' "$sf" > "$sf.t" && mv "$sf.t" "$sf"
+printf 'legacy state test\n' >> "$REPO/base.txt"
+reset_calls
+out=$(stopjson $S "完了しました" | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
+if [ "$(calls)" = "2" ] && ! grep -qE "T32MARK_DELIVERABLE|T32DMARK_CODE" "$(promptf)"; then
+  ok "T34b 旧schema（時間窓なし）ではブランチ検出をしない"
+else bad "T34b" "calls=$(calls) leaked=$(grep -oE 'T32MARK_DELIVERABLE|T32DMARK_CODE' "$(promptf)" | tr '\n' ',')"; fi
+
+# --- T34c: REF_DISCOVERY=0 で機能を無効化できる ---
+S=s34c
+out=$(startjson $S | run_start)
+git -C "$REPO" worktree add -q -b feat/disabled-probe "$WORK/wt34c" >/dev/null 2>&1
+printf 'export const x = 1; // T34CMARK\n' > "$WORK/wt34c/probe.ts"
+git -C "$WORK/wt34c" add -A >/dev/null; git -C "$WORK/wt34c" commit -qm "probe" >/dev/null
+printf 'wip t34c\n' >> "$REPO/base.txt"
+reset_calls
+out=$(stopjson $S "実装しました" | EVALUATOR_GATE_REF_DISCOVERY=0 EVALUATOR_GATE_KEEP_TMP=1 run_gate)
+if [ "$(calls)" = "2" ] && ! grep -q "T34CMARK" "$(promptf)"; then
+  ok "T34c REF_DISCOVERY=0 でブランチ検出を無効化できる"
+else bad "T34c" "calls=$(calls)"; fi
+export FAKE_CODEX_OUTPUT="ALLOW: ok"
+export FAKE_GROK_OUTPUT="ALLOW: ok"
+
 # --- T26: off で完全無音に戻る ---
 (cd "$REPO" && bash "$PLUG/scripts/gate-config.sh" off >/dev/null)
 echo "after off" >> "$REPO/base.txt"

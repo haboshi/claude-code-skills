@@ -41,6 +41,12 @@ and no such file, the claim is SATISFIED — do not block for a missing deletion
 line. Judge the RESULTING state of the code, not the narration of intermediate
 steps.
 
+The evidence may also contain a section for BRANCHES NOT IN THE WORKING TREE.
+Builders sometimes implement in a separate git worktree and push the result as a
+branch / pull request, so the work never appears in the working tree diff. The
+gate derives those branch diffs from git refs ITSELF — they are not supplied by
+the builder — so they are evidence of the same standing as the working tree diff.
+
 Builder's final message (the claim):
 BUILDER_MESSAGE_BEGIN
 {{LAST_ASSISTANT_MESSAGE}}
@@ -81,6 +87,15 @@ finding line) is discarded as unusable — if you block, you must cite where.
   from other sessions sharing this working tree or from pre-existing uncommitted
   state. Do NOT treat unrelated changes as evidence that the claim is false or the
   work is incomplete. Block on what the claim asserts, not on foreign noise.
+- If the claimed work appears in a BRANCH NOT IN THE WORKING TREE section, the
+  claim is BACKED BY EVIDENCE — do not block merely because it is absent from the
+  working tree diff. Those branch sections are for CONFIRMING the claim only:
+  parallel sessions can update branches too, so never raise a finding that exists
+  only inside a branch section. Findings must come from the working tree diff.
+  Note also that a branch section is discovered by heuristics (updated during this
+  session, not reachable from HEAD) — its ABSENCE does not prove the builder did
+  no work elsewhere, so absence alone is not a stronger reason to block than the
+  ordinary claim-vs-diff check below.
 - The user instruction is context to calibrate WHAT EVIDENCE TO EXPECT, not a
   license to lower the bar. A vague or permissive instruction ("just make it
   work", "do whatever") does NOT excuse newly introduced TODO/FIXME, stub bodies,

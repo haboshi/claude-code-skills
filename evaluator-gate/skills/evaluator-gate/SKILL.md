@@ -47,16 +47,28 @@ Stop 発火
 - 起点から HEAD までのコミット数が上限（既定50、`EVALUATOR_GATE_MAX_COMMITS`）を超える場合は、このターンの作業ではない履歴を巻き込んでいる可能性が高いため、評価せず警告つき許可にする。
 - セッション途中でプラグインを導入した等でベースラインが無く、作業ツリーもクリーンな場合は「評価対象なし」として通過する（**無関係な過去コミットを評価して誤ブロックするより安全側**に倒す。時刻ヒューリスティックは使わない）。
 
+**作業ツリー外の成果物（別 worktree → push → PR）**
+
+隔離 worktree で実装して push しただけのターンは、親ツリーの `git diff` に何も出ない。作業ツリーが他セッションの WIP で汚れていると「クリーンだから素通し」の分岐にも入らず、**無関係な diff に完了主張を突き合わせ続ける**（評価者はプロンプトどおり「申告した変更が差分に無い」と正しく差し戻すが、ビルダーには解消手段が無い）。
+
+これを避けるため、評価時に**セッション中に更新され、現在の HEAD から到達できないローカルブランチ**を git の ref から検出し、その差分（`merge-base..tip`）を証拠に加える。git worktree は refs と object DB を親リポジトリと共有するので、worktree で作られたブランチはここに現れる。
+
+- **検出元は git の ref のみ**。ビルダーの申告（「PR に出しました」）は一切参照しない。参照すると、その一言でゲートを抜けられる経路になる。
+- 除外: 統合ブランチ（`main` / `master` / `develop` / `trunk` と origin/HEAD の既定ブランチ）、HEAD から到達可能な ref、同一 oid の別名、分岐点から `EVALUATOR_GATE_MAX_COMMITS` 超のブランチ。上限は `EVALUATOR_GATE_MAX_REFS`（既定2）。`EVALUATOR_GATE_REF_DISCOVERY=0` で無効化できる。
+  - 統合ブランチの判定に origin/HEAD **だけ**を使わない。実運用では PR の base が `develop` でも origin/HEAD が `main` のまま、という乖離が起きる（vegeexpress で実測）。慣習名との和集合にする。
+- ブランチ区画は**主張の裏取り専用**で、指摘の材料にしてはならない（並行セッションのブランチが混ざりうるため）。プロンプトの `<decision_policy>` に明記している。
+- **境界**: セッション開始時刻（`session_start_epoch`）が無い state（v0.3.x で開始したセッション）では検出しない。別クローンでの作業や、push 後にローカル ref を消したケースは拾えない。親ツリーがクリーンなら従来どおり評価自体が走らない（worktree 専業ターンは無評価のまま）。**複数セッションが1つの作業ツリーを共有する限り、証拠の混線は原理的にゼロにできない**。
+
 **その他の不変条件**
 
-- 差し戻し上限（既定3、`EVALUATOR_GATE_MAX_BLOCKS`）は「**同一の変更のまま停滞した回数**」で、diff が変わればリセットされる（セッション累積上限ではない）。最終バックストップは Claude Code 組み込みの Stop ブロック上限（既定8回）。
+- 差し戻し上限は二重。**同一 diff の停滞**（既定3、`EVALUATOR_GATE_MAX_BLOCKS`）は diff が変わればリセットされる。**セッション内の連続差し戻し**（既定6、`EVALUATOR_GATE_MAX_SESSION_BLOCKS`）は diff ハッシュに依存せず、ALLOW で 0 に戻る。後者が無いと終端が保証されない: 別セッションが同じ作業ツリーを触るとハッシュが毎ターン変わり、fresh eval のたびに停滞カウンタが 1 に戻って上限に永久到達しないため（実測済みのデッドロック）。縮退後は再武装するので恒久的な素通しにはならない。最終バックストップは Claude Code 組み込みの Stop ブロック上限（既定8回）。
 - **同一 diff のまま完了主張だけを差し替えた場合**（「WIP です」→「全部完了・テスト通過」）は再評価する。完了を主張しない文面の差し替えでは再評価しない（クォータ保護）。
 - 根拠のない BLOCK（`file:line` 参照も `—` 区切りの指摘行も無い）と、1行目以外に現れた BLOCK 行は**採用しない**（幻覚由来の差し戻しを防ぐ。いずれも fail-open 方向）。
 - OMC 実行モード（ultrawork / ralph / autopilot / team / ultrapilot / swarm / pipeline / ultraqa）中は多重ゲートを避けるためスキップする。検出は **project-local / session-scoped** の `.omc/state/<mode>-state.json` の `.active == true` のみ（グローバル state は「他プロジェクトの1フラグで全ゲートが死ぬ」ため見ない）。12時間より古い state は stale として無視する。
 - 同一セッションの多重 Stop はロックで直列化し、取得できなければ通過する。
 
 - 判定プロトコル: 評価者出力の1行目が `ALLOW: <理由>` / `BLOCK: <理由>`。BLOCK 時は `file:line — 問題 — 期待される状態` の指摘を続ける。
-- ループ防止は二段: プラグイン独自の差し戻し上限（既定3回、`EVALUATOR_GATE_MAX_BLOCKS`）→ Claude Code 組み込みの Stop ブロック上限（既定8回）。
+- ループ防止は三段: 同一 diff の停滞上限（既定3回、`EVALUATOR_GATE_MAX_BLOCKS`）→ セッション内の連続差し戻し上限（既定6回、`EVALUATOR_GATE_MAX_SESSION_BLOCKS`・ハッシュ非依存）→ Claude Code 組み込みの Stop ブロック上限（既定8回）。
 - 評価ルーブリックの正（SSOT）は `prompts/stop-gate.md` の `<decision_policy>`。本ファイルは解説であり、観点を変えるときはプロンプト側を改訂する（二重管理しない）。
 
 ### 評価観点（decision_policy の要旨）

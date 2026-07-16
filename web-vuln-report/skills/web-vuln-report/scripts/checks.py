@@ -1595,6 +1595,107 @@ def check_csrf_enforcement(client: "_ActiveAuthClient", login_url: str, f: Findi
               f"CSRF 保護の実効性を要確認（列挙・改変は未実施）。", confidence="Medium")
 
 
+# ===== v0.5 A3: ユーザー列挙（opt-in 能動・既存ゲート内・非存在アカウントのみ） =====
+# アカウント存在に依存する（＝列挙可能な）応答語。汎用の "not found"（404 相当）は誤検知の
+# 温床なので採らず、アカウント存在を明示する語のみを用いる（advisor 指摘）。
+_ENUM_ACCOUNT_SPECIFIC = (
+    "no account", "no such user", "unknown user", "user does not exist",
+    "account does not exist", "email is not registered", "email not registered",
+    "not a registered", "no user with", "email address is not associated",
+    "user not found",  # login 文脈の "user not found" は存在依存（"page not found" は generic 側で吸収）
+)
+_ENUM_ACCOUNT_SPECIFIC_JA = (
+    "アカウントが見つかりません", "ユーザーが存在しません", "登録されていません",
+    "登録がありません", "そのメールアドレスは登録されて", "アカウントは存在しません",
+    "登録されたアカウントがありません", "該当するアカウントがありません",
+)
+# 存在を露呈しない汎用応答（安全側）。これが含まれるなら列挙とみなさない（generic override）。
+_ENUM_GENERIC = (
+    "invalid credentials", "incorrect password", "if an account", "if a matching account",
+    "if that email", "we have sent", "we've sent", "a reset link", "page not found",
+)
+_ENUM_GENERIC_JA = (
+    "認証情報", "ログイン情報が正しく", "パスワードが正しく", "認証に失敗", "認証失敗",
+    "登録があれば", "メールを送信しました", "リセット用のメール", "メールをお送りしました",
+    "該当する場合", "ページが見つかりません",
+)
+_ENUM_STATUS_NOTE = {
+    "finding": "",
+    "clean": "認証ロジックに到達し、存在を露呈しない汎用応答を確認",
+    "inconclusive": "CSRF/前段遮断等で認証ロジックに未到達＝判定保留（要手動確認）",
+}
+
+
+def _enum_classify(body: str) -> str:
+    """応答本文をアカウント存在露呈の観点で分類する: 'specific'（存在依存）/'generic'（安全）/'unknown'。
+
+    汎用応答（generic）が含まれるなら存在依存語があっても安全側に倒す（generic override＝FP回避）。"""
+    b = body or ""
+    low = b.lower()
+    if any(p in low for p in _ENUM_GENERIC) or any(p in b for p in _ENUM_GENERIC_JA):
+        return "generic"
+    if any(p in low for p in _ENUM_ACCOUNT_SPECIFIC) or any(p in b for p in _ENUM_ACCOUNT_SPECIFIC_JA):
+        return "specific"
+    return "unknown"
+
+
+def check_user_enumeration(login_client: "_ActiveAuthClient", login_url: str, f: Findings,
+                           reset_client: "_ActiveAuthClient | None" = None,
+                           reset_url: str | None = None,
+                           headers: dict | None = None, extra_fields: dict | None = None,
+                           reset_headers: dict | None = None,
+                           reset_fields: dict | None = None) -> str:
+    """存在しないランダムアカウントで login/reset に POST し、応答がアカウント有無を露呈するか観測する。
+
+    実在アカウントは一切使わない（ロック回避・改変なし）。login は 2 つの異なる非存在アカウントを
+    送り、到達した応答が一貫して存在依存（specific）のときのみ列挙疑いとする（安定性確認）。reset は
+    非存在 email を 1 回送り、存在依存か汎用かを判定する。機微につき evidence にはメッセージ差の
+    要旨のみを載せ、生の内部情報は載せない。確度は控えめ（Low）。
+
+    返り値の台帳区分: 'finding'（列挙疑い）/'clean'（汎用応答で安全）/'inconclusive'（前段遮断で未到達）。"""
+    signals: list[str] = []
+    login_verdicts: list[str] = []
+    for _ in range(2):
+        data = dict(_fake_credentials())
+        if extra_fields:
+            data.update(extra_fields)
+        try:
+            r = login_client.post(login_url, data=data, headers=headers or None)
+        except Exception:
+            break
+        if r.status_code in (419, 403):
+            continue  # CSRF/前段遮断＝認証ロジックに未到達
+        login_verdicts.append(_enum_classify((r.text or "")[:4000]))
+    login_reached = bool(login_verdicts)
+    if login_verdicts and all(v == "specific" for v in login_verdicts):
+        signals.append("login")
+
+    reset_reached = False
+    if reset_client and reset_url:
+        data = {"email": _fake_credentials()["email"]}
+        if reset_fields:
+            data.update(reset_fields)
+        try:
+            r = reset_client.post(reset_url, data=data, headers=reset_headers or None)
+            if r.status_code not in (419, 403):
+                reset_reached = True
+                if _enum_classify((r.text or "")[:4000]) == "specific":
+                    signals.append("reset")
+        except Exception:
+            pass
+
+    if signals:
+        where = login_url if "login" in signals else (reset_url or login_url)
+        f.add("user-enumeration", where,
+              "非存在アカウントに対し、アカウント有無に依存する応答を観測（"
+              + "/".join(signals) + "）。存在の可否を第三者が推定しうる（生の応答内容は非掲載）。",
+              confidence="Low")
+        return "finding"
+    if login_reached or reset_reached:
+        return "clean"       # 認証ロジックに到達し、存在を露呈しない汎用応答を確認
+    return "inconclusive"    # 前段遮断（419/403）等で認証ロジックに未到達＝判定保留
+
+
 def check_https_redirect(target: str, client, f: Findings) -> None:
     """HTTPS 対象について、HTTP アクセスが HTTPS へ確実にリダイレクトされるかを検証。"""
     p = urlparse(target)
@@ -1648,6 +1749,7 @@ LEDGER_GROUPS = [
     ("mixed-content", "混在コンテンツ", "A06", "active"),
     ("login-rate-limit", "ログインレート制限（能動・opt-in）", "A06", "active-auth"),
     ("csrf-enforcement", "CSRF トークン実効性（能動・opt-in）", "A01", "active-auth"),
+    ("user-enumeration", "ユーザー列挙（能動・opt-in）", "A06", "active-auth"),
 ]
 
 # 各グループが生成しうる check_id（台帳の finding/clean 判定に使用）
@@ -1686,6 +1788,7 @@ _GROUP_CHECK_IDS = {
     "mixed-content": {"mixed-content"},
     "login-rate-limit": {"no-rate-limit"},
     "csrf-enforcement": {"csrf-not-enforced"},
+    "user-enumeration": {"user-enumeration"},
 }
 _CHECK_TO_GROUP = {cid: gid for gid, cids in _GROUP_CHECK_IDS.items() for cid in cids}
 
@@ -1740,7 +1843,8 @@ def _dns_target_ok(host: str) -> bool:
 def run_checks(crawl: dict, timeout: float = 15.0, active: bool = True,
                ledger: "Ledger | None" = None, active_auth: bool = False,
                active_auth_url: str | None = None, active_auth_authorized: str = "",
-               max_login_attempts: int = _LOGIN_HARD_CAP) -> list[dict]:
+               max_login_attempts: int = _LOGIN_HARD_CAP,
+               active_auth_reset_url: str | None = None) -> list[dict]:
     f = Findings()
     if ledger is None:
         ledger = Ledger()
@@ -1928,6 +2032,37 @@ def run_checks(crawl: dict, timeout: float = 15.0, active: bool = True,
                               findings=1 if status == "finding" else 0,
                               note=_LOGIN_RL_STATUS_NOTE.get(status, ""))
             _safe("login-rate-limit", _run_login_rate_limit)
+
+            # v0.5 A3: ユーザー列挙。csrf/rate-limit と cap を食い合わないよう **独立した**
+            # _ActiveAuthClient を使う（各テストの blast radius を個別に縛る）。reset は
+            # --reset-url が in-scope のときだけ別 client で検査する（既定 OFF）。
+            def _run_user_enumeration() -> None:
+                ap = urlparse(active_auth_url)
+                origin = urlunparse((ap.scheme, ap.netloc, "", "", "", ""))
+                enum_login = _ActiveAuthClient(raw, active_auth_url, delay)
+                try:
+                    hdrs, fields = _acquire_login_csrf(sc, raw.cookies, active_auth_url, origin)
+                except Exception:
+                    hdrs, fields = {}, {}
+                reset_client = None
+                r_hdrs, r_fields = {}, {}
+                if active_auth_reset_url and in_scope(active_auth_reset_url):
+                    reset_client = _ActiveAuthClient(raw, active_auth_reset_url, delay)
+                    try:
+                        r_hdrs, r_fields = _acquire_login_csrf(
+                            sc, raw.cookies, active_auth_reset_url, origin)
+                    except Exception:
+                        r_hdrs, r_fields = {}, {}
+                status = check_user_enumeration(
+                    enum_login, active_auth_url, f,
+                    reset_client=reset_client, reset_url=active_auth_reset_url,
+                    headers=hdrs, extra_fields=fields,
+                    reset_headers=r_hdrs, reset_fields=r_fields)
+                # 明示 record（inconclusive を clean に丸めない・login-rate-limit と同様）。
+                ledger.record("user-enumeration", status,
+                              findings=1 if status == "finding" else 0,
+                              note=_ENUM_STATUS_NOTE.get(status, ""))
+            _safe("user-enumeration", _run_user_enumeration)
         else:
             if not active_auth:
                 aa_reason = "能動認証テスト無効（既定 OFF・--active-auth 未指定）"
@@ -1937,7 +2072,7 @@ def run_checks(crawl: dict, timeout: float = 15.0, active: bool = True,
                 aa_reason = "login URL（--login-url）未指定"
             else:
                 aa_reason = "login URL がスコープ外"
-            for gid in ("login-rate-limit", "csrf-enforcement"):
+            for gid in ("login-rate-limit", "csrf-enforcement", "user-enumeration"):
                 if not ledger.has(gid):
                     note = aa_reason
                     if gid == "login-rate-limit" and rate_limit_seen:
@@ -1980,6 +2115,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--authorized-active", default="",
                     help="能動認証テストの書面認可（空なら能動認証は実行しない）")
     ap.add_argument("--login-url", default=None, help="能動認証テストの対象 login エンドポイント")
+    ap.add_argument("--reset-url", default=None,
+                    help="ユーザー列挙テストの対象パスワード再発行エンドポイント（任意・既定 OFF）")
     ap.add_argument("--max-login-attempts", type=int, default=8,
                     help="ログインレート制限テストの試行上限（ハードキャップ 8 にクランプ）")
     args = ap.parse_args(argv)
@@ -1991,7 +2128,8 @@ def main(argv: list[str] | None = None) -> int:
     findings = run_checks(crawl, timeout=args.timeout, active=not args.passive_only, ledger=ledger,
                           active_auth=args.active_auth, active_auth_url=args.login_url,
                           active_auth_authorized=args.authorized_active,
-                          max_login_attempts=args.max_login_attempts)
+                          max_login_attempts=args.max_login_attempts,
+                          active_auth_reset_url=args.reset_url)
     out = {
         "target": crawl.get("scope", {}).get("target", ""),
         "generated_at": _now_iso(),

@@ -783,6 +783,94 @@ def test_login_rate_limit_clamps_to_hard_cap():
     assert c.n == _LOGIN_HARD_CAP  # 100 要求でもハードキャップ 8 にクランプ
 
 
+# ===== v0.5 A3: ユーザー列挙（opt-in 能動・非存在アカウントのみ） =====
+def test_user_enumeration_classifier():
+    from checks import _enum_classify
+    assert _enum_classify("no account with that email") == "specific"
+    assert _enum_classify("アカウントが見つかりません") == "specific"
+    assert _enum_classify("そのメールアドレスは登録されていません") == "specific"
+    assert _enum_classify("invalid credentials") == "generic"
+    assert _enum_classify("認証情報が正しくありません") == "generic"
+    assert _enum_classify("登録があればメールを送信しました") == "generic"
+    # generic override: 存在依存 + 汎用が同時なら安全側（generic）へ倒す
+    assert _enum_classify("if an account exists we've sent an email; otherwise no account") == "generic"
+    # 汎用の "not found"（404/ページ相当）だけでは specific にしない（FP回避）
+    assert _enum_classify("404 page not found") == "generic"
+    assert _enum_classify("something unrelated") == "unknown"
+
+
+def test_user_enumeration_login_and_reset(server):
+    import httpx
+    from checks import _ActiveAuthClient, check_user_enumeration, Findings
+    # (A) login が存在依存応答を露呈 → finding（確度 Low）
+    with httpx.Client(follow_redirects=False) as raw:
+        aac = _ActiveAuthClient(raw, f"{server}/login-enum")
+        f = Findings()
+        st = check_user_enumeration(aac, f"{server}/login-enum", f)
+        assert st == "finding"
+        items = [i for i in f.as_list() if i["check_id"] == "user-enumeration"]
+        assert items and items[0]["confidence"] == "Low"
+        assert "アカウントが見つかりません" not in items[0]["evidence"]  # 生の応答は非掲載
+
+    # (B) login は 419 wall だが reset が存在依存を露呈 → finding（reset 経路）
+    with httpx.Client(follow_redirects=False) as raw:
+        login_c = _ActiveAuthClient(raw, f"{server}/login")           # token 無し POST は 419
+        reset_c = _ActiveAuthClient(raw, f"{server}/reset")
+        f2 = Findings()
+        st2 = check_user_enumeration(login_c, f"{server}/login", f2,
+                                     reset_client=reset_c, reset_url=f"{server}/reset")
+        assert st2 == "finding"
+        assert "reset" in [i for i in f2.as_list() if i["check_id"] == "user-enumeration"][0]["evidence"]
+
+    # (C) login wall + reset が汎用応答 → clean（列挙なし）
+    with httpx.Client(follow_redirects=False) as raw:
+        login_c = _ActiveAuthClient(raw, f"{server}/login-hardened")  # 常時 419
+        reset_c = _ActiveAuthClient(raw, f"{server}/reset-safe")
+        f3 = Findings()
+        st3 = check_user_enumeration(login_c, f"{server}/login-hardened", f3,
+                                     reset_client=reset_c, reset_url=f"{server}/reset-safe")
+        assert st3 == "clean"
+        assert not [i for i in f3.as_list() if i["check_id"] == "user-enumeration"]
+
+
+def test_user_enumeration_inconclusive_on_csrf_wall(server):
+    import httpx
+    from checks import _ActiveAuthClient, check_user_enumeration, Findings
+    # login 常時 419（CSRF wall）・reset 無し → 認証ロジック未到達 → inconclusive（clean と区別）
+    with httpx.Client(follow_redirects=False) as raw:
+        aac = _ActiveAuthClient(raw, f"{server}/login-hardened")
+        f = Findings()
+        st = check_user_enumeration(aac, f"{server}/login-hardened", f)
+        assert st == "inconclusive"
+        assert not f.as_list()
+
+
+def test_active_auth_user_enumeration_integration(crawl_data, server):
+    # run_checks 経由: reset を露呈エンドポイントに向け user-enumeration を finding として台帳記録。
+    # 既存の login-rate-limit / csrf-enforcement は独立 client により従来通り動く（回帰防止）。
+    from checks import run_checks, Ledger
+    led = Ledger()
+    findings = run_checks(crawl_data, timeout=10, active=True, ledger=led,
+                          active_auth=True, active_auth_url=server.rstrip("/") + "/login",
+                          active_auth_authorized="test-suite",
+                          active_auth_reset_url=server.rstrip("/") + "/reset")
+    ids = {f["check_id"] for f in findings}
+    assert "user-enumeration" in ids
+    rows = {r["id"]: r for r in led.rows()}
+    assert rows["user-enumeration"]["status"] == "finding"
+    # 独立 client により既存の能動認証テストは不変（cap 食い合いなし）
+    assert rows["login-rate-limit"]["status"] == "finding"
+    assert rows["csrf-enforcement"]["status"] == "clean"
+
+
+def test_user_enumeration_skipped_when_active_auth_off(crawl_data):
+    from checks import run_checks, Ledger
+    led = Ledger()
+    run_checks(crawl_data, timeout=10, active=True, ledger=led)  # 能動認証 OFF（既定）
+    rows = {r["id"]: r for r in led.rows()}
+    assert rows["user-enumeration"]["status"] == "skipped"
+
+
 def test_csrf_enforcement_logic():
     from checks import check_csrf_enforcement, Findings
 

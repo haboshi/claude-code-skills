@@ -155,6 +155,21 @@ class VulnHandler(BaseHTTPRequestHandler):
             # トークンの有無に関わらず常に 419（レート制限層へ到達できない＝判定保留を検証）。
             self._send(419, "<html><body>CSRF wall</body></html>")
             return
+        # v0.5 A3 ユーザー列挙フィクスチャ（トークン不要・非存在アカウントで存在依存/汎用を出し分け）。
+        if parsed.path == "/login-enum":
+            # login が存在依存メッセージを露呈（列挙可能）→ user-enumeration 検出。
+            self._send(401, "<html><body>ログインに失敗しました: アカウントが見つかりません"
+                            "（no account with that email）</body></html>")
+            return
+        if parsed.path == "/reset":
+            # reset が存在依存メッセージを露呈（列挙可能）。
+            self._send(200, "<html><body>そのメールアドレスは登録されていません。</body></html>")
+            return
+        if parsed.path == "/reset-safe":
+            # 安全な reset: 存在を露呈しない汎用メッセージ。
+            self._send(200, "<html><body>登録があればパスワードリセット用のメールを送信しました。"
+                            "</body></html>")
+            return
         self._send(404, "<html><body>404</body></html>")
 
     def do_OPTIONS(self):

@@ -628,6 +628,22 @@ CHECK_CATALOG: dict[str, dict] = {
         'remediation': 'ログイン等の認証エンドポイントに IP/アカウント単位のレート制限とバックオフ、必要に応じ CAPTCHA/MFA を導入する。',
         'references': ['https://cwe.mitre.org/data/definitions/307.html'],
     },
+    'user-enumeration': {
+        'title': 'ユーザー列挙の可能性（アカウント有無の露呈・能動・opt-in）',
+        'owasp': 'A06:2025-安全でない設計',
+        'cwe': 'CWE-204',
+        'wstg': 'WSTG-IDNT-04',
+        'asvs': '該当なし',
+        # アカウント有無の露呈は偵察を効率化する（VC:L）。存在しないランダムアカウントのみを用いた
+        # 上限内の観測（実在不使用・改変なし）。unauth-sensitive-route と同帯（AT:P・6.3・Medium）。
+        'cvss': 'CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:N/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N',
+        'cvss_score': 6.3,
+        'description': 'ログインまたはパスワード再発行の応答が、アカウントの有無に依存して異なり（存在依存メッセージ）、第三者が有効なアカウントを推定できる疑い。存在しないランダムアカウントのみを用い（実在アカウント不使用・改変なし）、能動認証テスト（opt-in・既定 OFF）の二重ゲート内で観測する。汎用応答（「登録があればメール送信」「認証情報が正しくありません」等）に統一されていれば安全。機微につき生の応答内容は載せず、メッセージ差の要旨のみを記録し、確度は控えめ（Low）とする。',
+        'impact': '有効なメールアドレス/ユーザー名の一覧化を許し、パスワードスプレー・フィッシング・クレデンシャルスタッフィングの精度を高める。',
+        'remediation': 'ログイン・登録・パスワード再発行の応答を、アカウントの有無に依存しない汎用メッセージに統一する（「登録があればメールを送信しました」等）。応答時間差も一定化し、レート制限・CAPTCHA を併用する。',
+        'references': ['https://cwe.mitre.org/data/definitions/204.html',
+                       'https://owasp.org/www-project-web-security-testing-guide/'],
+    },
     'csrf-not-enforced': {
         'title': 'anti-CSRF トークン無しの POST が受理される（能動・opt-in）',
         'owasp': 'A01:2025-アクセス制御の不備',

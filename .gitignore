@@ -52,6 +52,9 @@ mission-brief.md
 
 # ビルド成果物（Genspark 用バンドル・package_genspark_skill.py で再生成可）
 *.skill
+# 例外: web-vuln-report のフル配布バンドルは Genspark 配布物として追跡する
+# （lite 版は陳腐化・忠実再生成不可のため非追跡のまま）
+!web-vuln-report/web-vuln-report.skill
 
 # 中間生成物（examples の再現時に出るが成果物ではない）
 web-vuln-report/skills/web-vuln-report/examples/crawl.json

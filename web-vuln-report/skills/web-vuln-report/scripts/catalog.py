@@ -570,6 +570,23 @@ CHECK_CATALOG: dict[str, dict] = {
         'references': ['https://datatracker.ietf.org/doc/html/rfc4033',
                        'https://cwe.mitre.org/data/definitions/345.html'],
     },
+    'subdomain-takeover': {
+        'title': 'サブドメインテイクオーバーの疑い（dangling CNAME）',
+        'owasp': 'A02:2025-セキュリティの設定ミス',
+        'cwe': 'CWE-668',
+        'wstg': 'WSTG-CONF-10',
+        'asvs': '該当なし',
+        # 乗っ取られたサブドメインは正規ドメインの信頼を悪用でき、Cookie/セッション窃取・
+        # 資格情報フィッシングに直結する（VC:H）。CNAME 一致＋未所有フィンガープリントの
+        # 両方一致時のみ提示（AT:N・8.7・High）。WORST_CAP[High]=C。
+        'cvss': 'CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N',
+        'cvss_score': 8.7,
+        'description': '対象または巡回で観測した同一組織サブドメインの CNAME が、未所有の外部サービス（GitHub Pages / Amazon S3 / Heroku / Azure / Fastly / Shopify / Netlify 等）を指したまま放置され（dangling CNAME）、その外部サービス上で当該名を第三者が登録できる状態の疑い。DNS の CNAME 一致と、当該サービスの「未所有」フィンガープリント応答の**両方**が一致した場合にのみ提示する（誤検知抑止）。単一組織スコープ（対象＋観測済み同一登録ドメインのホストのみ・ブルートフォース列挙はしない）・DNS 照会と GET のみ＝非破壊。',
+        'impact': '第三者がサブドメインを乗っ取り、正規ドメインの信頼を悪用したフィッシング・Cookie/セッション窃取・マルウェア配布・OAuth リダイレクト悪用等を行いうる。',
+        'remediation': '未使用の dangling CNAME レコードを削除するか、対象の外部サービスリソースを再取得して正しく紐付ける。廃止サービスの DNS レコード棚卸しを定例化する。',
+        'references': ['https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/10-Test_for_Subdomain_Takeover',
+                       'https://cwe.mitre.org/data/definitions/668.html'],
+    },
     'missing-coop': {
         'title': 'Cross-Origin-Opener-Policy (COOP) 未設定',
         'owasp': 'A06:2025-安全でない設計',

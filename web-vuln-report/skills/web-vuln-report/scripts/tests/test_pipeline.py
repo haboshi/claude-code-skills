@@ -558,6 +558,94 @@ def test_header_supplements_coop_and_xss_legacy():
     assert "missing-coop" not in ids2 and "xss-protection-legacy" not in ids2
 
 
+# ===== v0.5 A1: サブドメインテイクオーバー（dangling CNAME・単一組織スコープ） =====
+class _TakeoverResp:
+    def __init__(self, text):
+        self.text, self.status_code, self.headers = text, 200, {"content-type": "text/html"}
+
+
+class _TakeoverClient:
+    def __init__(self, body):
+        self._body = body
+        self.requested = []
+
+    def get(self, url):
+        self.requested.append(url)
+        return _TakeoverResp(self._body)
+
+
+def test_subdomain_takeover_detection():
+    from checks import check_subdomain_takeover, Findings
+    target = "https://app.example.com/"
+    pages = [{"url": "https://app.example.com/", "script_srcs": []},
+             {"url": "https://blog.example.com/", "script_srcs": []}]  # 同一登録ドメイン
+
+    def q(name, rdtype):
+        if rdtype == "CNAME" and name == "blog.example.com":
+            return ["example-org.github.io."]
+        return []
+
+    client = _TakeoverClient("<html><body>There isn't a GitHub Pages site here.</body></html>")
+    f = Findings()
+    check_subdomain_takeover(target, pages, [], client, f, query=q)
+    items = [i for i in f.as_list() if i["check_id"] == "subdomain-takeover"]
+    assert items
+    assert "blog.example.com" in items[0]["affected"]
+    assert "GitHub Pages" in items[0]["evidence"]
+
+
+def test_subdomain_takeover_fp_guards():
+    from checks import check_subdomain_takeover, Findings
+    target = "https://app.example.com/"
+    pages = [{"url": "https://blog.example.com/", "script_srcs": []}]
+
+    # (a) CNAME は github.io を指すが応答が未所有 fingerprint でない（正常運用中）→ 検出しない
+    def q_github(name, rdtype):
+        return ["example-org.github.io."] if (rdtype == "CNAME" and name == "blog.example.com") else []
+    f = Findings()
+    check_subdomain_takeover(target, pages, [], _TakeoverClient("<html>Welcome to my blog</html>"),
+                             f, query=q_github)
+    assert not [i for i in f.as_list() if i["check_id"] == "subdomain-takeover"]
+
+    # (b) 未所有 fingerprint 応答だが CNAME が既知サービスでない → 検出しない（両方一致が必須）
+    def q_internal(name, rdtype):
+        return ["internal.example.net."] if rdtype == "CNAME" else []
+    f2 = Findings()
+    check_subdomain_takeover(target, pages, [], _TakeoverClient("There isn't a GitHub Pages site here"),
+                             f2, query=q_internal)
+    assert not [i for i in f2.as_list() if i["check_id"] == "subdomain-takeover"]
+
+    # (c) CNAME が無い（A レコード直参照）→ 検出しない
+    f3 = Findings()
+    check_subdomain_takeover(target, pages, [], _TakeoverClient("There isn't a GitHub Pages site here"),
+                             f3, query=lambda n, t: [])
+    assert not [i for i in f3.as_list() if i["check_id"] == "subdomain-takeover"]
+
+
+def test_subdomain_takeover_single_org_scope():
+    from checks import check_subdomain_takeover, _collect_observed_hosts, Findings
+    target = "https://app.example.com/"
+    pages = [{"url": "https://app.example.com/", "script_srcs": ["https://cdn.jsdelivr.net/x.js"]},
+             {"url": "https://api.example.com/", "script_srcs": []},
+             {"url": "https://evil.other-domain.com/", "script_srcs": []}]
+    hosts = _collect_observed_hosts(target, pages, [])
+    assert "app.example.com" in hosts and "api.example.com" in hosts
+    assert "evil.other-domain.com" not in hosts   # 他組織ホストは対象外
+    assert "cdn.jsdelivr.net" not in hosts         # CDN は対象外
+
+    # 他組織ホストへは CNAME 照会も GET もしない（単一組織スコープ厳守）
+    queried = []
+
+    class _NoGet:
+        def get(self, url):
+            raise AssertionError("他組織ホストへ GET してはならない")
+
+    check_subdomain_takeover(target, pages, [], _NoGet(), Findings(),
+                             query=lambda n, t: queried.append(n) or [])
+    assert "evil.other-domain.com" not in queried
+    assert all(_h.endswith("example.com") for _h in queried)
+
+
 def test_check_dnssec_with_fake_resolver():
     from checks import check_dnssec, Findings
     # 署名なし（DNSKEY/DS 双方空）→ 検出

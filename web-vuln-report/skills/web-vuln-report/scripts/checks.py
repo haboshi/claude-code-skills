@@ -1307,6 +1307,143 @@ def check_dnssec(target: str, f: Findings, query=None) -> None:
               confidence="Medium")
 
 
+# ===== v0.5 A1: サブドメインテイクオーバー（dangling CNAME）検出（受動・単一組織スコープ） =====
+# {サービス名 → CNAME パターン → 未所有フィンガープリント}。subjack/can-i-take-over-xyz の
+# 公開署名に基づく内蔵テーブル（ライブ照会はしない）。CNAME 一致と応答本文の未所有 fingerprint
+# の**両方**が一致したときのみ takeover 疑いを emit する（FP回避）。
+_TAKEOVER_SERVICES = [
+    ("GitHub Pages", re.compile(r"\.github\.io$", re.I),
+     ["There isn't a GitHub Pages site here",
+      "For root URLs (like http://example.com/) you must provide an index.html file"]),
+    ("Amazon S3", re.compile(r"(\.s3[.\-][\w\-]*\.amazonaws\.com|\.s3\.amazonaws\.com|s3-website)", re.I),
+     ["NoSuchBucket", "The specified bucket does not exist"]),
+    ("Heroku", re.compile(r"(\.herokuapp\.com|\.herokudns\.com|\.herokussl\.com)$", re.I),
+     ["No such app", "herokucdn.com/error-pages/no-such-app.html"]),
+    ("Microsoft Azure", re.compile(
+        r"(\.azurewebsites\.net|\.cloudapp\.net|\.cloudapp\.azure\.com|\.trafficmanager\.net|"
+        r"\.blob\.core\.windows\.net|\.azureedge\.net)$", re.I),
+     ["404 Web Site not found", "The specified blob does not exist", "Error 404 - Web app not found"]),
+    ("Fastly", re.compile(r"\.fastly\.net$", re.I),
+     ["Fastly error: unknown domain"]),
+    ("Shopify", re.compile(r"\.myshopify\.com$", re.I),
+     ["Sorry, this shop is currently unavailable", "Only one step left!"]),
+    ("Netlify", re.compile(r"(\.netlify\.app|\.netlify\.com)$", re.I),
+     ["Not Found - Request ID"]),
+    ("Surge.sh", re.compile(r"\.surge\.sh$", re.I),
+     ["project not found"]),
+    ("Zendesk", re.compile(r"\.zendesk\.com$", re.I),
+     ["Help Center Closed"]),
+    ("Unbounce", re.compile(r"\.unbounce\.com$", re.I),
+     ["The requested URL was not found on this server", "Trying to access your account?"]),
+    ("Cargo", re.compile(r"(\.cargocollective\.com|cargo\.site)$", re.I),
+     ["<b>404 Not Found</b>", "If you're moving your domain away from Cargo"]),
+    ("WordPress.com", re.compile(r"\.wordpress\.com$", re.I),
+     ["Do you want to register"]),
+]
+_MAX_TAKEOVER_HOSTS = 40  # 単一組織でも観測ホスト数を上限で縛る（暴発防止）
+
+
+def _collect_observed_hosts(target: str, pages: list[dict],
+                            forms: list[dict] | None = None) -> list[str]:
+    """対象＋巡回で観測したホストのうち、**対象と同一の登録ドメイン**のものだけを返す。
+
+    crawl は同一オリジンのリンクしかページ化しないため、実際の母集団は対象ホスト＋
+    script_srcs / form action のホスト（同一登録ドメイン）に限られる。単一組織スコープを
+    厳守し、他組織ホスト・CDN・ワードリスト列挙は一切対象にしない。"""
+    base_dom = _registrable_domain(urlparse(target).hostname or "")
+    if not base_dom:
+        return []
+    hosts: list[str] = []
+    seen: set[str] = set()
+
+    def _add(u: str) -> None:
+        h = (urlparse(u).hostname or "").lower()
+        if h and h not in seen and _registrable_domain(h) == base_dom:
+            seen.add(h)
+            hosts.append(h)
+
+    _add(target)
+    for page in pages:
+        _add(page.get("url", ""))
+        for s in page.get("script_srcs", []):
+            _add(s)
+    for form in (forms or []):
+        _add(form.get("action", ""))
+    return hosts[:_MAX_TAKEOVER_HOSTS]
+
+
+def _resolve_cname_chain(host: str, query, max_hops: int = 5) -> list[str]:
+    """host の CNAME 鎖をたどる（各段の CNAME ターゲットを小文字・末尾ドット除去で返す）。
+
+    query は (name, rdtype)->list[str] の呼び出し可能（テストでフェイク注入）。"""
+    chain: list[str] = []
+    current = host
+    for _ in range(max_hops):
+        try:
+            targets = query(current, "CNAME")
+        except Exception:
+            break
+        if not targets:
+            break
+        nxt = (targets[0] or "").rstrip(".").lower()
+        if not nxt or nxt in chain:
+            break
+        chain.append(nxt)
+        current = nxt
+    return chain
+
+
+def _fetch_host_body(host: str, client) -> str | None:
+    """host のトップページ本文を GET で取得する（https→http→取得不能なら None）。非破壊。"""
+    for scheme in ("https", "http"):
+        try:
+            r = client.get(f"{scheme}://{host}/")
+        except Exception:
+            continue
+        try:
+            return (r.text or "")[:8192]
+        except Exception:
+            return ""
+    return None
+
+
+def check_subdomain_takeover(target: str, pages: list[dict], forms: list[dict] | None,
+                             client, f: Findings, query=None) -> None:
+    """対象＋観測済み同一組織ホストの CNAME 鎖を解決し、既知テイクオーバー可能サービスを指し、
+    かつ応答が未所有フィンガープリントに一致するホストを takeover 疑いとして emit する（受動）。
+
+    CNAME 一致と未所有フィンガープリントの**両方**が一致したときのみ提示（FP回避）。
+    query は (name, rdtype)->list[str]（テストでフェイク注入）。DNS 照会と GET のみ＝非破壊。"""
+    q = query or _default_dns_query
+    seen: set[str] = set()
+    for host in _collect_observed_hosts(target, pages, forms):
+        if host in seen:
+            continue
+        seen.add(host)
+        chain = _resolve_cname_chain(host, q)
+        if not chain:
+            continue
+        service = cname_hit = None
+        fingerprints: list[str] = []
+        for cname in chain:
+            for name, pat, fps in _TAKEOVER_SERVICES:
+                if pat.search(cname):
+                    service, cname_hit, fingerprints = name, cname, fps
+                    break
+            if service:
+                break
+        if not service:
+            continue  # 既知テイクオーバー可能サービスを指していない
+        body = _fetch_host_body(host, client)
+        if body is None:
+            continue
+        if any(fp in body for fp in fingerprints):
+            f.add("subdomain-takeover", host,
+                  f"CNAME が {service}（{cname_hit}）を指し、応答が未所有フィンガープリントに一致"
+                  f"（CNAME＋未所有応答の両方一致）。サブドメインテイクオーバーの疑い。",
+                  confidence="High")
+
+
 # ===== v0.4 Phase 3 能動認証テスト（既定 OFF・opt-in・login URL 限定 POST） =====
 import uuid as _uuid  # 局所 import（受動パスに影響させない）
 
@@ -1497,6 +1634,7 @@ LEDGER_GROUPS = [
     ("tls-cert-validity", "TLS 証明書の検証（ホスト名/期限/チェーン）", "A04", "network"),
     ("dns-email-auth", "DNS メール認証（DMARC / SPF）", "A02", "network"),
     ("dnssec", "DNSSEC（DNSKEY / DS）", "A02", "network"),
+    ("subdomain-takeover", "サブドメインテイクオーバー（CNAME dangling）", "A02", "network"),
     ("https-redirect", "HTTP→HTTPS リダイレクト強制", "A04", "active"),
     ("exposed-files", "機微ファイル / パスの公開", "A01", "active"),
     ("directory-listing", "ディレクトリリスティング", "A01", "active"),
@@ -1534,6 +1672,7 @@ _GROUP_CHECK_IDS = {
     "tls-cert-validity": {"tls-cert-invalid"},
     "dns-email-auth": {"dns-dmarc-missing", "dns-dmarc-weak", "dns-spf-missing"},
     "dnssec": {"dnssec-missing"},
+    "subdomain-takeover": {"subdomain-takeover"},
     "https-redirect": {"no-https-redirect"},
     "exposed-files": {"exposed-sensitive-file"},
     "directory-listing": {"directory-listing"},
@@ -1707,6 +1846,17 @@ def run_checks(crawl: dict, timeout: float = 15.0, active: bool = True,
             note = "dnspython 未導入" if not dns_available() else "IP/ローカル対象のため対象外"
             ledger.record("dns-email-auth", "skipped", note=note)
             ledger.record("dnssec", "skipped", note=note)
+
+        # ===== v0.5 A1: サブドメインテイクオーバー（CNAME dangling・受動・単一組織スコープ） =====
+        # DNS 照会＋GET のみ。対象＋観測済み同一組織ホストに限定（列挙・他組織はしない）。
+        if target and dns_available() and _dns_target_ok(dns_host) and data_reliable:
+            _safe("subdomain-takeover",
+                  lambda: check_subdomain_takeover(target, pages, crawl.get("forms", []), sc, f))
+        elif target:
+            st_note = ("dnspython 未導入" if not dns_available()
+                       else "IP/ローカル対象のため対象外" if not _dns_target_ok(dns_host)
+                       else "主要ページ未応答のためデータ不足")
+            ledger.record("subdomain-takeover", "skipped", note=st_note)
 
         # ===== アクティブ（非破壊の能動プローブ） =====
         # G1: 対象が全く応答していない（data_reliable=False）ときは、各能動 check の内部

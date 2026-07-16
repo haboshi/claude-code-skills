@@ -72,6 +72,24 @@ CHECK_CATALOG: dict[str, dict] = {
         'remediation': '`unsafe-inline`/`unsafe-eval` を排除し、nonce/hash ベースに移行する。ソースは必要最小限のオリジンに限定する。',
         'references': ['https://owasp.org/www-community/controls/Content_Security_Policy'],
     },
+    'csp-bypassable': {
+        'title': 'Content-Security-Policy にバイパス可能な設定（object-src/base-uri/form-action/script-src）',
+        'owasp': 'A06:2025-安全でない設計',
+        'cwe': 'CWE-693',
+        'wstg': None,
+        'asvs': 'v5.0.0-3.4.3 (L2)',
+        # weak-csp（2.1・Low）と同帯。CSP は多層防御であり、その弱さ単体は直接の脆弱性でない
+        # （実 XSS には別途の注入点を要する）。default-src フォールバックを正しく評価し、
+        # 明確なバイパス条件（unsafe-inline nonce 無し・object/script の広い source・base-uri/
+        # form-action 欠如）のみを1所見に集約する（過検知回避）。
+        'cvss': 'CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:A/VC:L/VI:L/VA:N/SC:N/SI:N/SA:N',
+        'cvss_score': 2.1,
+        'description': 'Content-Security-Policy をディレクティブ単位で解析したところ、XSS を緩和しきれないバイパス可能な条件が確認された。例: script-src の `unsafe-inline`（nonce/hash 無し）、script-src/object-src の過度に広い source（`*`/`https:`/`data:`）、`base-uri` 未設定（`<base>` 注入で相対スクリプト URL を乗っ取れる）、`form-action` 未設定。`default-src` によるフォールバックは考慮済みで、`default-src \'none\'` 等で実効的に無害な場合は指摘しない。',
+        'impact': 'CSP による XSS 緩和が回避可能で、注入点が存在した場合に多層防御が機能しない。',
+        'remediation': "script-src は nonce/hash ベースにし `unsafe-inline` と広い source を排除する。`object-src 'none'`、`base-uri 'self'`（または 'none'）、`form-action` を明示的に設定する。",
+        'references': ['https://owasp.org/www-community/controls/Content_Security_Policy',
+                       'https://developer.mozilla.org/docs/Web/HTTP/CSP'],
+    },
     'missing-frame-options': {
         'title': 'クリックジャッキング対策（X-Frame-Options / frame-ancestors）未設定',
         'owasp': 'A06:2025-安全でない設計',
@@ -313,6 +331,25 @@ CHECK_CATALOG: dict[str, dict] = {
         'remediation': '依存ライブラリを最新の安定版へ更新し、SCA を継続導入する。',
         'references': ['https://owasp.org/www-project-dependency-check/'],
     },
+    'js-known-cve': {
+        'title': '既知のCVEを含むJSライブラリ（署名DB照合）',
+        'owasp': 'A03:2025-ソフトウェアサプライチェーンの障害',
+        'cwe': 'CWE-1395',
+        'wstg': None,
+        'asvs': 'v5.0.0-15.2.1 (L1)',
+        # 既定ベクタは client 側ライブラリ CVE で最頻の「反射/mutation XSS（UI 要）」帯（medium 5.1）。
+        # 実 finding は DB の severity に応じ per-finding で low/medium/high/critical のベクタへ上書きする
+        # （ベクタとスコアを原子的に上書き。checks._JS_CVE_SEVERITY_VECTORS）。単体では supply-chain
+        # 由来で外部注入点を要するため過大評価を避ける。
+        'cvss': 'CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:A/VC:N/VI:N/VA:N/SC:L/SI:L/SA:N',
+        'cvss_score': 5.1,
+        'description': '検出した JS ライブラリの版数が、内蔵オフライン署名DB（retire.js 形式の curated サブセット・`references/js-vuln-signatures.json`）の危殆版に一致し、具体的な CVE が対応づけられた。ライブ照会は行わない（非egress）。署名DBはスナップショット日付を持つ curated サブセットであり網羅ではないため、定期更新を要する。クライアント配布物のためディストロのバックポート保守は通例効かず、版数＝実際の版とみなせる。',
+        'impact': '該当 CVE に応じ XSS・プロトタイプ汚染・ReDoS・（テンプレート系では）コード実行等の影響を受けうる。実被害は該当機能の使用状況と注入点の有無に依存する。',
+        'remediation': '当該ライブラリを CVE 修正済みの安定版へ更新する。SCA（retire.js / npm audit / Dependabot 等）を CI に常設し、クライアント依存の棚卸しを継続する。',
+        'references': ['https://cwe.mitre.org/data/definitions/1395.html',
+                       'https://owasp.org/www-project-dependency-check/',
+                       'https://github.com/RetireJS/retire.js'],
+    },
     'missing-permissions-policy': {
         'title': 'Permissions-Policy（旧 Feature-Policy）未設定',
         'owasp': 'A06:2025-安全でない設計',
@@ -533,6 +570,23 @@ CHECK_CATALOG: dict[str, dict] = {
         'references': ['https://datatracker.ietf.org/doc/html/rfc4033',
                        'https://cwe.mitre.org/data/definitions/345.html'],
     },
+    'subdomain-takeover': {
+        'title': 'サブドメインテイクオーバーの疑い（dangling CNAME）',
+        'owasp': 'A02:2025-セキュリティの設定ミス',
+        'cwe': 'CWE-668',
+        'wstg': 'WSTG-CONF-10',
+        'asvs': '該当なし',
+        # 乗っ取られたサブドメインは正規ドメインの信頼を悪用でき、Cookie/セッション窃取・
+        # 資格情報フィッシングに直結する（VC:H）。CNAME 一致＋未所有フィンガープリントの
+        # 両方一致時のみ提示（AT:N・8.7・High）。WORST_CAP[High]=C。
+        'cvss': 'CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N',
+        'cvss_score': 8.7,
+        'description': '対象または巡回で観測した同一組織サブドメインの CNAME が、未所有の外部サービス（GitHub Pages / Amazon S3 / Heroku / Azure / Fastly / Shopify / Netlify 等）を指したまま放置され（dangling CNAME）、その外部サービス上で当該名を第三者が登録できる状態の疑い。DNS の CNAME 一致と、当該サービスの「未所有」フィンガープリント応答の**両方**が一致した場合にのみ提示する（誤検知抑止）。単一組織スコープ（対象＋観測済み同一登録ドメインのホストのみ・ブルートフォース列挙はしない）・DNS 照会と GET のみ＝非破壊。',
+        'impact': '第三者がサブドメインを乗っ取り、正規ドメインの信頼を悪用したフィッシング・Cookie/セッション窃取・マルウェア配布・OAuth リダイレクト悪用等を行いうる。',
+        'remediation': '未使用の dangling CNAME レコードを削除するか、対象の外部サービスリソースを再取得して正しく紐付ける。廃止サービスの DNS レコード棚卸しを定例化する。',
+        'references': ['https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/10-Test_for_Subdomain_Takeover',
+                       'https://cwe.mitre.org/data/definitions/668.html'],
+    },
     'missing-coop': {
         'title': 'Cross-Origin-Opener-Policy (COOP) 未設定',
         'owasp': 'A06:2025-安全でない設計',
@@ -573,6 +627,22 @@ CHECK_CATALOG: dict[str, dict] = {
         'impact': 'レート制限が無い場合、総当たり・辞書攻撃・クレデンシャルスタッフィングが成立しやすくなる。',
         'remediation': 'ログイン等の認証エンドポイントに IP/アカウント単位のレート制限とバックオフ、必要に応じ CAPTCHA/MFA を導入する。',
         'references': ['https://cwe.mitre.org/data/definitions/307.html'],
+    },
+    'user-enumeration': {
+        'title': 'ユーザー列挙の可能性（アカウント有無の露呈・能動・opt-in）',
+        'owasp': 'A06:2025-安全でない設計',
+        'cwe': 'CWE-204',
+        'wstg': 'WSTG-IDNT-04',
+        'asvs': '該当なし',
+        # アカウント有無の露呈は偵察を効率化する（VC:L）。存在しないランダムアカウントのみを用いた
+        # 上限内の観測（実在不使用・改変なし）。unauth-sensitive-route と同帯（AT:P・6.3・Medium）。
+        'cvss': 'CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:N/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N',
+        'cvss_score': 6.3,
+        'description': 'ログインまたはパスワード再発行の応答が、アカウントの有無に依存して異なり（存在依存メッセージ）、第三者が有効なアカウントを推定できる疑い。存在しないランダムアカウントのみを用い（実在アカウント不使用・改変なし）、能動認証テスト（opt-in・既定 OFF）の二重ゲート内で観測する。汎用応答（「登録があればメール送信」「認証情報が正しくありません」等）に統一されていれば安全。機微につき生の応答内容は載せず、メッセージ差の要旨のみを記録し、確度は控えめ（Low）とする。',
+        'impact': '有効なメールアドレス/ユーザー名の一覧化を許し、パスワードスプレー・フィッシング・クレデンシャルスタッフィングの精度を高める。',
+        'remediation': 'ログイン・登録・パスワード再発行の応答を、アカウントの有無に依存しない汎用メッセージに統一する（「登録があればメールを送信しました」等）。応答時間差も一定化し、レート制限・CAPTCHA を併用する。',
+        'references': ['https://cwe.mitre.org/data/definitions/204.html',
+                       'https://owasp.org/www-project-web-security-testing-guide/'],
     },
     'csrf-not-enforced': {
         'title': 'anti-CSRF トークン無しの POST が受理される（能動・opt-in）',

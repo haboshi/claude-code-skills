@@ -111,7 +111,8 @@ def run(args) -> int:
     findings = checks_mod.run_checks(
         crawl_dict, timeout=args.timeout, active=not args.passive_only, ledger=ledger,
         active_auth=args.active_auth, active_auth_url=args.login_url,
-        active_auth_authorized=args.authorized_active, max_login_attempts=args.max_login_attempts)
+        active_auth_authorized=args.authorized_active, max_login_attempts=args.max_login_attempts,
+        active_auth_reset_url=args.reset_url)
 
     # Phase 2b: 外部ツール併用（任意）
     tools_used: list[str] = []
@@ -190,6 +191,8 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--authorized-active", default="",
                     help="能動認証テストの書面認可（空なら能動認証は実行しない）")
     ap.add_argument("--login-url", default=None, help="能動認証テストの対象 login エンドポイント")
+    ap.add_argument("--reset-url", default=None,
+                    help="ユーザー列挙テストの対象パスワード再発行エンドポイント（任意・既定 OFF・in-scope 必須）")
     ap.add_argument("--max-login-attempts", type=int, default=8,
                     help="ログインレート制限テストの試行上限（ハードキャップ 8 にクランプ）")
     ap.add_argument("--no-external", action="store_true", help="外部ツール併用を無効化")

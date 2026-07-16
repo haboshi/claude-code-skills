@@ -171,6 +171,12 @@ xcto / cookie-secure / cookie-httponly / cors / samesite-none の系統のみ。
 - 観測: ドメインの DNSKEY/DS を DNS クエリのみで照会し、双方不在なら未署名と判定（dnspython soft-import・不在時は台帳で skipped）。未導入は一般的で単体の深刻度は低い。
 - 対策: ゾーンに DNSSEC を導入し、レジストラに DS を登録して信頼チェーンを確立する。
 
+#### subdomain-takeover — サブドメインテイクオーバーの疑い（dangling CNAME・v0.5・受動）
+- CWE: CWE-668 / WSTG: WSTG-CONF-10 / ASVS: 該当なし
+- CVSS-B: `CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N`（8.7）
+- 観測: **対象＋巡回で観測した同一登録ドメイン**のホスト（`script_srcs`/form action の host・単一組織スコープ厳守・ブルートフォース列挙はしない）の CNAME 鎖を dnspython で解決し、既知テイクオーバー可能サービス（GitHub Pages/S3/Heroku/Azure/Fastly/Shopify/Netlify 等の内蔵テーブル）を指し、**かつ**応答本文が当該サービスの**未所有フィンガープリント**（"There isn't a GitHub Pages site here"/"NoSuchBucket"/"No such app" 等）に一致した場合のみ提示。CNAME と未所有応答の**両方一致**で FP 回避。DNS 照会と GET のみ＝非破壊。
+- 対策: 未使用の dangling CNAME を削除するか外部サービスリソースを再取得して正しく紐付ける。廃止サービスの DNS 棚卸しを定例化する。
+
 ---
 
 ## A03:2025 — ソフトウェアサプライチェーンの障害
@@ -193,6 +199,12 @@ xcto / cookie-secure / cookie-httponly / cors / samesite-none の系統のみ。
 - 観測: banner の版数 × 内蔵オフライン EOL 表（PHP ≤8.0 / Apache httpd ≤2.2 / OpenSSL 1.x / nginx <1.18 等）で upstream EOL を推定。ディストロのバックポート保守の可能性ゆえ「脆弱」と断定せず確度 Medium・要確認と表現。
 - 対策: ディストリビュータのサポート状況を確認し、保守外ならサポート対象版へ更新。バナー版数の露出も抑制。
 
+#### js-known-cve — 既知のCVEを含むJSライブラリ（署名DB照合・v0.5・受動・非egress）
+- CWE: CWE-1395 / WSTG: 該当なし（独自根拠） / ASVS: v5.0.0-15.2.1 (L1)
+- CVSS-B: `CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:A/VC:N/VI:N/VA:N/SC:L/SI:L/SA:N`（5.1・既定。**実 finding は DB severity に応じ per-finding で low 2.1 / medium 5.1 / high 7.0 / critical 9.9 のベクタに原子的に上書き**）
+- 観測: 検出 JS ライブラリの版数（`script_srcs`/technologies の js:）を retire.js 形式の**内蔵オフライン署名DB**（`references/js-vuln-signatures.json`・snapshot 2026-07・jquery/jquery-ui/bootstrap/angularjs/lodash/moment/axios/handlebars/dompurify を curated 収録）と突合し、危殆版一致で具体 CVE を提示（jQuery 1.11.1→CVE-2020-11022/11023 等）。**ライブ照会はしない（非egress）**。同一 (lib,版数) は 1 所見に集約・全 CVE 列挙・最重 severity 採用。lib×版数ごとに一意タイトルで merge 衝突を回避。DB はスナップショット日付を持ち**要定期更新**を evidence に注記。
+- 対策: 当該ライブラリを CVE 修正済みの安定版へ更新。SCA（retire.js / npm audit / Dependabot）を CI に常設する。
+
 ---
 
 ## A04:2025 — 暗号化の失敗
@@ -214,6 +226,12 @@ xcto / cookie-secure / cookie-httponly / cors / samesite-none の系統のみ。
 - CVSS-B: `CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:P/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N`（2.3）
 - 観測: 証明書が失効間近または失効しており、警告表示や信頼失墜を招く。
 - 対策: 証明書を更新し、自動更新（ACME 等）と失効監視を導入する。
+
+#### tls-cert-invalid — TLS 証明書の検証失敗（ホスト名不一致/期限切れ/自己署名/チェーン不備・v0.4.1）
+- CWE: CWE-295 / WSTG: WSTG-CRYP-01 / ASVS: v5.0.0-12.1.1 (L1)
+- CVSS-B: `CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:P/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N`（6.0）
+- 観測: 検証つき TLS ハンドシェイクで証明書の検証に失敗（SAN/subject のホスト名不一致・期限切れ・自己署名・中間証明書/チェーン不備）。検証成功なら何も出さず、接続不能等の非検証エラーは台帳で error 化。ブラウザ警告の常態化・中間者攻撃の受容につながる。
+- 対策: 対象ホスト名（SAN 含む）に一致する有効な証明書を信頼された CA から配備し、中間証明書を正しく連結。自動更新（ACME）と失効監視を導入。
 
 #### no-https-redirect — HTTP アクセスが HTTPS へリダイレクトされない
 - CWE: CWE-319 / WSTG: WSTG-CONF-07 / ASVS: v5.0.0-12.2.1 (L1)
@@ -253,6 +271,12 @@ xcto / cookie-secure / cookie-httponly / cors / samesite-none の系統のみ。
 - 観測: CSP に `unsafe-inline`/`unsafe-eval`/`*` が含まれ、防御を実質的に無効化している。
 - 対策: `unsafe-inline`/`unsafe-eval` を排除し、nonce/hash ベースに移行する。ソースは必要最小限のオリジンに限定する。
 
+#### csp-bypassable — CSP にバイパス可能な設定（object-src/base-uri/form-action/script-src・v0.5・受動）
+- CWE: CWE-693 / WSTG: 該当なし（独自根拠） / ASVS: v5.0.0-3.4.3 (L2)
+- CVSS-B: `CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:A/VC:L/VI:L/VA:N/SC:N/SI:N/SA:N`（2.1）
+- 観測: CSP をディレクティブ解析し、**`default-src` フォールバックを考慮**のうえ明確なバイパス条件のみを **1 所見に集約**。判定対象: script-src（実効）の `unsafe-inline`（nonce/hash 無し）・広い source（`*`/`https:`/`http:`/`data:`）、object-src（実効）の広い source、base-uri/form-action の未設定（スクリプトが全面ブロックのときは実効無害として指摘しない）。`object-src` 未設定でも `default-src 'none'` なら安全と判定（FP 回避）。unsafe-inline（nonce 無し）を含むときのみ確度 High。未設定そのものは `missing-csp` が担当。クリックジャッキング（frame-ancestors）は `missing-frame-options` が担当（重複回避）。
+- 対策: script-src を nonce/hash ベースにし広い source を排除。`object-src 'none'`・`base-uri 'self'`・`form-action` を明示する。
+
 #### missing-frame-options — クリックジャッキング対策（X-Frame-Options / frame-ancestors）未設定
 - CWE: CWE-1021 / WSTG: WSTG-CLNT-09 / ASVS: v5.0.0-3.4.6 (L2)
 - CVSS-B: `CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:A/VC:N/VI:L/VA:N/SC:N/SI:N/SA:N`（2.1）
@@ -288,6 +312,12 @@ xcto / cookie-secure / cookie-httponly / cors / samesite-none の系統のみ。
 - CVSS-B: `CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:N/VC:L/VI:L/VA:N/SC:N/SI:N/SA:N`（6.3）
 - 観測: **既定 OFF の opt-in 能動テスト**。存在しないランダム資格情報で login へ上限付き（min(要求,8)）POST し、429/スロットリングの有無を観測。**実在アカウントを一切使わない（アカウントロック回避）**。CSRF 実効の web フォーム（Laravel 等）では素 POST が 419 で前段遮断されレート制限層に到達できないため、**POST の前に login ページを GET（読み取り専用・非破壊）してセッション/CSRF トークンを取得**する（`XSRF-TOKEN` Cookie を URL デコードして `X-XSRF-TOKEN` ヘッダに、`<meta name="csrf-token">`/hidden `_token` を `_token` フィールドに載せる）。トークン取得後もなお 419/403 で全て前段拒否されレート制限層へ到達できない場合は、**clean（問題なし）と区別して「判定保留（inconclusive）」**とする（偽陽性・偽陰性の双方を回避）。GET は `_SafeClient`、POST は `_ActiveAuthClient`（POST・login URL 限定）で隔離し、両者は同一 httpx.Client の Cookie ジャーを共有する。
 - 対策: 認証エンドポイントに IP/アカウント単位のレート制限・バックオフ、必要に応じ CAPTCHA/MFA を導入。
+
+#### user-enumeration — ユーザー列挙の可能性（アカウント有無の露呈・v0.5・能動 opt-in）
+- CWE: CWE-204 / WSTG: WSTG-IDNT-04 / ASVS: 該当なし
+- CVSS-B: `CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:N/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N`（6.3）
+- 観測: **既定 OFF の opt-in 能動テスト**（`--active-auth` 二重ゲート内）。**非存在ランダムアカウントのみ**を使い、login は 2 つの異なる非存在アカウントを送って応答が一貫して存在依存（"no account"/「アカウントが見つかりません」等）かを、reset（`--reset-url`・既定 OFF・in-scope 必須）は非存在 email 1 回で存在依存/汎用を判定。**汎用応答（generic override）があれば安全側に倒し**、汎用の "not found"（404 相当）は誤検知対象外とする（FP 抑制）。csrf/rate-limit と client cap を食い合わないよう**独立した `_ActiveAuthClient`** を使い、419/403 で認証ロジックに未到達なら **clean と区別して inconclusive**（判定保留）とする。機微につき**生の応答内容は evidence に載せず**要旨のみ・確度 Low。実在アカウント不使用・改変なし。
+- 対策: login/登録/reset の応答をアカウント有無に依存しない汎用メッセージに統一し、応答時間差も一定化。レート制限・CAPTCHA を併用。
 
 ---
 

@@ -24,6 +24,7 @@ import ssl
 import sys
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from urllib.parse import urlparse, urlencode, urlunparse, parse_qsl, urljoin
 
 try:
@@ -239,6 +240,89 @@ def check_security_headers(page: dict, headers: dict[str, str], f: Findings) -> 
     # 単なる製品名（"AmazonS3" の "S3" など）の数字で誤発火しないようにする。
     if banner and re.search(r"\d+\.\d+|/\d", banner):
         f.add("info-disclosure-banner", url, f"バージョン露出: {banner}", confidence="Medium")
+
+
+# ===== v0.5 A4: CSP 深掘り解析（受動・default-src フォールバック考慮・明確なバイパスのみ） =====
+# script-src/object-src で「広すぎる」とみなす source（任意ホスト/スキームからの読込を許す）
+_CSP_WIDE_SOURCES = ("*", "https:", "http:", "data:")
+# default-src にフォールバックする fetch ディレクティブ（base-uri/form-action/frame-ancestors はしない）
+_CSP_FETCH_FALLBACK = {"script-src", "object-src", "style-src", "img-src", "connect-src",
+                       "worker-src", "child-src", "frame-src", "font-src", "media-src"}
+
+
+def _parse_csp(csp: str) -> dict[str, list[str]]:
+    """CSP を {ディレクティブ名(小文字): [source, ...]} に分解する。"""
+    out: dict[str, list[str]] = {}
+    for part in (csp or "").split(";"):
+        toks = part.split()
+        if not toks:
+            continue
+        out[toks[0].lower()] = [t for t in toks[1:]]
+    return out
+
+
+def _csp_effective(directives: dict[str, list[str]], name: str) -> list[str] | None:
+    """指定ディレクティブの実効 source を返す。未設定の fetch ディレクティブは default-src へ
+    フォールバックする。フォールバック対象外（base-uri 等）や default-src も無い場合は None。"""
+    if name in directives:
+        return directives[name]
+    if name in _CSP_FETCH_FALLBACK:
+        return directives.get("default-src")
+    return None
+
+
+def _analyze_csp(csp: str) -> list[str]:
+    """CSP の明確なバイパス条件のみを列挙する（過検知回避）。default-src フォールバックを考慮し、
+    `default-src 'none'` 等で実効的に無害な指定は指摘しない。"""
+    d = _parse_csp(csp)
+    issues: list[str] = []
+    script = _csp_effective(d, "script-src")
+    script_low = [s.lower() for s in script] if script is not None else None
+    scripts_blocked = script_low == ["'none'"]
+
+    if script is None:
+        issues.append("script-src も default-src も未設定＝スクリプト source が無制限")
+    elif not scripts_blocked:
+        has_nonce_hash = any(s.startswith(("'nonce-", "'sha")) for s in script_low)
+        if "'unsafe-inline'" in script_low and not has_nonce_hash:
+            issues.append("script-src に 'unsafe-inline'（nonce/hash 無し）＝インラインスクリプト注入を許す")
+        wide = sorted({s for s in script_low if s in _CSP_WIDE_SOURCES})
+        if wide:
+            issues.append(f"script-src に広すぎる source（{', '.join(wide)}）＝任意ホスト/データ URI からの読込を許す")
+
+    obj = _csp_effective(d, "object-src")
+    if obj is None:
+        issues.append("object-src も default-src も未設定＝<object>/<embed> の source が無制限")
+    else:
+        obj_wide = sorted({s.lower() for s in obj if s.lower() in _CSP_WIDE_SOURCES})
+        if obj_wide:
+            issues.append(f"object-src に広すぎる source（{', '.join(obj_wide)}）＝プラグイン/オブジェクト注入の余地")
+
+    # base-uri/form-action は default-src にフォールバックしない。スクリプトが全面ブロック
+    # （script/default が 'none'）なら実効無害なので指摘しない（FP回避）。
+    if not scripts_blocked:
+        if "base-uri" not in d:
+            issues.append("base-uri 未設定＝<base> 注入で相対スクリプト URL の解決先を乗っ取れる")
+        if "form-action" not in d:
+            issues.append("form-action 未設定＝フォームの送信先を CSP で制限できない")
+    return issues
+
+
+def check_csp(url: str, csp: str, f: Findings) -> None:
+    """CSP をディレクティブ解析し、明確なバイパス条件のみを **1所見に集約** する（受動・非破壊）。
+
+    CSP 未設定は missing-csp が担当するため本関数では扱わない（未設定なら何もしない）。
+    `default-src` フォールバックを正しく評価し、object-src 未設定でも `default-src 'none'` なら
+    安全と判定する。unsafe-inline（nonce/hash 無し）があるときのみ確度 High（明確なバイパス）。"""
+    if not csp or not csp.strip():
+        return
+    issues = _analyze_csp(csp)
+    if not issues:
+        return
+    strong = any("unsafe-inline" in it for it in issues)
+    f.add("csp-bypassable", url,
+          "CSP にバイパス可能な条件: " + " / ".join(issues),
+          confidence="High" if strong else "Medium")
 
 
 # CSRF トークン系 Cookie 名（小文字比較）。SPA が JS で読み X-XSRF-TOKEN/_token に載せる
@@ -569,6 +653,103 @@ def check_outdated_libraries(pages: list[dict], f: Findings) -> None:
                 f.add("outdated-library", page.get("url", ""),
                       f"危殆版の可能性: {lib} {vs}（既知の問題を含む版下限 {fl} 未満）",
                       confidence="Medium")
+
+
+# ===== v0.5 A2: 内蔵オフライン署名DB（retire.js 形式）による CVE 相関（非egress） =====
+# 検出した lib+版数を references/js-vuln-signatures.json と突合し、危殆版一致で具体 CVE を提示する。
+# 長い名前を先に置く（jquery-ui は jquery の前・angularjs/angular.js は angular の前）。
+_JS_CVE_LIB_RE = re.compile(
+    r"(jquery-ui|jquery\.ui|jqueryui|jquery|bootstrap|angularjs|angular\.js|angular|"
+    r"lodash|moment|axios|handlebars|dompurify)"
+    r"[.\-/]?v?(\d+)\.(\d+)(?:\.(\d+))?", re.I)
+# DB の severity → per-finding CVSS 4.0 ベクタ・事前計算スコア（cvss ライブラリで検算済み）。
+# catalog の js-known-cve 既定（medium 5.1）を DB severity に応じ原子的に上書きする。
+_JS_CVE_SEVERITY_VECTORS = {
+    "low":      ("CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:A/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N", 2.1),
+    "medium":   ("CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:A/VC:N/VI:N/VA:N/SC:L/SI:L/SA:N", 5.1),
+    "high":     ("CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:A/VC:H/VI:L/VA:N/SC:N/SI:N/SA:N", 7.0),
+    "critical": ("CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:H/SI:H/SA:N", 9.9),
+}
+_JS_CVE_SEV_RANK = {"low": 1, "medium": 2, "high": 3, "critical": 4}
+_JS_SIG_PATH = Path(__file__).resolve().parent.parent / "references" / "js-vuln-signatures.json"
+_JS_SIG_CACHE: dict | None = None
+
+
+def _load_js_signatures() -> dict:
+    """内蔵オフライン署名DB を読み込む（キャッシュ）。不在・破損時は空 DB（＝所見ゼロ）で継続。"""
+    global _JS_SIG_CACHE
+    if _JS_SIG_CACHE is None:
+        try:
+            _JS_SIG_CACHE = json.loads(_JS_SIG_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            _JS_SIG_CACHE = {"signatures": {}, "snapshot_date": ""}
+    return _JS_SIG_CACHE
+
+
+def _parse_ver(s: str) -> tuple:
+    parts = ((s or "").split(".") + ["0", "0", "0"])[:3]
+    return tuple(int(re.sub(r"\D", "", p) or 0) for p in parts)
+
+
+def _normalize_js_lib(raw: str, ver: tuple) -> str | None:
+    """抽出した lib 名を署名DB のキーへ正規化する。modern Angular(2+) は DB 対象外＝None。"""
+    n = raw.lower()
+    if n in ("jquery-ui", "jquery.ui", "jqueryui"):
+        return "jquery-ui"
+    if n in ("angular", "angular.js", "angularjs"):
+        return "angularjs" if ver[0] == 1 else None
+    return n
+
+
+def check_js_known_cve(pages: list[dict], f: Findings, db: dict | None = None) -> None:
+    """検出済み JS ライブラリ（script_srcs / technologies の js:）を内蔵署名DB と突合し、
+    危殆版一致で具体 CVE と重大度を提示する（純解析・非破壊・非egress）。
+
+    同一 (lib, 版数) は 1 所見に集約し、一致署名の全 CVE を列挙・最も重い severity を採用する。
+    確度は明示版数の一致ゆえ High。severity に応じ per-finding でベクタ/スコア/タイトルを上書きする。"""
+    sigs = db if db is not None else _load_js_signatures()
+    signatures = sigs.get("signatures", {})
+    snap = sigs.get("snapshot_date", "")
+    if not signatures:
+        return
+    seen: set[tuple] = set()
+    for page in pages:
+        hay = [t for t in page.get("technologies", []) if t.lower().startswith("js:")]
+        hay.extend(page.get("script_srcs", []))
+        for s in hay:
+            for m in _JS_CVE_LIB_RE.finditer(s):
+                ver = (int(m.group(2)), int(m.group(3)), int(m.group(4) or 0))
+                lib = _normalize_js_lib(m.group(1), ver)
+                if not lib or lib not in signatures:
+                    continue
+                matched = [sig for sig in signatures[lib] if ver < _parse_ver(sig.get("below", "0"))]
+                if not matched:
+                    continue
+                key = (page.get("url", ""), lib, ver)
+                if key in seen:
+                    continue
+                seen.add(key)
+                cves: list[str] = []
+                for sig in matched:
+                    for c in sig.get("cve", []):
+                        if c not in cves:
+                            cves.append(c)
+                worst = max((sig.get("severity", "medium") for sig in matched),
+                            key=lambda x: _JS_CVE_SEV_RANK.get(x, 2))
+                vec, score = _JS_CVE_SEVERITY_VECTORS.get(worst, _JS_CVE_SEVERITY_VECTORS["medium"])
+                notes = []
+                for sig in matched:
+                    nt = sig.get("note", "")
+                    if nt and nt not in notes:
+                        notes.append(nt)
+                vs = ".".join(str(n) for n in ver)
+                snap_note = f"{snap} 時点の署名DBに基づく（要定期更新）。" if snap else "署名DBに基づく（要定期更新）。"
+                f.add("js-known-cve", page.get("url", ""),
+                      f"既知の脆弱性を含む {lib} {vs}: {', '.join(cves)}"
+                      f"（重大度 {worst}／{'; '.join(notes)}）。{snap_note}",
+                      confidence="High",
+                      extra={"title": f"既知のCVEを含むJSライブラリ: {lib} {vs}",
+                             "cvss_vector": vec, "cvss_score": score})
 
 
 # ===== v0.4 フレームワーク/インフラ指紋（情報カテゴリ） =====
@@ -1126,6 +1307,143 @@ def check_dnssec(target: str, f: Findings, query=None) -> None:
               confidence="Medium")
 
 
+# ===== v0.5 A1: サブドメインテイクオーバー（dangling CNAME）検出（受動・単一組織スコープ） =====
+# {サービス名 → CNAME パターン → 未所有フィンガープリント}。subjack/can-i-take-over-xyz の
+# 公開署名に基づく内蔵テーブル（ライブ照会はしない）。CNAME 一致と応答本文の未所有 fingerprint
+# の**両方**が一致したときのみ takeover 疑いを emit する（FP回避）。
+_TAKEOVER_SERVICES = [
+    ("GitHub Pages", re.compile(r"\.github\.io$", re.I),
+     ["There isn't a GitHub Pages site here",
+      "For root URLs (like http://example.com/) you must provide an index.html file"]),
+    ("Amazon S3", re.compile(r"(\.s3[.\-][\w\-]*\.amazonaws\.com|\.s3\.amazonaws\.com|s3-website)", re.I),
+     ["NoSuchBucket", "The specified bucket does not exist"]),
+    ("Heroku", re.compile(r"(\.herokuapp\.com|\.herokudns\.com|\.herokussl\.com)$", re.I),
+     ["No such app", "herokucdn.com/error-pages/no-such-app.html"]),
+    ("Microsoft Azure", re.compile(
+        r"(\.azurewebsites\.net|\.cloudapp\.net|\.cloudapp\.azure\.com|\.trafficmanager\.net|"
+        r"\.blob\.core\.windows\.net|\.azureedge\.net)$", re.I),
+     ["404 Web Site not found", "The specified blob does not exist", "Error 404 - Web app not found"]),
+    ("Fastly", re.compile(r"\.fastly\.net$", re.I),
+     ["Fastly error: unknown domain"]),
+    ("Shopify", re.compile(r"\.myshopify\.com$", re.I),
+     ["Sorry, this shop is currently unavailable", "Only one step left!"]),
+    ("Netlify", re.compile(r"(\.netlify\.app|\.netlify\.com)$", re.I),
+     ["Not Found - Request ID"]),
+    ("Surge.sh", re.compile(r"\.surge\.sh$", re.I),
+     ["project not found"]),
+    ("Zendesk", re.compile(r"\.zendesk\.com$", re.I),
+     ["Help Center Closed"]),
+    ("Unbounce", re.compile(r"\.unbounce\.com$", re.I),
+     ["The requested URL was not found on this server", "Trying to access your account?"]),
+    ("Cargo", re.compile(r"(\.cargocollective\.com|cargo\.site)$", re.I),
+     ["<b>404 Not Found</b>", "If you're moving your domain away from Cargo"]),
+    ("WordPress.com", re.compile(r"\.wordpress\.com$", re.I),
+     ["Do you want to register"]),
+]
+_MAX_TAKEOVER_HOSTS = 40  # 単一組織でも観測ホスト数を上限で縛る（暴発防止）
+
+
+def _collect_observed_hosts(target: str, pages: list[dict],
+                            forms: list[dict] | None = None) -> list[str]:
+    """対象＋巡回で観測したホストのうち、**対象と同一の登録ドメイン**のものだけを返す。
+
+    crawl は同一オリジンのリンクしかページ化しないため、実際の母集団は対象ホスト＋
+    script_srcs / form action のホスト（同一登録ドメイン）に限られる。単一組織スコープを
+    厳守し、他組織ホスト・CDN・ワードリスト列挙は一切対象にしない。"""
+    base_dom = _registrable_domain(urlparse(target).hostname or "")
+    if not base_dom:
+        return []
+    hosts: list[str] = []
+    seen: set[str] = set()
+
+    def _add(u: str) -> None:
+        h = (urlparse(u).hostname or "").lower()
+        if h and h not in seen and _registrable_domain(h) == base_dom:
+            seen.add(h)
+            hosts.append(h)
+
+    _add(target)
+    for page in pages:
+        _add(page.get("url", ""))
+        for s in page.get("script_srcs", []):
+            _add(s)
+    for form in (forms or []):
+        _add(form.get("action", ""))
+    return hosts[:_MAX_TAKEOVER_HOSTS]
+
+
+def _resolve_cname_chain(host: str, query, max_hops: int = 5) -> list[str]:
+    """host の CNAME 鎖をたどる（各段の CNAME ターゲットを小文字・末尾ドット除去で返す）。
+
+    query は (name, rdtype)->list[str] の呼び出し可能（テストでフェイク注入）。"""
+    chain: list[str] = []
+    current = host
+    for _ in range(max_hops):
+        try:
+            targets = query(current, "CNAME")
+        except Exception:
+            break
+        if not targets:
+            break
+        nxt = (targets[0] or "").rstrip(".").lower()
+        if not nxt or nxt in chain:
+            break
+        chain.append(nxt)
+        current = nxt
+    return chain
+
+
+def _fetch_host_body(host: str, client) -> str | None:
+    """host のトップページ本文を GET で取得する（https→http→取得不能なら None）。非破壊。"""
+    for scheme in ("https", "http"):
+        try:
+            r = client.get(f"{scheme}://{host}/")
+        except Exception:
+            continue
+        try:
+            return (r.text or "")[:8192]
+        except Exception:
+            return ""
+    return None
+
+
+def check_subdomain_takeover(target: str, pages: list[dict], forms: list[dict] | None,
+                             client, f: Findings, query=None) -> None:
+    """対象＋観測済み同一組織ホストの CNAME 鎖を解決し、既知テイクオーバー可能サービスを指し、
+    かつ応答が未所有フィンガープリントに一致するホストを takeover 疑いとして emit する（受動）。
+
+    CNAME 一致と未所有フィンガープリントの**両方**が一致したときのみ提示（FP回避）。
+    query は (name, rdtype)->list[str]（テストでフェイク注入）。DNS 照会と GET のみ＝非破壊。"""
+    q = query or _default_dns_query
+    seen: set[str] = set()
+    for host in _collect_observed_hosts(target, pages, forms):
+        if host in seen:
+            continue
+        seen.add(host)
+        chain = _resolve_cname_chain(host, q)
+        if not chain:
+            continue
+        service = cname_hit = None
+        fingerprints: list[str] = []
+        for cname in chain:
+            for name, pat, fps in _TAKEOVER_SERVICES:
+                if pat.search(cname):
+                    service, cname_hit, fingerprints = name, cname, fps
+                    break
+            if service:
+                break
+        if not service:
+            continue  # 既知テイクオーバー可能サービスを指していない
+        body = _fetch_host_body(host, client)
+        if body is None:
+            continue
+        if any(fp in body for fp in fingerprints):
+            f.add("subdomain-takeover", host,
+                  f"CNAME が {service}（{cname_hit}）を指し、応答が未所有フィンガープリントに一致"
+                  f"（CNAME＋未所有応答の両方一致）。サブドメインテイクオーバーの疑い。",
+                  confidence="High")
+
+
 # ===== v0.4 Phase 3 能動認証テスト（既定 OFF・opt-in・login URL 限定 POST） =====
 import uuid as _uuid  # 局所 import（受動パスに影響させない）
 
@@ -1277,6 +1595,107 @@ def check_csrf_enforcement(client: "_ActiveAuthClient", login_url: str, f: Findi
               f"CSRF 保護の実効性を要確認（列挙・改変は未実施）。", confidence="Medium")
 
 
+# ===== v0.5 A3: ユーザー列挙（opt-in 能動・既存ゲート内・非存在アカウントのみ） =====
+# アカウント存在に依存する（＝列挙可能な）応答語。汎用の "not found"（404 相当）は誤検知の
+# 温床なので採らず、アカウント存在を明示する語のみを用いる（advisor 指摘）。
+_ENUM_ACCOUNT_SPECIFIC = (
+    "no account", "no such user", "unknown user", "user does not exist",
+    "account does not exist", "email is not registered", "email not registered",
+    "not a registered", "no user with", "email address is not associated",
+    "user not found",  # login 文脈の "user not found" は存在依存（"page not found" は generic 側で吸収）
+)
+_ENUM_ACCOUNT_SPECIFIC_JA = (
+    "アカウントが見つかりません", "ユーザーが存在しません", "登録されていません",
+    "登録がありません", "そのメールアドレスは登録されて", "アカウントは存在しません",
+    "登録されたアカウントがありません", "該当するアカウントがありません",
+)
+# 存在を露呈しない汎用応答（安全側）。これが含まれるなら列挙とみなさない（generic override）。
+_ENUM_GENERIC = (
+    "invalid credentials", "incorrect password", "if an account", "if a matching account",
+    "if that email", "we have sent", "we've sent", "a reset link", "page not found",
+)
+_ENUM_GENERIC_JA = (
+    "認証情報", "ログイン情報が正しく", "パスワードが正しく", "認証に失敗", "認証失敗",
+    "登録があれば", "メールを送信しました", "リセット用のメール", "メールをお送りしました",
+    "該当する場合", "ページが見つかりません",
+)
+_ENUM_STATUS_NOTE = {
+    "finding": "",
+    "clean": "認証ロジックに到達し、存在を露呈しない汎用応答を確認",
+    "inconclusive": "CSRF/前段遮断等で認証ロジックに未到達＝判定保留（要手動確認）",
+}
+
+
+def _enum_classify(body: str) -> str:
+    """応答本文をアカウント存在露呈の観点で分類する: 'specific'（存在依存）/'generic'（安全）/'unknown'。
+
+    汎用応答（generic）が含まれるなら存在依存語があっても安全側に倒す（generic override＝FP回避）。"""
+    b = body or ""
+    low = b.lower()
+    if any(p in low for p in _ENUM_GENERIC) or any(p in b for p in _ENUM_GENERIC_JA):
+        return "generic"
+    if any(p in low for p in _ENUM_ACCOUNT_SPECIFIC) or any(p in b for p in _ENUM_ACCOUNT_SPECIFIC_JA):
+        return "specific"
+    return "unknown"
+
+
+def check_user_enumeration(login_client: "_ActiveAuthClient", login_url: str, f: Findings,
+                           reset_client: "_ActiveAuthClient | None" = None,
+                           reset_url: str | None = None,
+                           headers: dict | None = None, extra_fields: dict | None = None,
+                           reset_headers: dict | None = None,
+                           reset_fields: dict | None = None) -> str:
+    """存在しないランダムアカウントで login/reset に POST し、応答がアカウント有無を露呈するか観測する。
+
+    実在アカウントは一切使わない（ロック回避・改変なし）。login は 2 つの異なる非存在アカウントを
+    送り、到達した応答が一貫して存在依存（specific）のときのみ列挙疑いとする（安定性確認）。reset は
+    非存在 email を 1 回送り、存在依存か汎用かを判定する。機微につき evidence にはメッセージ差の
+    要旨のみを載せ、生の内部情報は載せない。確度は控えめ（Low）。
+
+    返り値の台帳区分: 'finding'（列挙疑い）/'clean'（汎用応答で安全）/'inconclusive'（前段遮断で未到達）。"""
+    signals: list[str] = []
+    login_verdicts: list[str] = []
+    for _ in range(2):
+        data = dict(_fake_credentials())
+        if extra_fields:
+            data.update(extra_fields)
+        try:
+            r = login_client.post(login_url, data=data, headers=headers or None)
+        except Exception:
+            break
+        if r.status_code in (419, 403):
+            continue  # CSRF/前段遮断＝認証ロジックに未到達
+        login_verdicts.append(_enum_classify((r.text or "")[:4000]))
+    login_reached = bool(login_verdicts)
+    if login_verdicts and all(v == "specific" for v in login_verdicts):
+        signals.append("login")
+
+    reset_reached = False
+    if reset_client and reset_url:
+        data = {"email": _fake_credentials()["email"]}
+        if reset_fields:
+            data.update(reset_fields)
+        try:
+            r = reset_client.post(reset_url, data=data, headers=reset_headers or None)
+            if r.status_code not in (419, 403):
+                reset_reached = True
+                if _enum_classify((r.text or "")[:4000]) == "specific":
+                    signals.append("reset")
+        except Exception:
+            pass
+
+    if signals:
+        where = login_url if "login" in signals else (reset_url or login_url)
+        f.add("user-enumeration", where,
+              "非存在アカウントに対し、アカウント有無に依存する応答を観測（"
+              + "/".join(signals) + "）。存在の可否を第三者が推定しうる（生の応答内容は非掲載）。",
+              confidence="Low")
+        return "finding"
+    if login_reached or reset_reached:
+        return "clean"       # 認証ロジックに到達し、存在を露呈しない汎用応答を確認
+    return "inconclusive"    # 前段遮断（419/403）等で認証ロジックに未到達＝判定保留
+
+
 def check_https_redirect(target: str, client, f: Findings) -> None:
     """HTTPS 対象について、HTTP アクセスが HTTPS へ確実にリダイレクトされるかを検証。"""
     p = urlparse(target)
@@ -1301,9 +1720,11 @@ def check_https_redirect(target: str, client, f: Findings) -> None:
 # 沈黙で潰さず report に面出しするための土台。旧実装は検出事項のみ列挙していた。
 LEDGER_GROUPS = [
     ("security-headers", "セキュリティヘッダ（HSTS/CSP/XFO 等）", "A02/A04/A06", "passive"),
+    ("csp-analysis", "CSP バイパス可能性の詳細分析", "A06", "passive"),
     ("cookies", "Cookie 属性（Secure/HttpOnly/SameSite）", "A01/A02", "passive"),
     ("sri", "外部リソースの SRI（改竄検知）", "A08", "passive"),
     ("outdated-libs", "古いクライアントライブラリの痕跡", "A03", "passive"),
+    ("js-known-cve", "既知CVEを含むJSライブラリ（署名DB照合）", "A03", "passive"),
     ("route-disclosure", "SPA/JS ルート・EP の未認証露出", "A01", "passive"),
     ("stack-fingerprint", "フレームワーク/インフラ指紋（情報）", "A01", "passive"),
     ("eol-runtime", "サーバランタイムの EOL 判定", "A03", "passive"),
@@ -1314,6 +1735,7 @@ LEDGER_GROUPS = [
     ("tls-cert-validity", "TLS 証明書の検証（ホスト名/期限/チェーン）", "A04", "network"),
     ("dns-email-auth", "DNS メール認証（DMARC / SPF）", "A02", "network"),
     ("dnssec", "DNSSEC（DNSKEY / DS）", "A02", "network"),
+    ("subdomain-takeover", "サブドメインテイクオーバー（CNAME dangling）", "A02", "network"),
     ("https-redirect", "HTTP→HTTPS リダイレクト強制", "A04", "active"),
     ("exposed-files", "機微ファイル / パスの公開", "A01", "active"),
     ("directory-listing", "ディレクトリリスティング", "A01", "active"),
@@ -1327,6 +1749,7 @@ LEDGER_GROUPS = [
     ("mixed-content", "混在コンテンツ", "A06", "active"),
     ("login-rate-limit", "ログインレート制限（能動・opt-in）", "A06", "active-auth"),
     ("csrf-enforcement", "CSRF トークン実効性（能動・opt-in）", "A01", "active-auth"),
+    ("user-enumeration", "ユーザー列挙（能動・opt-in）", "A06", "active-auth"),
 ]
 
 # 各グループが生成しうる check_id（台帳の finding/clean 判定に使用）
@@ -1335,10 +1758,12 @@ _GROUP_CHECK_IDS = {
                          "missing-frame-options", "missing-referrer-policy",
                          "missing-permissions-policy", "info-disclosure-banner",
                          "missing-coop", "xss-protection-legacy"},
+    "csp-analysis": {"csp-bypassable"},
     "cookies": {"cookie-insecure", "cookie-no-httponly", "cookie-no-samesite",
                 "cookie-samesite-none-insecure"},
     "sri": {"missing-sri"},
     "outdated-libs": {"outdated-library"},
+    "js-known-cve": {"js-known-cve"},
     "route-disclosure": {"route-disclosure"},
     "stack-fingerprint": {"stack-fingerprint"},
     "eol-runtime": {"eol-runtime"},
@@ -1349,6 +1774,7 @@ _GROUP_CHECK_IDS = {
     "tls-cert-validity": {"tls-cert-invalid"},
     "dns-email-auth": {"dns-dmarc-missing", "dns-dmarc-weak", "dns-spf-missing"},
     "dnssec": {"dnssec-missing"},
+    "subdomain-takeover": {"subdomain-takeover"},
     "https-redirect": {"no-https-redirect"},
     "exposed-files": {"exposed-sensitive-file"},
     "directory-listing": {"directory-listing"},
@@ -1362,6 +1788,7 @@ _GROUP_CHECK_IDS = {
     "mixed-content": {"mixed-content"},
     "login-rate-limit": {"no-rate-limit"},
     "csrf-enforcement": {"csrf-not-enforced"},
+    "user-enumeration": {"user-enumeration"},
 }
 _CHECK_TO_GROUP = {cid: gid for gid, cids in _GROUP_CHECK_IDS.items() for cid in cids}
 
@@ -1416,7 +1843,8 @@ def _dns_target_ok(host: str) -> bool:
 def run_checks(crawl: dict, timeout: float = 15.0, active: bool = True,
                ledger: "Ledger | None" = None, active_auth: bool = False,
                active_auth_url: str | None = None, active_auth_authorized: str = "",
-               max_login_attempts: int = _LOGIN_HARD_CAP) -> list[dict]:
+               max_login_attempts: int = _LOGIN_HARD_CAP,
+               active_auth_reset_url: str | None = None) -> list[dict]:
     f = Findings()
     if ledger is None:
         ledger = Ledger()
@@ -1477,6 +1905,8 @@ def run_checks(crawl: dict, timeout: float = 15.0, active: bool = True,
             if any(k in _rl for k in ("ratelimit-limit", "x-ratelimit-limit", "retry-after")):
                 rate_limit_seen = True
             _safe("security-headers", lambda: check_security_headers(page, _headers_lower(r), f))
+            _safe("csp-analysis",
+                  lambda: check_csp(page["url"], _headers_lower(r).get("content-security-policy", ""), f))
             if "text/html" in r.headers.get("content-type", ""):
                 _safe("sri", lambda: check_sri(page["url"], r.text, f))
                 _safe("verbose-error", lambda: check_verbose_error(page["url"], r.text, f))
@@ -1484,11 +1914,12 @@ def run_checks(crawl: dict, timeout: float = 15.0, active: bool = True,
         # G1: これらはページ応答から得た実データ（cookies/technologies/route_markers/forms）に
         # 依存する。1 ページも応答が無ければ「観測できていない」＝データ不足で skipped とし、
         # 空入力を「問題なし(clean)」と偽らない（主要ページ未ロード時のグレード膨張を防ぐ）。
-        _data_dependent = ("cookies", "outdated-libs", "route-disclosure",
+        _data_dependent = ("cookies", "outdated-libs", "js-known-cve", "route-disclosure",
                            "stack-fingerprint", "eol-runtime", "forms")
         if data_reliable:
             _safe("cookies", lambda: check_cookies(crawl.get("cookies", []), f))
             _safe("outdated-libs", lambda: check_outdated_libraries(pages, f))
+            _safe("js-known-cve", lambda: check_js_known_cve(pages, f))
             _safe("route-disclosure", lambda: check_route_disclosure(pages, f))
             _safe("stack-fingerprint",
                   lambda: check_framework_fingerprint(pages, crawl.get("cookies", []), f))
@@ -1519,6 +1950,17 @@ def run_checks(crawl: dict, timeout: float = 15.0, active: bool = True,
             note = "dnspython 未導入" if not dns_available() else "IP/ローカル対象のため対象外"
             ledger.record("dns-email-auth", "skipped", note=note)
             ledger.record("dnssec", "skipped", note=note)
+
+        # ===== v0.5 A1: サブドメインテイクオーバー（CNAME dangling・受動・単一組織スコープ） =====
+        # DNS 照会＋GET のみ。対象＋観測済み同一組織ホストに限定（列挙・他組織はしない）。
+        if target and dns_available() and _dns_target_ok(dns_host) and data_reliable:
+            _safe("subdomain-takeover",
+                  lambda: check_subdomain_takeover(target, pages, crawl.get("forms", []), sc, f))
+        elif target:
+            st_note = ("dnspython 未導入" if not dns_available()
+                       else "IP/ローカル対象のため対象外" if not _dns_target_ok(dns_host)
+                       else "主要ページ未応答のためデータ不足")
+            ledger.record("subdomain-takeover", "skipped", note=st_note)
 
         # ===== アクティブ（非破壊の能動プローブ） =====
         # G1: 対象が全く応答していない（data_reliable=False）ときは、各能動 check の内部
@@ -1590,6 +2032,37 @@ def run_checks(crawl: dict, timeout: float = 15.0, active: bool = True,
                               findings=1 if status == "finding" else 0,
                               note=_LOGIN_RL_STATUS_NOTE.get(status, ""))
             _safe("login-rate-limit", _run_login_rate_limit)
+
+            # v0.5 A3: ユーザー列挙。csrf/rate-limit と cap を食い合わないよう **独立した**
+            # _ActiveAuthClient を使う（各テストの blast radius を個別に縛る）。reset は
+            # --reset-url が in-scope のときだけ別 client で検査する（既定 OFF）。
+            def _run_user_enumeration() -> None:
+                ap = urlparse(active_auth_url)
+                origin = urlunparse((ap.scheme, ap.netloc, "", "", "", ""))
+                enum_login = _ActiveAuthClient(raw, active_auth_url, delay)
+                try:
+                    hdrs, fields = _acquire_login_csrf(sc, raw.cookies, active_auth_url, origin)
+                except Exception:
+                    hdrs, fields = {}, {}
+                reset_client = None
+                r_hdrs, r_fields = {}, {}
+                if active_auth_reset_url and in_scope(active_auth_reset_url):
+                    reset_client = _ActiveAuthClient(raw, active_auth_reset_url, delay)
+                    try:
+                        r_hdrs, r_fields = _acquire_login_csrf(
+                            sc, raw.cookies, active_auth_reset_url, origin)
+                    except Exception:
+                        r_hdrs, r_fields = {}, {}
+                status = check_user_enumeration(
+                    enum_login, active_auth_url, f,
+                    reset_client=reset_client, reset_url=active_auth_reset_url,
+                    headers=hdrs, extra_fields=fields,
+                    reset_headers=r_hdrs, reset_fields=r_fields)
+                # 明示 record（inconclusive を clean に丸めない・login-rate-limit と同様）。
+                ledger.record("user-enumeration", status,
+                              findings=1 if status == "finding" else 0,
+                              note=_ENUM_STATUS_NOTE.get(status, ""))
+            _safe("user-enumeration", _run_user_enumeration)
         else:
             if not active_auth:
                 aa_reason = "能動認証テスト無効（既定 OFF・--active-auth 未指定）"
@@ -1599,7 +2072,7 @@ def run_checks(crawl: dict, timeout: float = 15.0, active: bool = True,
                 aa_reason = "login URL（--login-url）未指定"
             else:
                 aa_reason = "login URL がスコープ外"
-            for gid in ("login-rate-limit", "csrf-enforcement"):
+            for gid in ("login-rate-limit", "csrf-enforcement", "user-enumeration"):
                 if not ledger.has(gid):
                     note = aa_reason
                     if gid == "login-rate-limit" and rate_limit_seen:
@@ -1642,6 +2115,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--authorized-active", default="",
                     help="能動認証テストの書面認可（空なら能動認証は実行しない）")
     ap.add_argument("--login-url", default=None, help="能動認証テストの対象 login エンドポイント")
+    ap.add_argument("--reset-url", default=None,
+                    help="ユーザー列挙テストの対象パスワード再発行エンドポイント（任意・既定 OFF）")
     ap.add_argument("--max-login-attempts", type=int, default=8,
                     help="ログインレート制限テストの試行上限（ハードキャップ 8 にクランプ）")
     args = ap.parse_args(argv)
@@ -1653,7 +2128,8 @@ def main(argv: list[str] | None = None) -> int:
     findings = run_checks(crawl, timeout=args.timeout, active=not args.passive_only, ledger=ledger,
                           active_auth=args.active_auth, active_auth_url=args.login_url,
                           active_auth_authorized=args.authorized_active,
-                          max_login_attempts=args.max_login_attempts)
+                          max_login_attempts=args.max_login_attempts,
+                          active_auth_reset_url=args.reset_url)
     out = {
         "target": crawl.get("scope", {}).get("target", ""),
         "generated_at": _now_iso(),

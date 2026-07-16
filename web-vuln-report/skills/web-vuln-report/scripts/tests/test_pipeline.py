@@ -156,6 +156,90 @@ def test_outdated_library_generic_extraction():
     assert "angular 16" not in ev
 
 
+# ===== v0.5 A2: 内蔵署名DBによる CVE 相関（非egress） =====
+def test_js_known_cve_matching():
+    from checks import check_js_known_cve, Findings
+    from scoring import score_finding
+    db = {"snapshot_date": "2026-07", "signatures": {
+        "jquery": [{"below": "3.5.0", "cve": ["CVE-2020-11022", "CVE-2020-11023"],
+                    "severity": "medium", "note": "XSS"}],
+        "lodash": [{"below": "4.17.12", "cve": ["CVE-2019-10744"],
+                    "severity": "high", "note": "プロトタイプ汚染"}],
+    }}
+    pages = [{"url": "https://s/", "technologies": [],
+              "script_srcs": ["https://cdn/jquery/1.11.1/jquery.min.js",
+                              "https://cdn/lodash/4.17.4/lodash.min.js",
+                              "https://cdn/jquery/3.6.0/jquery.min.js"]}]  # 3.6.0 は非該当
+    f = Findings()
+    check_js_known_cve(pages, f, db=db)
+    items = f.as_list()
+    assert [i["check_id"] for i in items] == ["js-known-cve", "js-known-cve"]  # jquery1.11.1 と lodash4.17.4
+    ev = " ".join(i["evidence"] for i in items)
+    assert "CVE-2020-11022" in ev and "CVE-2019-10744" in ev
+    assert "3.6.0" not in ev                      # modern jquery は誤検知しない
+    # 重大度が per-finding のベクタ/スコアに原子的に反映される（medium=5.1 / high=7.0）
+    jq = next(i for i in items if "jquery" in i["title"])
+    ld = next(i for i in items if "lodash" in i["title"])
+    assert jq["cvss_score"] == 5.1 and score_finding(jq)["severity"] == "Medium"
+    assert ld["cvss_score"] == 7.0 and score_finding(ld)["severity"] == "High"
+    # ベクタとスコアが整合（catalog の medium ベクタで固定されず severity 帯へ上書き）
+    assert "VC:H" in ld["cvss_vector"]
+
+
+def test_js_known_cve_snapshot_note_and_no_match():
+    from checks import check_js_known_cve, Findings
+    db = {"snapshot_date": "2026-07", "signatures": {
+        "jquery": [{"below": "3.5.0", "cve": ["CVE-2020-11022"], "severity": "medium"}]}}
+    f = Findings()
+    check_js_known_cve([{"url": "https://s/", "script_srcs": ["https://cdn/jquery-1.8.3.min.js"]}], f, db=db)
+    assert "2026-07" in f.as_list()[0]["evidence"]   # スナップショット鮮度注記
+    f2 = Findings()
+    check_js_known_cve([{"url": "https://s/", "script_srcs": ["https://cdn/jquery-3.7.1.min.js"]}], f2, db=db)
+    assert not f2.as_list()                          # 修正済み版は所見化しない
+
+
+def test_js_known_cve_modern_angular_and_jquery_ui_disambiguation():
+    from checks import check_js_known_cve, Findings
+    db = {"snapshot_date": "2026-07", "signatures": {
+        "angularjs": [{"below": "1.8.0", "cve": ["CVE-2020-7676"], "severity": "medium"}],
+        "jquery": [{"below": "3.5.0", "cve": ["CVE-2020-11022"], "severity": "medium"}],
+        "jquery-ui": [{"below": "1.13.0", "cve": ["CVE-2021-41182"], "severity": "medium"}],
+    }}
+    pages = [{"url": "https://s/", "script_srcs": [
+        "https://cdn/angular.js/1.7.8/angular.min.js",   # 1.x → angularjs 該当
+        "https://cdn/angular/16.2.0/angular.min.js",     # modern Angular → DB 対象外
+        "https://cdn/jquery-ui-1.11.4.min.js",           # jquery-ui（jquery と誤認しない）
+    ]}]
+    f = Findings()
+    check_js_known_cve(pages, f, db=db)
+    titles = " ".join(i["title"] for i in f.as_list())
+    assert "angularjs 1.7.8" in titles
+    assert "16.2.0" not in titles                    # modern Angular は非該当
+    assert "jquery-ui 1.11.4" in titles
+    assert "jquery 1.11" not in titles               # jquery-ui を jquery と誤認しない
+
+
+def test_js_signatures_db_wellformed():
+    from checks import _load_js_signatures, _parse_ver
+    db = _load_js_signatures()
+    assert db.get("snapshot_date")
+    sigs = db["signatures"]
+    assert {"jquery", "lodash", "moment", "axios", "handlebars", "dompurify", "jquery-ui"} <= set(sigs)
+    for lib, entries in sigs.items():
+        for e in entries:
+            assert e["cve"] and all(c.startswith("CVE-") for c in e["cve"]), lib
+            assert e["severity"] in ("low", "medium", "high", "critical"), lib
+            assert _parse_ver(e["below"]) >= (0, 0, 0), lib
+
+
+def test_js_known_cve_uses_shipped_db(findings):
+    # 実 DB（references/js-vuln-signatures.json）でフィクスチャの jquery 1.8.3 を CVE 照合
+    js = [f for f in findings if f["check_id"] == "js-known-cve"]
+    assert js, "js-known-cve が検出されない"
+    assert any("jquery" in f["title"].lower() for f in js)
+    assert any("CVE-" in f["evidence"] for f in js)
+
+
 def test_eol_runtime_detection():
     from checks import check_eol_runtime, Findings
     pages = [{"url": "https://s/", "server": "Apache/2.2.15 (CentOS)",
@@ -421,6 +505,40 @@ def test_csp_wildcard_false_positive_guard():
     assert "weak-csp" in weak_ids("default-src 'self' 'unsafe-inline'")
 
 
+# ===== v0.5 A4: CSP 深掘り解析（受動・default-src フォールバック考慮） =====
+def test_csp_bypassable_analysis():
+    from checks import check_csp, Findings
+
+    def issues(csp):
+        f = Findings()
+        check_csp("https://x/", csp, f)
+        return [i for i in f.as_list() if i["check_id"] == "csp-bypassable"]
+
+    # 完全ロック（default-src 'none'）→ バイパス条件なし（FP回避）
+    assert not issues("default-src 'none'")
+    # 堅牢な CSP（nonce・object 'none'・base-uri/form-action 明示）→ 指摘なし
+    assert not issues("default-src 'self'; script-src 'self' 'nonce-abc'; object-src 'none'; "
+                      "base-uri 'self'; form-action 'self'")
+    # object-src 未設定でも default-src 'none' へフォールバックして安全と判定する
+    assert not issues("default-src 'none'; script-src 'self' 'nonce-x'; "
+                      "base-uri 'self'; form-action 'self'")
+    # unsafe-inline（nonce/hash 無し）→ 検出・確度 High（明確なバイパス）
+    it = issues("script-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; form-action 'self'")
+    assert it and it[0]["confidence"] == "High"
+    assert "unsafe-inline" in it[0]["evidence"]
+    # unsafe-inline + nonce 併記 → CSP3 では nonce がインラインを実効無効化するため指摘しない
+    assert not any("unsafe-inline" in i["evidence"] for i in issues(
+        "script-src 'self' 'unsafe-inline' 'nonce-abc'; object-src 'none'; "
+        "base-uri 'self'; form-action 'self'"))
+    # 広すぎる source（*）→ 検出
+    it2 = issues("default-src *")
+    assert it2 and "script-src" in it2[0]["evidence"]
+    # base-uri / form-action 欠如（スクリプト許可時）→ 検出（1所見に集約）
+    it3 = issues("script-src 'self'; object-src 'none'")
+    assert len(it3) == 1
+    assert "base-uri" in it3[0]["evidence"] and "form-action" in it3[0]["evidence"]
+
+
 def test_detects_permissions_policy(findings):
     assert "missing-permissions-policy" in _check_ids(findings)
 
@@ -438,6 +556,94 @@ def test_header_supplements_coop_and_xss_legacy():
                            {"x-xss-protection": "0", "cross-origin-opener-policy": "same-origin"}, f2)
     ids2 = {i["check_id"] for i in f2.as_list()}
     assert "missing-coop" not in ids2 and "xss-protection-legacy" not in ids2
+
+
+# ===== v0.5 A1: サブドメインテイクオーバー（dangling CNAME・単一組織スコープ） =====
+class _TakeoverResp:
+    def __init__(self, text):
+        self.text, self.status_code, self.headers = text, 200, {"content-type": "text/html"}
+
+
+class _TakeoverClient:
+    def __init__(self, body):
+        self._body = body
+        self.requested = []
+
+    def get(self, url):
+        self.requested.append(url)
+        return _TakeoverResp(self._body)
+
+
+def test_subdomain_takeover_detection():
+    from checks import check_subdomain_takeover, Findings
+    target = "https://app.example.com/"
+    pages = [{"url": "https://app.example.com/", "script_srcs": []},
+             {"url": "https://blog.example.com/", "script_srcs": []}]  # 同一登録ドメイン
+
+    def q(name, rdtype):
+        if rdtype == "CNAME" and name == "blog.example.com":
+            return ["example-org.github.io."]
+        return []
+
+    client = _TakeoverClient("<html><body>There isn't a GitHub Pages site here.</body></html>")
+    f = Findings()
+    check_subdomain_takeover(target, pages, [], client, f, query=q)
+    items = [i for i in f.as_list() if i["check_id"] == "subdomain-takeover"]
+    assert items
+    assert "blog.example.com" in items[0]["affected"]
+    assert "GitHub Pages" in items[0]["evidence"]
+
+
+def test_subdomain_takeover_fp_guards():
+    from checks import check_subdomain_takeover, Findings
+    target = "https://app.example.com/"
+    pages = [{"url": "https://blog.example.com/", "script_srcs": []}]
+
+    # (a) CNAME は github.io を指すが応答が未所有 fingerprint でない（正常運用中）→ 検出しない
+    def q_github(name, rdtype):
+        return ["example-org.github.io."] if (rdtype == "CNAME" and name == "blog.example.com") else []
+    f = Findings()
+    check_subdomain_takeover(target, pages, [], _TakeoverClient("<html>Welcome to my blog</html>"),
+                             f, query=q_github)
+    assert not [i for i in f.as_list() if i["check_id"] == "subdomain-takeover"]
+
+    # (b) 未所有 fingerprint 応答だが CNAME が既知サービスでない → 検出しない（両方一致が必須）
+    def q_internal(name, rdtype):
+        return ["internal.example.net."] if rdtype == "CNAME" else []
+    f2 = Findings()
+    check_subdomain_takeover(target, pages, [], _TakeoverClient("There isn't a GitHub Pages site here"),
+                             f2, query=q_internal)
+    assert not [i for i in f2.as_list() if i["check_id"] == "subdomain-takeover"]
+
+    # (c) CNAME が無い（A レコード直参照）→ 検出しない
+    f3 = Findings()
+    check_subdomain_takeover(target, pages, [], _TakeoverClient("There isn't a GitHub Pages site here"),
+                             f3, query=lambda n, t: [])
+    assert not [i for i in f3.as_list() if i["check_id"] == "subdomain-takeover"]
+
+
+def test_subdomain_takeover_single_org_scope():
+    from checks import check_subdomain_takeover, _collect_observed_hosts, Findings
+    target = "https://app.example.com/"
+    pages = [{"url": "https://app.example.com/", "script_srcs": ["https://cdn.jsdelivr.net/x.js"]},
+             {"url": "https://api.example.com/", "script_srcs": []},
+             {"url": "https://evil.other-domain.com/", "script_srcs": []}]
+    hosts = _collect_observed_hosts(target, pages, [])
+    assert "app.example.com" in hosts and "api.example.com" in hosts
+    assert "evil.other-domain.com" not in hosts   # 他組織ホストは対象外
+    assert "cdn.jsdelivr.net" not in hosts         # CDN は対象外
+
+    # 他組織ホストへは CNAME 照会も GET もしない（単一組織スコープ厳守）
+    queried = []
+
+    class _NoGet:
+        def get(self, url):
+            raise AssertionError("他組織ホストへ GET してはならない")
+
+    check_subdomain_takeover(target, pages, [], _NoGet(), Findings(),
+                             query=lambda n, t: queried.append(n) or [])
+    assert "evil.other-domain.com" not in queried
+    assert all(_h.endswith("example.com") for _h in queried)
 
 
 def test_check_dnssec_with_fake_resolver():
@@ -575,6 +781,94 @@ def test_login_rate_limit_clamps_to_hard_cap():
     c = _Counter()
     check_login_rate_limit(c, "https://s/login", Findings(), max_attempts=100)
     assert c.n == _LOGIN_HARD_CAP  # 100 要求でもハードキャップ 8 にクランプ
+
+
+# ===== v0.5 A3: ユーザー列挙（opt-in 能動・非存在アカウントのみ） =====
+def test_user_enumeration_classifier():
+    from checks import _enum_classify
+    assert _enum_classify("no account with that email") == "specific"
+    assert _enum_classify("アカウントが見つかりません") == "specific"
+    assert _enum_classify("そのメールアドレスは登録されていません") == "specific"
+    assert _enum_classify("invalid credentials") == "generic"
+    assert _enum_classify("認証情報が正しくありません") == "generic"
+    assert _enum_classify("登録があればメールを送信しました") == "generic"
+    # generic override: 存在依存 + 汎用が同時なら安全側（generic）へ倒す
+    assert _enum_classify("if an account exists we've sent an email; otherwise no account") == "generic"
+    # 汎用の "not found"（404/ページ相当）だけでは specific にしない（FP回避）
+    assert _enum_classify("404 page not found") == "generic"
+    assert _enum_classify("something unrelated") == "unknown"
+
+
+def test_user_enumeration_login_and_reset(server):
+    import httpx
+    from checks import _ActiveAuthClient, check_user_enumeration, Findings
+    # (A) login が存在依存応答を露呈 → finding（確度 Low）
+    with httpx.Client(follow_redirects=False) as raw:
+        aac = _ActiveAuthClient(raw, f"{server}/login-enum")
+        f = Findings()
+        st = check_user_enumeration(aac, f"{server}/login-enum", f)
+        assert st == "finding"
+        items = [i for i in f.as_list() if i["check_id"] == "user-enumeration"]
+        assert items and items[0]["confidence"] == "Low"
+        assert "アカウントが見つかりません" not in items[0]["evidence"]  # 生の応答は非掲載
+
+    # (B) login は 419 wall だが reset が存在依存を露呈 → finding（reset 経路）
+    with httpx.Client(follow_redirects=False) as raw:
+        login_c = _ActiveAuthClient(raw, f"{server}/login")           # token 無し POST は 419
+        reset_c = _ActiveAuthClient(raw, f"{server}/reset")
+        f2 = Findings()
+        st2 = check_user_enumeration(login_c, f"{server}/login", f2,
+                                     reset_client=reset_c, reset_url=f"{server}/reset")
+        assert st2 == "finding"
+        assert "reset" in [i for i in f2.as_list() if i["check_id"] == "user-enumeration"][0]["evidence"]
+
+    # (C) login wall + reset が汎用応答 → clean（列挙なし）
+    with httpx.Client(follow_redirects=False) as raw:
+        login_c = _ActiveAuthClient(raw, f"{server}/login-hardened")  # 常時 419
+        reset_c = _ActiveAuthClient(raw, f"{server}/reset-safe")
+        f3 = Findings()
+        st3 = check_user_enumeration(login_c, f"{server}/login-hardened", f3,
+                                     reset_client=reset_c, reset_url=f"{server}/reset-safe")
+        assert st3 == "clean"
+        assert not [i for i in f3.as_list() if i["check_id"] == "user-enumeration"]
+
+
+def test_user_enumeration_inconclusive_on_csrf_wall(server):
+    import httpx
+    from checks import _ActiveAuthClient, check_user_enumeration, Findings
+    # login 常時 419（CSRF wall）・reset 無し → 認証ロジック未到達 → inconclusive（clean と区別）
+    with httpx.Client(follow_redirects=False) as raw:
+        aac = _ActiveAuthClient(raw, f"{server}/login-hardened")
+        f = Findings()
+        st = check_user_enumeration(aac, f"{server}/login-hardened", f)
+        assert st == "inconclusive"
+        assert not f.as_list()
+
+
+def test_active_auth_user_enumeration_integration(crawl_data, server):
+    # run_checks 経由: reset を露呈エンドポイントに向け user-enumeration を finding として台帳記録。
+    # 既存の login-rate-limit / csrf-enforcement は独立 client により従来通り動く（回帰防止）。
+    from checks import run_checks, Ledger
+    led = Ledger()
+    findings = run_checks(crawl_data, timeout=10, active=True, ledger=led,
+                          active_auth=True, active_auth_url=server.rstrip("/") + "/login",
+                          active_auth_authorized="test-suite",
+                          active_auth_reset_url=server.rstrip("/") + "/reset")
+    ids = {f["check_id"] for f in findings}
+    assert "user-enumeration" in ids
+    rows = {r["id"]: r for r in led.rows()}
+    assert rows["user-enumeration"]["status"] == "finding"
+    # 独立 client により既存の能動認証テストは不変（cap 食い合いなし）
+    assert rows["login-rate-limit"]["status"] == "finding"
+    assert rows["csrf-enforcement"]["status"] == "clean"
+
+
+def test_user_enumeration_skipped_when_active_auth_off(crawl_data):
+    from checks import run_checks, Ledger
+    led = Ledger()
+    run_checks(crawl_data, timeout=10, active=True, ledger=led)  # 能動認証 OFF（既定）
+    rows = {r["id"]: r for r in led.rows()}
+    assert rows["user-enumeration"]["status"] == "skipped"
 
 
 def test_csrf_enforcement_logic():

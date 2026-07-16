@@ -24,6 +24,7 @@ import ssl
 import sys
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from urllib.parse import urlparse, urlencode, urlunparse, parse_qsl, urljoin
 
 try:
@@ -652,6 +653,103 @@ def check_outdated_libraries(pages: list[dict], f: Findings) -> None:
                 f.add("outdated-library", page.get("url", ""),
                       f"危殆版の可能性: {lib} {vs}（既知の問題を含む版下限 {fl} 未満）",
                       confidence="Medium")
+
+
+# ===== v0.5 A2: 内蔵オフライン署名DB（retire.js 形式）による CVE 相関（非egress） =====
+# 検出した lib+版数を references/js-vuln-signatures.json と突合し、危殆版一致で具体 CVE を提示する。
+# 長い名前を先に置く（jquery-ui は jquery の前・angularjs/angular.js は angular の前）。
+_JS_CVE_LIB_RE = re.compile(
+    r"(jquery-ui|jquery\.ui|jqueryui|jquery|bootstrap|angularjs|angular\.js|angular|"
+    r"lodash|moment|axios|handlebars|dompurify)"
+    r"[.\-/]?v?(\d+)\.(\d+)(?:\.(\d+))?", re.I)
+# DB の severity → per-finding CVSS 4.0 ベクタ・事前計算スコア（cvss ライブラリで検算済み）。
+# catalog の js-known-cve 既定（medium 5.1）を DB severity に応じ原子的に上書きする。
+_JS_CVE_SEVERITY_VECTORS = {
+    "low":      ("CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:A/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N", 2.1),
+    "medium":   ("CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:A/VC:N/VI:N/VA:N/SC:L/SI:L/SA:N", 5.1),
+    "high":     ("CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:A/VC:H/VI:L/VA:N/SC:N/SI:N/SA:N", 7.0),
+    "critical": ("CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:H/SI:H/SA:N", 9.9),
+}
+_JS_CVE_SEV_RANK = {"low": 1, "medium": 2, "high": 3, "critical": 4}
+_JS_SIG_PATH = Path(__file__).resolve().parent.parent / "references" / "js-vuln-signatures.json"
+_JS_SIG_CACHE: dict | None = None
+
+
+def _load_js_signatures() -> dict:
+    """内蔵オフライン署名DB を読み込む（キャッシュ）。不在・破損時は空 DB（＝所見ゼロ）で継続。"""
+    global _JS_SIG_CACHE
+    if _JS_SIG_CACHE is None:
+        try:
+            _JS_SIG_CACHE = json.loads(_JS_SIG_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            _JS_SIG_CACHE = {"signatures": {}, "snapshot_date": ""}
+    return _JS_SIG_CACHE
+
+
+def _parse_ver(s: str) -> tuple:
+    parts = ((s or "").split(".") + ["0", "0", "0"])[:3]
+    return tuple(int(re.sub(r"\D", "", p) or 0) for p in parts)
+
+
+def _normalize_js_lib(raw: str, ver: tuple) -> str | None:
+    """抽出した lib 名を署名DB のキーへ正規化する。modern Angular(2+) は DB 対象外＝None。"""
+    n = raw.lower()
+    if n in ("jquery-ui", "jquery.ui", "jqueryui"):
+        return "jquery-ui"
+    if n in ("angular", "angular.js", "angularjs"):
+        return "angularjs" if ver[0] == 1 else None
+    return n
+
+
+def check_js_known_cve(pages: list[dict], f: Findings, db: dict | None = None) -> None:
+    """検出済み JS ライブラリ（script_srcs / technologies の js:）を内蔵署名DB と突合し、
+    危殆版一致で具体 CVE と重大度を提示する（純解析・非破壊・非egress）。
+
+    同一 (lib, 版数) は 1 所見に集約し、一致署名の全 CVE を列挙・最も重い severity を採用する。
+    確度は明示版数の一致ゆえ High。severity に応じ per-finding でベクタ/スコア/タイトルを上書きする。"""
+    sigs = db if db is not None else _load_js_signatures()
+    signatures = sigs.get("signatures", {})
+    snap = sigs.get("snapshot_date", "")
+    if not signatures:
+        return
+    seen: set[tuple] = set()
+    for page in pages:
+        hay = [t for t in page.get("technologies", []) if t.lower().startswith("js:")]
+        hay.extend(page.get("script_srcs", []))
+        for s in hay:
+            for m in _JS_CVE_LIB_RE.finditer(s):
+                ver = (int(m.group(2)), int(m.group(3)), int(m.group(4) or 0))
+                lib = _normalize_js_lib(m.group(1), ver)
+                if not lib or lib not in signatures:
+                    continue
+                matched = [sig for sig in signatures[lib] if ver < _parse_ver(sig.get("below", "0"))]
+                if not matched:
+                    continue
+                key = (page.get("url", ""), lib, ver)
+                if key in seen:
+                    continue
+                seen.add(key)
+                cves: list[str] = []
+                for sig in matched:
+                    for c in sig.get("cve", []):
+                        if c not in cves:
+                            cves.append(c)
+                worst = max((sig.get("severity", "medium") for sig in matched),
+                            key=lambda x: _JS_CVE_SEV_RANK.get(x, 2))
+                vec, score = _JS_CVE_SEVERITY_VECTORS.get(worst, _JS_CVE_SEVERITY_VECTORS["medium"])
+                notes = []
+                for sig in matched:
+                    nt = sig.get("note", "")
+                    if nt and nt not in notes:
+                        notes.append(nt)
+                vs = ".".join(str(n) for n in ver)
+                snap_note = f"{snap} 時点の署名DBに基づく（要定期更新）。" if snap else "署名DBに基づく（要定期更新）。"
+                f.add("js-known-cve", page.get("url", ""),
+                      f"既知の脆弱性を含む {lib} {vs}: {', '.join(cves)}"
+                      f"（重大度 {worst}／{'; '.join(notes)}）。{snap_note}",
+                      confidence="High",
+                      extra={"title": f"既知のCVEを含むJSライブラリ: {lib} {vs}",
+                             "cvss_vector": vec, "cvss_score": score})
 
 
 # ===== v0.4 フレームワーク/インフラ指紋（情報カテゴリ） =====
@@ -1388,6 +1486,7 @@ LEDGER_GROUPS = [
     ("cookies", "Cookie 属性（Secure/HttpOnly/SameSite）", "A01/A02", "passive"),
     ("sri", "外部リソースの SRI（改竄検知）", "A08", "passive"),
     ("outdated-libs", "古いクライアントライブラリの痕跡", "A03", "passive"),
+    ("js-known-cve", "既知CVEを含むJSライブラリ（署名DB照合）", "A03", "passive"),
     ("route-disclosure", "SPA/JS ルート・EP の未認証露出", "A01", "passive"),
     ("stack-fingerprint", "フレームワーク/インフラ指紋（情報）", "A01", "passive"),
     ("eol-runtime", "サーバランタイムの EOL 判定", "A03", "passive"),
@@ -1424,6 +1523,7 @@ _GROUP_CHECK_IDS = {
                 "cookie-samesite-none-insecure"},
     "sri": {"missing-sri"},
     "outdated-libs": {"outdated-library"},
+    "js-known-cve": {"js-known-cve"},
     "route-disclosure": {"route-disclosure"},
     "stack-fingerprint": {"stack-fingerprint"},
     "eol-runtime": {"eol-runtime"},
@@ -1571,11 +1671,12 @@ def run_checks(crawl: dict, timeout: float = 15.0, active: bool = True,
         # G1: これらはページ応答から得た実データ（cookies/technologies/route_markers/forms）に
         # 依存する。1 ページも応答が無ければ「観測できていない」＝データ不足で skipped とし、
         # 空入力を「問題なし(clean)」と偽らない（主要ページ未ロード時のグレード膨張を防ぐ）。
-        _data_dependent = ("cookies", "outdated-libs", "route-disclosure",
+        _data_dependent = ("cookies", "outdated-libs", "js-known-cve", "route-disclosure",
                            "stack-fingerprint", "eol-runtime", "forms")
         if data_reliable:
             _safe("cookies", lambda: check_cookies(crawl.get("cookies", []), f))
             _safe("outdated-libs", lambda: check_outdated_libraries(pages, f))
+            _safe("js-known-cve", lambda: check_js_known_cve(pages, f))
             _safe("route-disclosure", lambda: check_route_disclosure(pages, f))
             _safe("stack-fingerprint",
                   lambda: check_framework_fingerprint(pages, crawl.get("cookies", []), f))

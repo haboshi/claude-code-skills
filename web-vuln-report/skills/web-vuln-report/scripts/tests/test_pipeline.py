@@ -156,6 +156,90 @@ def test_outdated_library_generic_extraction():
     assert "angular 16" not in ev
 
 
+# ===== v0.5 A2: 内蔵署名DBによる CVE 相関（非egress） =====
+def test_js_known_cve_matching():
+    from checks import check_js_known_cve, Findings
+    from scoring import score_finding
+    db = {"snapshot_date": "2026-07", "signatures": {
+        "jquery": [{"below": "3.5.0", "cve": ["CVE-2020-11022", "CVE-2020-11023"],
+                    "severity": "medium", "note": "XSS"}],
+        "lodash": [{"below": "4.17.12", "cve": ["CVE-2019-10744"],
+                    "severity": "high", "note": "プロトタイプ汚染"}],
+    }}
+    pages = [{"url": "https://s/", "technologies": [],
+              "script_srcs": ["https://cdn/jquery/1.11.1/jquery.min.js",
+                              "https://cdn/lodash/4.17.4/lodash.min.js",
+                              "https://cdn/jquery/3.6.0/jquery.min.js"]}]  # 3.6.0 は非該当
+    f = Findings()
+    check_js_known_cve(pages, f, db=db)
+    items = f.as_list()
+    assert [i["check_id"] for i in items] == ["js-known-cve", "js-known-cve"]  # jquery1.11.1 と lodash4.17.4
+    ev = " ".join(i["evidence"] for i in items)
+    assert "CVE-2020-11022" in ev and "CVE-2019-10744" in ev
+    assert "3.6.0" not in ev                      # modern jquery は誤検知しない
+    # 重大度が per-finding のベクタ/スコアに原子的に反映される（medium=5.1 / high=7.0）
+    jq = next(i for i in items if "jquery" in i["title"])
+    ld = next(i for i in items if "lodash" in i["title"])
+    assert jq["cvss_score"] == 5.1 and score_finding(jq)["severity"] == "Medium"
+    assert ld["cvss_score"] == 7.0 and score_finding(ld)["severity"] == "High"
+    # ベクタとスコアが整合（catalog の medium ベクタで固定されず severity 帯へ上書き）
+    assert "VC:H" in ld["cvss_vector"]
+
+
+def test_js_known_cve_snapshot_note_and_no_match():
+    from checks import check_js_known_cve, Findings
+    db = {"snapshot_date": "2026-07", "signatures": {
+        "jquery": [{"below": "3.5.0", "cve": ["CVE-2020-11022"], "severity": "medium"}]}}
+    f = Findings()
+    check_js_known_cve([{"url": "https://s/", "script_srcs": ["https://cdn/jquery-1.8.3.min.js"]}], f, db=db)
+    assert "2026-07" in f.as_list()[0]["evidence"]   # スナップショット鮮度注記
+    f2 = Findings()
+    check_js_known_cve([{"url": "https://s/", "script_srcs": ["https://cdn/jquery-3.7.1.min.js"]}], f2, db=db)
+    assert not f2.as_list()                          # 修正済み版は所見化しない
+
+
+def test_js_known_cve_modern_angular_and_jquery_ui_disambiguation():
+    from checks import check_js_known_cve, Findings
+    db = {"snapshot_date": "2026-07", "signatures": {
+        "angularjs": [{"below": "1.8.0", "cve": ["CVE-2020-7676"], "severity": "medium"}],
+        "jquery": [{"below": "3.5.0", "cve": ["CVE-2020-11022"], "severity": "medium"}],
+        "jquery-ui": [{"below": "1.13.0", "cve": ["CVE-2021-41182"], "severity": "medium"}],
+    }}
+    pages = [{"url": "https://s/", "script_srcs": [
+        "https://cdn/angular.js/1.7.8/angular.min.js",   # 1.x → angularjs 該当
+        "https://cdn/angular/16.2.0/angular.min.js",     # modern Angular → DB 対象外
+        "https://cdn/jquery-ui-1.11.4.min.js",           # jquery-ui（jquery と誤認しない）
+    ]}]
+    f = Findings()
+    check_js_known_cve(pages, f, db=db)
+    titles = " ".join(i["title"] for i in f.as_list())
+    assert "angularjs 1.7.8" in titles
+    assert "16.2.0" not in titles                    # modern Angular は非該当
+    assert "jquery-ui 1.11.4" in titles
+    assert "jquery 1.11" not in titles               # jquery-ui を jquery と誤認しない
+
+
+def test_js_signatures_db_wellformed():
+    from checks import _load_js_signatures, _parse_ver
+    db = _load_js_signatures()
+    assert db.get("snapshot_date")
+    sigs = db["signatures"]
+    assert {"jquery", "lodash", "moment", "axios", "handlebars", "dompurify", "jquery-ui"} <= set(sigs)
+    for lib, entries in sigs.items():
+        for e in entries:
+            assert e["cve"] and all(c.startswith("CVE-") for c in e["cve"]), lib
+            assert e["severity"] in ("low", "medium", "high", "critical"), lib
+            assert _parse_ver(e["below"]) >= (0, 0, 0), lib
+
+
+def test_js_known_cve_uses_shipped_db(findings):
+    # 実 DB（references/js-vuln-signatures.json）でフィクスチャの jquery 1.8.3 を CVE 照合
+    js = [f for f in findings if f["check_id"] == "js-known-cve"]
+    assert js, "js-known-cve が検出されない"
+    assert any("jquery" in f["title"].lower() for f in js)
+    assert any("CVE-" in f["evidence"] for f in js)
+
+
 def test_eol_runtime_detection():
     from checks import check_eol_runtime, Findings
     pages = [{"url": "https://s/", "server": "Apache/2.2.15 (CentOS)",

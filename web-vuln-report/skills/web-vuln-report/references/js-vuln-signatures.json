@@ -1,0 +1,47 @@
+{
+  "schema": "retire.js-like curated subset (lib -> [{below, cve[], severity, note}])",
+  "snapshot_date": "2026-07",
+  "note": "オフライン署名DB。ライブ照会は行わない（非egress）。version×既知CVEのローカル照合専用。この日付時点の curated サブセットであり、網羅ではない。要定期更新。",
+  "license_note": "スキーマは retire.js（Apache-2.0）の形式に倣った手作業の curated サブセット。retire.js 本体の署名データを転載したものではなく、公開 CVE 情報から独自に整理した。",
+  "severity_levels": ["low", "medium", "high", "critical"],
+  "signatures": {
+    "jquery": [
+      {"below": "1.9.0", "cve": ["CVE-2012-6708"], "severity": "medium", "note": "$() セレクタ経由の XSS"},
+      {"below": "3.0.0", "cve": ["CVE-2015-9251"], "severity": "medium", "note": "クロスドメイン ajax 応答経由の XSS"},
+      {"below": "3.4.0", "cve": ["CVE-2019-11358"], "severity": "medium", "note": "jQuery.extend のプロトタイプ汚染"},
+      {"below": "3.5.0", "cve": ["CVE-2020-11022", "CVE-2020-11023"], "severity": "medium", "note": "htmlPrefilter 経由の XSS"}
+    ],
+    "jquery-ui": [
+      {"below": "1.12.0", "cve": ["CVE-2016-7103"], "severity": "medium", "note": "dialog closeText の XSS"},
+      {"below": "1.13.0", "cve": ["CVE-2021-41182", "CVE-2021-41183", "CVE-2021-41184"], "severity": "medium", "note": "各種オプション経由の XSS"}
+    ],
+    "bootstrap": [
+      {"below": "3.4.0", "cve": ["CVE-2018-14040", "CVE-2018-14041", "CVE-2018-14042"], "severity": "medium", "note": "data-target/tooltip 等の XSS"},
+      {"below": "4.3.1", "cve": ["CVE-2019-8331"], "severity": "medium", "note": "tooltip/popover の XSS"}
+    ],
+    "angularjs": [
+      {"below": "1.7.9", "cve": ["CVE-2019-10768"], "severity": "high", "note": "merge のプロトタイプ汚染"},
+      {"below": "1.8.0", "cve": ["CVE-2020-7676"], "severity": "medium", "note": "SVG/xlink 経由の XSS"}
+    ],
+    "lodash": [
+      {"below": "4.17.11", "cve": ["CVE-2018-16487"], "severity": "medium", "note": "プロトタイプ汚染"},
+      {"below": "4.17.12", "cve": ["CVE-2019-10744"], "severity": "high", "note": "defaultsDeep のプロトタイプ汚染"},
+      {"below": "4.17.21", "cve": ["CVE-2020-8203", "CVE-2021-23337"], "severity": "high", "note": "プロトタイプ汚染 / template のコマンド注入"}
+    ],
+    "moment": [
+      {"below": "2.29.2", "cve": ["CVE-2022-24785"], "severity": "high", "note": "ロケール読込のパストラバーサル"},
+      {"below": "2.29.4", "cve": ["CVE-2022-31129"], "severity": "high", "note": "入力文字列経由の ReDoS"}
+    ],
+    "axios": [
+      {"below": "0.21.2", "cve": ["CVE-2021-3749"], "severity": "high", "note": "trim 正規表現の ReDoS"},
+      {"below": "1.6.0", "cve": ["CVE-2023-45857"], "severity": "medium", "note": "XSRF-TOKEN の意図しない外部送出"}
+    ],
+    "handlebars": [
+      {"below": "4.3.0", "cve": ["CVE-2019-19919"], "severity": "high", "note": "テンプレートのプロトタイプ汚染"},
+      {"below": "4.7.7", "cve": ["CVE-2021-23369", "CVE-2021-23383"], "severity": "high", "note": "テンプレートコンパイル経由の RCE"}
+    ],
+    "dompurify": [
+      {"below": "2.0.17", "cve": ["CVE-2020-26870"], "severity": "medium", "note": "サニタイズ回避による mutation XSS"}
+    ]
+  }
+}

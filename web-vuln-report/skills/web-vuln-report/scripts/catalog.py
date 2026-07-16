@@ -331,6 +331,25 @@ CHECK_CATALOG: dict[str, dict] = {
         'remediation': '依存ライブラリを最新の安定版へ更新し、SCA を継続導入する。',
         'references': ['https://owasp.org/www-project-dependency-check/'],
     },
+    'js-known-cve': {
+        'title': '既知のCVEを含むJSライブラリ（署名DB照合）',
+        'owasp': 'A03:2025-ソフトウェアサプライチェーンの障害',
+        'cwe': 'CWE-1395',
+        'wstg': None,
+        'asvs': 'v5.0.0-15.2.1 (L1)',
+        # 既定ベクタは client 側ライブラリ CVE で最頻の「反射/mutation XSS（UI 要）」帯（medium 5.1）。
+        # 実 finding は DB の severity に応じ per-finding で low/medium/high/critical のベクタへ上書きする
+        # （ベクタとスコアを原子的に上書き。checks._JS_CVE_SEVERITY_VECTORS）。単体では supply-chain
+        # 由来で外部注入点を要するため過大評価を避ける。
+        'cvss': 'CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:A/VC:N/VI:N/VA:N/SC:L/SI:L/SA:N',
+        'cvss_score': 5.1,
+        'description': '検出した JS ライブラリの版数が、内蔵オフライン署名DB（retire.js 形式の curated サブセット・`references/js-vuln-signatures.json`）の危殆版に一致し、具体的な CVE が対応づけられた。ライブ照会は行わない（非egress）。署名DBはスナップショット日付を持つ curated サブセットであり網羅ではないため、定期更新を要する。クライアント配布物のためディストロのバックポート保守は通例効かず、版数＝実際の版とみなせる。',
+        'impact': '該当 CVE に応じ XSS・プロトタイプ汚染・ReDoS・（テンプレート系では）コード実行等の影響を受けうる。実被害は該当機能の使用状況と注入点の有無に依存する。',
+        'remediation': '当該ライブラリを CVE 修正済みの安定版へ更新する。SCA（retire.js / npm audit / Dependabot 等）を CI に常設し、クライアント依存の棚卸しを継続する。',
+        'references': ['https://cwe.mitre.org/data/definitions/1395.html',
+                       'https://owasp.org/www-project-dependency-check/',
+                       'https://github.com/RetireJS/retire.js'],
+    },
     'missing-permissions-policy': {
         'title': 'Permissions-Policy（旧 Feature-Policy）未設定',
         'owasp': 'A06:2025-安全でない設計',

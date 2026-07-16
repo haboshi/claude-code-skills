@@ -909,3 +909,137 @@ def test_no_finding_leaks_raw_secret_values(findings):
     assert "supersecret" not in blob
     assert "DB_PASSWORD=pw" not in blob
     assert ("sk_" + "live_0123456789") not in blob  # JS 内の秘密も生値を載せない
+
+
+# ===== v0.4.1 変更3: CSRF トークン系 Cookie を cookie-no-httponly から除外 =====
+def test_cookie_csrf_token_excluded_from_httponly_fp():
+    from checks import check_cookies, Findings
+    cookies = [
+        {"name": "XSRF-TOKEN", "url": "https://s/", "secure": True,
+         "httponly": False, "samesite": "Lax"},
+        {"name": "session", "url": "https://s/", "secure": True,
+         "httponly": False, "samesite": "Lax"},
+    ]
+    f = Findings()
+    check_cookies(cookies, f)
+    items = f.as_list()
+    # XSRF-TOKEN は JS 読取が設計上正当なため cookie-no-httponly の対象外
+    assert not [i for i in items
+                if i["check_id"] == "cookie-no-httponly" and "XSRF-TOKEN" in i["evidence"]]
+    # 通常のセッション Cookie は引き続き cookie-no-httponly を検出
+    assert [i for i in items
+            if i["check_id"] == "cookie-no-httponly" and "session" in i["evidence"]]
+    # CSRF Cookie でも Secure/SameSite の検査は継続する（HttpOnly のみ除外）
+    f2 = Findings()
+    check_cookies([{"name": "csrf-token", "url": "https://s/", "secure": False,
+                    "httponly": False, "samesite": None}], f2)
+    ids2 = {i["check_id"] for i in f2.as_list()}
+    assert "cookie-insecure" in ids2 and "cookie-no-samesite" in ids2
+    assert "cookie-no-httponly" not in ids2
+
+
+# ===== v0.4.1 変更1: CSRF トークン取得（HTML 抽出 + Cookie デコード）=====
+def test_extract_html_csrf_token():
+    from checks import _extract_html_csrf_token
+    assert _extract_html_csrf_token('<meta name="csrf-token" content="abc123">') == "abc123"
+    assert _extract_html_csrf_token('<meta content="rev456" name="csrf-token">') == "rev456"
+    assert _extract_html_csrf_token('<input type="hidden" name="_token" value="tok789">') == "tok789"
+    assert _extract_html_csrf_token('<input value="rev012" name="_token">') == "rev012"
+    assert _extract_html_csrf_token("<html>no token here</html>") is None
+    assert _extract_html_csrf_token("") is None
+
+
+def test_login_csrf_acquisition_reaches_rate_limit_layer(server):
+    # CSRF 実効 login では素 POST は 419 で前段遮断され判定保留。GET でトークンを取得してから
+    # POST するとレート制限層へ到達し no-rate-limit を検出できる（変更1 の中核）。
+    import httpx
+    from checks import (_SafeClient, _ActiveAuthClient, _acquire_login_csrf,
+                        check_login_rate_limit, Findings)
+    login = f"{server}/login"
+    # (A) トークン無しの素 POST → 全て 419 前段遮断 → inconclusive（clean と区別）
+    with httpx.Client(follow_redirects=False) as raw:
+        aac = _ActiveAuthClient(raw, login)
+        f0 = Findings()
+        status0 = check_login_rate_limit(aac, login, f0, max_attempts=8)
+        assert status0 == "inconclusive"
+        assert not f0.as_list()
+    # (B) GET でトークン取得 → トークン付き POST → レート制限層に到達 → no-rate-limit finding
+    with httpx.Client(follow_redirects=False) as raw:
+        sc = _SafeClient(raw)
+        aac = _ActiveAuthClient(raw, login)
+        hdrs, fields = _acquire_login_csrf(sc, raw.cookies, login, server)
+        assert hdrs.get("X-XSRF-TOKEN") == "vwr-xsrf-tok3n=="   # XSRF-TOKEN Cookie を URL デコード
+        assert fields.get("_token") == "vwr-meta-tok3n"         # meta/hidden から抽出
+        f1 = Findings()
+        status1 = check_login_rate_limit(aac, login, f1, max_attempts=8,
+                                         headers=hdrs, extra_fields=fields)
+        assert status1 == "finding"
+        assert "no-rate-limit" in {i["check_id"] for i in f1.as_list()}
+
+
+def test_active_auth_login_rate_limit_integration(crawl_data, server):
+    # run_checks 経由の結合テスト: CSRF トークン取得 → レート制限層到達 → no-rate-limit。
+    # csrf-enforcement はトークン無し POST が 419 で拒否され csrf-not-enforced を出さない。
+    from checks import run_checks, Ledger
+    led = Ledger()
+    login_url = server.rstrip("/") + "/login"
+    findings = run_checks(crawl_data, timeout=10, active=True, ledger=led,
+                          active_auth=True, active_auth_url=login_url,
+                          active_auth_authorized="test-suite")
+    ids = {f["check_id"] for f in findings}
+    assert "no-rate-limit" in ids
+    assert "csrf-not-enforced" not in ids   # トークン無し POST は 419 拒否＝CSRF 実効（正常）
+    rows = {r["id"]: r for r in led.rows()}
+    assert rows["login-rate-limit"]["status"] == "finding"
+    assert rows["csrf-enforcement"]["status"] == "clean"
+
+
+# ===== v0.4.1 変更2: inconclusive（判定保留）区分 =====
+def test_active_auth_inconclusive_ledger_when_csrf_wall(crawl_data, server):
+    # トークン取得不能な CSRF ウォール（常時 419）では、レート制限層に到達できず判定保留。
+    # 明示 record が generic finalize（ran→clean）に勝ち、clean に丸められない（advisor 指摘）。
+    from checks import run_checks, Ledger
+    led = Ledger()
+    login_url = server.rstrip("/") + "/login-hardened"
+    findings = run_checks(crawl_data, timeout=10, active=True, ledger=led,
+                          active_auth=True, active_auth_url=login_url,
+                          active_auth_authorized="test-suite")
+    ids = {f["check_id"] for f in findings}
+    assert "no-rate-limit" not in ids  # 到達不能なので finding は出さない
+    rows = {r["id"]: r for r in led.rows()}
+    assert rows["login-rate-limit"]["status"] == "inconclusive"
+    assert rows["login-rate-limit"]["status_ja"] == "判定保留"
+
+
+def test_compute_grade_inconclusive_note():
+    from scoring import compute_grade
+    by = {"Critical": 0, "High": 0, "Medium": 1, "Low": 0, "Info": 0}
+    g = compute_grade([{"severity": "Medium", "confidence": "High"}], by, inconclusive=1)
+    assert g["inconclusive_count"] == 1
+    assert "判定保留" in g["grade_context"]
+    # inconclusive 0 のときは注記を出さない
+    g0 = compute_grade([{"severity": "Medium", "confidence": "High"}], by, inconclusive=0)
+    assert "判定保留" not in g0["grade_context"]
+
+
+def test_score_all_counts_inconclusive_from_coverage():
+    from scoring import score_all
+    doc = {"target": "http://x", "findings": [],
+           "coverage": [{"id": "login-rate-limit", "status": "inconclusive"},
+                        {"id": "cookies", "status": "clean"}]}
+    scored = score_all(doc)
+    assert scored["summary"]["inconclusive_count"] == 1
+    assert "判定保留" in scored["summary"]["grade_context"]
+
+
+def test_report_renders_inconclusive_ledger():
+    from scoring import score_all
+    import render_report
+    doc = {"target": "http://x", "scope": {"hosts": ["x"]}, "findings": [],
+           "coverage": [{"id": "login-rate-limit", "label": "ログインレート制限（能動・opt-in）",
+                         "category": "A06", "kind": "active-auth", "status": "inconclusive",
+                         "status_ja": "判定保留", "findings": 0, "note": "要手動確認"}],
+           "coverage_summary": {"total": 1, "by_status": {"inconclusive": 1}}}
+    html = render_report.render(score_all(doc), narrative={}, tools_used=[])
+    assert "判定保留" in html
+    assert "cov-inconclusive" in html

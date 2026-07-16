@@ -297,6 +297,7 @@ th.num { width: 3.4em; }
 .cov-finding { background: var(--med-pill); color: #422f00; }   /* 検出あり */
 .cov-clean   { background: #e4f4ea; color: #0f6b39; }           /* 問題なし */
 .cov-error   { background: #fbe3c9; color: #8a3b0b; }           /* エラー */
+.cov-inconclusive { background: #e7eef7; color: #34506e; border: 1px solid #c3d3e6; }  /* 判定保留（中間色） */
 .cov-skipped { background: var(--panel); color: var(--muted); border: 1px solid var(--line); }  /* 未実施 */
 
 /* キー/バリューの定義表（範囲と手法）: 定義表はハイライン統一（ゼブラ無し） */

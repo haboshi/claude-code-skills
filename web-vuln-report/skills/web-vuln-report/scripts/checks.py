@@ -151,6 +151,12 @@ class ActiveAuthViolation(RuntimeError):
 _CLIENT_POST_CAP = 10
 # ログインレート制限テストの試行ハードキャップ（関数側で min(要求, これ) にクランプ）
 _LOGIN_HARD_CAP = 8
+# login-rate-limit の台帳区分ごとの備考（finding/clean/inconclusive を明示 record するときに使う）
+_LOGIN_RL_STATUS_NOTE = {
+    "finding": "",
+    "clean": "レート制限層に到達しスロットリングを確認（防御あり）",
+    "inconclusive": "CSRF/前段拒否等でレート制限層に到達できず判定保留（要手動確認）",
+}
 
 
 class _ActiveAuthClient:
@@ -235,12 +241,23 @@ def check_security_headers(page: dict, headers: dict[str, str], f: Findings) -> 
         f.add("info-disclosure-banner", url, f"バージョン露出: {banner}", confidence="Medium")
 
 
+# CSRF トークン系 Cookie 名（小文字比較）。SPA が JS で読み X-XSRF-TOKEN/_token に載せる
+# 前提で **意図的に JS 読取可**（HttpOnly 不可）であり、cookie-no-httponly の誤検知対象。
+# 例: Laravel の XSRF-TOKEN、Django の csrftoken。Secure/SameSite の検査は継続する。
+_CSRF_READABLE_COOKIE_NAMES = {
+    "xsrf-token", "csrf-token", "x-csrf-token", "_csrf", "csrf", "csrf_token", "csrftoken",
+}
+
+
 def check_cookies(cookies: list[dict], f: Findings) -> None:
     for c in cookies:
         is_https = c["url"].startswith("https")
+        # CSRF トークン Cookie は設計上 JS 読取可（HttpOnly 不要）。誤検知回避のため
+        # cookie-no-httponly の対象から除外する（Secure/SameSite は引き続き検査する）。
+        is_csrf_readable = str(c["name"]).strip().lower() in _CSRF_READABLE_COOKIE_NAMES
         if is_https and not c["secure"]:
             f.add("cookie-insecure", c["url"], f"Cookie '{c['name']}' に Secure 属性が無い")
-        if not c["httponly"]:
+        if not c["httponly"] and not is_csrf_readable:
             f.add("cookie-no-httponly", c["url"],
                   f"Cookie '{c['name']}' に HttpOnly 属性が無い", confidence="Medium")
         if not c["samesite"]:
@@ -1121,18 +1138,103 @@ def _fake_credentials() -> dict:
             "username": f"vwr-nonexistent-{tag}"}
 
 
+# Laravel/一般 web フォームの anti-CSRF トークン抽出（HTML の meta / hidden から取得）。
+# 属性順に依存しないよう name→content と content→name の双方向を許容する。
+_CSRF_META_RE = re.compile(
+    r'<meta[^>]+name=["\']csrf-token["\'][^>]*content=["\']([^"\']+)["\']', re.I)
+_CSRF_META_RE_REV = re.compile(
+    r'<meta[^>]+content=["\']([^"\']+)["\'][^>]*name=["\']csrf-token["\']', re.I)
+_HIDDEN_TOKEN_RE = re.compile(
+    r'<input[^>]+name=["\']_token["\'][^>]*value=["\']([^"\']+)["\']', re.I)
+_HIDDEN_TOKEN_RE_REV = re.compile(
+    r'<input[^>]+value=["\']([^"\']+)["\'][^>]*name=["\']_token["\']', re.I)
+
+
+def _extract_html_csrf_token(html: str) -> str | None:
+    """login HTML から anti-CSRF トークン（meta csrf-token / hidden _token）を抽出する。"""
+    if not html:
+        return None
+    for rx in (_CSRF_META_RE, _CSRF_META_RE_REV, _HIDDEN_TOKEN_RE, _HIDDEN_TOKEN_RE_REV):
+        m = rx.search(html)
+        if m and m.group(1).strip():
+            return m.group(1).strip()
+    return None
+
+
+def _acquire_login_csrf(get_client, cookie_jar, login_url: str,
+                        origin: str = "") -> tuple[dict, dict]:
+    """login のセッション/CSRF トークンを **GET（読み取り専用・非破壊）で取得**する。
+
+    CSRF 実効の web フォーム（Laravel 等）では、トークン無しの素 POST は 419 で前段遮断され
+    レート制限層に到達できない。これを避けるため、POST の前に login ページを 1 回 GET して
+    セッションを確立し、トークンを取り出す。GET は SAFE_METHODS 内であり `_SafeClient` 経由で
+    行える（`_SafeClient` の GET 強制境界には一切触れない）。Cookie は POST 側と同一の
+    httpx.Client のジャーで共有されるため、維持したまま POST される。
+
+    返り値 (headers, fields):
+      - `XSRF-TOKEN` Cookie があれば URL デコードして `X-XSRF-TOKEN` ヘッダに載せる（Laravel 慣行）
+      - login HTML の `<meta name="csrf-token">` か hidden `_token` があれば `_token` フィールドに載せる
+    取得に失敗しても安全にフォールバック（空 dict を返し、呼び出し側は従来の素 POST を送る）。"""
+    from urllib.parse import unquote
+    headers: dict[str, str] = {}
+    fields: dict[str, str] = {}
+
+    def _read_cookie(name: str):
+        try:
+            return cookie_jar.get(name)
+        except Exception:
+            return None
+
+    html = ""
+    try:
+        r = get_client.get(login_url)
+        if "text/html" in (r.headers.get("content-type", "") or "").lower():
+            html = r.text or ""
+    except Exception:
+        html = ""
+
+    tok = _extract_html_csrf_token(html)
+    if tok:
+        fields["_token"] = tok
+
+    xsrf = _read_cookie("XSRF-TOKEN")
+    if not xsrf and origin:
+        # login-url が API でページ側でセッション Cookie を発行しない場合の一手として、
+        # Laravel Sanctum の CSRF cookie エンドポイントを 1 回だけ GET する（非破壊）。
+        try:
+            get_client.get(origin.rstrip("/") + "/sanctum/csrf-cookie")
+        except Exception:
+            pass
+        xsrf = _read_cookie("XSRF-TOKEN")
+    if xsrf:
+        headers["X-XSRF-TOKEN"] = unquote(xsrf)
+
+    return headers, fields
+
+
 def check_login_rate_limit(client: "_ActiveAuthClient", login_url: str, f: Findings,
-                           max_attempts: int = _LOGIN_HARD_CAP) -> None:
+                           max_attempts: int = _LOGIN_HARD_CAP,
+                           headers: dict | None = None,
+                           extra_fields: dict | None = None) -> str:
     """存在しないランダム資格情報で login へ上限付き POST し、429/スロットリングの有無を観測する。
 
     実在アカウントは一切使わない（アカウントロック回避）。試行回数は min(要求, ハードキャップ)。
-    前段で 419/403（CSRF 等）に阻まれレート制限に到達できない場合は判定を保留する（偽陽性回避）。"""
+    `headers`/`extra_fields` に CSRF トークン（X-XSRF-TOKEN / _token）を渡すと、419 前段遮断を
+    回避してレート制限層へ到達できる（`_acquire_login_csrf` が取得）。
+
+    返り値は台帳区分:
+      - "finding": レート制限層に到達し 3 回以上処理させたが 429/スロットリング未観測（no-rate-limit）
+      - "clean": スロットリングを観測（レート制限が実在）
+      - "inconclusive": 全て 419/403 で前段遮断される等でレート制限層に到達できず判定不能"""
     attempts = max(1, min(max_attempts, _LOGIN_HARD_CAP))
     processed = 0
     throttled = False
     for _ in range(attempts):
+        data = dict(_fake_credentials())
+        if extra_fields:
+            data.update(extra_fields)
         try:
-            r = client.post(login_url, data=_fake_credentials())
+            r = client.post(login_url, data=data, headers=headers or None)
         except ActiveAuthViolation:
             break
         except Exception:
@@ -1146,11 +1248,16 @@ def check_login_rate_limit(client: "_ActiveAuthClient", login_url: str, f: Findi
             continue  # 前段拒否（CSRF 等）＝レート制限に未到達。判定に数えない
         if r.status_code in (200, 301, 302, 401, 422):
             processed += 1
-    if processed >= 3 and not throttled:
+    if throttled:
+        return "clean"  # レート制限層に到達しスロットリングを確認＝防御あり
+    if processed >= 3:
         f.add("no-rate-limit", login_url,
               f"ログインへの未認証 POST を {processed} 回処理させたが 429/スロットリング応答が"
               f"観測されなかった（実在アカウント不使用）。反自動化防御の確認を要する。",
               confidence="Medium")
+        return "finding"
+    # レート制限層に到達できず（前段遮断・応答不足）判定不能。clean と区別して保留する。
+    return "inconclusive"
 
 
 def check_csrf_enforcement(client: "_ActiveAuthClient", login_url: str, f: Findings) -> None:
@@ -1258,7 +1365,8 @@ _GROUP_CHECK_IDS = {
 }
 _CHECK_TO_GROUP = {cid: gid for gid, cids in _GROUP_CHECK_IDS.items() for cid in cids}
 
-LEDGER_STATUS_JA = {"finding": "検出あり", "clean": "問題なし", "error": "エラー", "skipped": "未実施"}
+LEDGER_STATUS_JA = {"finding": "検出あり", "clean": "問題なし", "error": "エラー",
+                    "skipped": "未実施", "inconclusive": "判定保留"}
 
 
 class Ledger:
@@ -1461,9 +1569,27 @@ def run_checks(crawl: dict, timeout: float = 15.0, active: bool = True,
                      and in_scope(active_auth_url))
         if aa_ok:
             aac = _ActiveAuthClient(raw, active_auth_url, delay)
+            # csrf-enforcement は **トークン無し** の POST を送って 419/403 拒否を確認する検査なので
+            # 意図的にトークンを付けない（付けると常に受理され偽陰性になる）。
             _safe("csrf-enforcement", lambda: check_csrf_enforcement(aac, active_auth_url, f))
-            _safe("login-rate-limit",
-                  lambda: check_login_rate_limit(aac, active_auth_url, f, max_login_attempts))
+
+            # login-rate-limit は逆に、CSRF 実効フォームで 419 前段遮断を回避するため、POST の前に
+            # login ページを GET してセッション/CSRF トークンを取得し、トークン付きで POST する。
+            # sc（GET 限定）と aac（POST 限定）は同一 httpx.Client(raw) を包むため Cookie を共有する。
+            def _run_login_rate_limit() -> None:
+                ap = urlparse(active_auth_url)
+                origin = urlunparse((ap.scheme, ap.netloc, "", "", "", ""))
+                try:
+                    hdrs, fields = _acquire_login_csrf(sc, raw.cookies, active_auth_url, origin)
+                except Exception:
+                    hdrs, fields = {}, {}
+                status = check_login_rate_limit(aac, active_auth_url, f, max_login_attempts,
+                                                headers=hdrs, extra_fields=fields)
+                # 台帳を明示 record（generic finalize が inconclusive を clean に丸めるのを防ぐ）。
+                ledger.record("login-rate-limit", status,
+                              findings=1 if status == "finding" else 0,
+                              note=_LOGIN_RL_STATUS_NOTE.get(status, ""))
+            _safe("login-rate-limit", _run_login_rate_limit)
         else:
             if not active_auth:
                 aa_reason = "能動認証テスト無効（既定 OFF・--active-auth 未指定）"

@@ -241,6 +241,89 @@ def check_security_headers(page: dict, headers: dict[str, str], f: Findings) -> 
         f.add("info-disclosure-banner", url, f"バージョン露出: {banner}", confidence="Medium")
 
 
+# ===== v0.5 A4: CSP 深掘り解析（受動・default-src フォールバック考慮・明確なバイパスのみ） =====
+# script-src/object-src で「広すぎる」とみなす source（任意ホスト/スキームからの読込を許す）
+_CSP_WIDE_SOURCES = ("*", "https:", "http:", "data:")
+# default-src にフォールバックする fetch ディレクティブ（base-uri/form-action/frame-ancestors はしない）
+_CSP_FETCH_FALLBACK = {"script-src", "object-src", "style-src", "img-src", "connect-src",
+                       "worker-src", "child-src", "frame-src", "font-src", "media-src"}
+
+
+def _parse_csp(csp: str) -> dict[str, list[str]]:
+    """CSP を {ディレクティブ名(小文字): [source, ...]} に分解する。"""
+    out: dict[str, list[str]] = {}
+    for part in (csp or "").split(";"):
+        toks = part.split()
+        if not toks:
+            continue
+        out[toks[0].lower()] = [t for t in toks[1:]]
+    return out
+
+
+def _csp_effective(directives: dict[str, list[str]], name: str) -> list[str] | None:
+    """指定ディレクティブの実効 source を返す。未設定の fetch ディレクティブは default-src へ
+    フォールバックする。フォールバック対象外（base-uri 等）や default-src も無い場合は None。"""
+    if name in directives:
+        return directives[name]
+    if name in _CSP_FETCH_FALLBACK:
+        return directives.get("default-src")
+    return None
+
+
+def _analyze_csp(csp: str) -> list[str]:
+    """CSP の明確なバイパス条件のみを列挙する（過検知回避）。default-src フォールバックを考慮し、
+    `default-src 'none'` 等で実効的に無害な指定は指摘しない。"""
+    d = _parse_csp(csp)
+    issues: list[str] = []
+    script = _csp_effective(d, "script-src")
+    script_low = [s.lower() for s in script] if script is not None else None
+    scripts_blocked = script_low == ["'none'"]
+
+    if script is None:
+        issues.append("script-src も default-src も未設定＝スクリプト source が無制限")
+    elif not scripts_blocked:
+        has_nonce_hash = any(s.startswith(("'nonce-", "'sha")) for s in script_low)
+        if "'unsafe-inline'" in script_low and not has_nonce_hash:
+            issues.append("script-src に 'unsafe-inline'（nonce/hash 無し）＝インラインスクリプト注入を許す")
+        wide = sorted({s for s in script_low if s in _CSP_WIDE_SOURCES})
+        if wide:
+            issues.append(f"script-src に広すぎる source（{', '.join(wide)}）＝任意ホスト/データ URI からの読込を許す")
+
+    obj = _csp_effective(d, "object-src")
+    if obj is None:
+        issues.append("object-src も default-src も未設定＝<object>/<embed> の source が無制限")
+    else:
+        obj_wide = sorted({s.lower() for s in obj if s.lower() in _CSP_WIDE_SOURCES})
+        if obj_wide:
+            issues.append(f"object-src に広すぎる source（{', '.join(obj_wide)}）＝プラグイン/オブジェクト注入の余地")
+
+    # base-uri/form-action は default-src にフォールバックしない。スクリプトが全面ブロック
+    # （script/default が 'none'）なら実効無害なので指摘しない（FP回避）。
+    if not scripts_blocked:
+        if "base-uri" not in d:
+            issues.append("base-uri 未設定＝<base> 注入で相対スクリプト URL の解決先を乗っ取れる")
+        if "form-action" not in d:
+            issues.append("form-action 未設定＝フォームの送信先を CSP で制限できない")
+    return issues
+
+
+def check_csp(url: str, csp: str, f: Findings) -> None:
+    """CSP をディレクティブ解析し、明確なバイパス条件のみを **1所見に集約** する（受動・非破壊）。
+
+    CSP 未設定は missing-csp が担当するため本関数では扱わない（未設定なら何もしない）。
+    `default-src` フォールバックを正しく評価し、object-src 未設定でも `default-src 'none'` なら
+    安全と判定する。unsafe-inline（nonce/hash 無し）があるときのみ確度 High（明確なバイパス）。"""
+    if not csp or not csp.strip():
+        return
+    issues = _analyze_csp(csp)
+    if not issues:
+        return
+    strong = any("unsafe-inline" in it for it in issues)
+    f.add("csp-bypassable", url,
+          "CSP にバイパス可能な条件: " + " / ".join(issues),
+          confidence="High" if strong else "Medium")
+
+
 # CSRF トークン系 Cookie 名（小文字比較）。SPA が JS で読み X-XSRF-TOKEN/_token に載せる
 # 前提で **意図的に JS 読取可**（HttpOnly 不可）であり、cookie-no-httponly の誤検知対象。
 # 例: Laravel の XSRF-TOKEN、Django の csrftoken。Secure/SameSite の検査は継続する。
@@ -1301,6 +1384,7 @@ def check_https_redirect(target: str, client, f: Findings) -> None:
 # 沈黙で潰さず report に面出しするための土台。旧実装は検出事項のみ列挙していた。
 LEDGER_GROUPS = [
     ("security-headers", "セキュリティヘッダ（HSTS/CSP/XFO 等）", "A02/A04/A06", "passive"),
+    ("csp-analysis", "CSP バイパス可能性の詳細分析", "A06", "passive"),
     ("cookies", "Cookie 属性（Secure/HttpOnly/SameSite）", "A01/A02", "passive"),
     ("sri", "外部リソースの SRI（改竄検知）", "A08", "passive"),
     ("outdated-libs", "古いクライアントライブラリの痕跡", "A03", "passive"),
@@ -1335,6 +1419,7 @@ _GROUP_CHECK_IDS = {
                          "missing-frame-options", "missing-referrer-policy",
                          "missing-permissions-policy", "info-disclosure-banner",
                          "missing-coop", "xss-protection-legacy"},
+    "csp-analysis": {"csp-bypassable"},
     "cookies": {"cookie-insecure", "cookie-no-httponly", "cookie-no-samesite",
                 "cookie-samesite-none-insecure"},
     "sri": {"missing-sri"},
@@ -1477,6 +1562,8 @@ def run_checks(crawl: dict, timeout: float = 15.0, active: bool = True,
             if any(k in _rl for k in ("ratelimit-limit", "x-ratelimit-limit", "retry-after")):
                 rate_limit_seen = True
             _safe("security-headers", lambda: check_security_headers(page, _headers_lower(r), f))
+            _safe("csp-analysis",
+                  lambda: check_csp(page["url"], _headers_lower(r).get("content-security-policy", ""), f))
             if "text/html" in r.headers.get("content-type", ""):
                 _safe("sri", lambda: check_sri(page["url"], r.text, f))
                 _safe("verbose-error", lambda: check_verbose_error(page["url"], r.text, f))

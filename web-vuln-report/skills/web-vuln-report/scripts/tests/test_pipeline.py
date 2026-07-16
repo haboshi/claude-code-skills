@@ -421,6 +421,40 @@ def test_csp_wildcard_false_positive_guard():
     assert "weak-csp" in weak_ids("default-src 'self' 'unsafe-inline'")
 
 
+# ===== v0.5 A4: CSP 深掘り解析（受動・default-src フォールバック考慮） =====
+def test_csp_bypassable_analysis():
+    from checks import check_csp, Findings
+
+    def issues(csp):
+        f = Findings()
+        check_csp("https://x/", csp, f)
+        return [i for i in f.as_list() if i["check_id"] == "csp-bypassable"]
+
+    # 完全ロック（default-src 'none'）→ バイパス条件なし（FP回避）
+    assert not issues("default-src 'none'")
+    # 堅牢な CSP（nonce・object 'none'・base-uri/form-action 明示）→ 指摘なし
+    assert not issues("default-src 'self'; script-src 'self' 'nonce-abc'; object-src 'none'; "
+                      "base-uri 'self'; form-action 'self'")
+    # object-src 未設定でも default-src 'none' へフォールバックして安全と判定する
+    assert not issues("default-src 'none'; script-src 'self' 'nonce-x'; "
+                      "base-uri 'self'; form-action 'self'")
+    # unsafe-inline（nonce/hash 無し）→ 検出・確度 High（明確なバイパス）
+    it = issues("script-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; form-action 'self'")
+    assert it and it[0]["confidence"] == "High"
+    assert "unsafe-inline" in it[0]["evidence"]
+    # unsafe-inline + nonce 併記 → CSP3 では nonce がインラインを実効無効化するため指摘しない
+    assert not any("unsafe-inline" in i["evidence"] for i in issues(
+        "script-src 'self' 'unsafe-inline' 'nonce-abc'; object-src 'none'; "
+        "base-uri 'self'; form-action 'self'"))
+    # 広すぎる source（*）→ 検出
+    it2 = issues("default-src *")
+    assert it2 and "script-src" in it2[0]["evidence"]
+    # base-uri / form-action 欠如（スクリプト許可時）→ 検出（1所見に集約）
+    it3 = issues("script-src 'self'; object-src 'none'")
+    assert len(it3) == 1
+    assert "base-uri" in it3[0]["evidence"] and "form-action" in it3[0]["evidence"]
+
+
 def test_detects_permissions_policy(findings):
     assert "missing-permissions-policy" in _check_ids(findings)
 

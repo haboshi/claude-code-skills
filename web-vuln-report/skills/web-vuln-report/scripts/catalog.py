@@ -72,6 +72,24 @@ CHECK_CATALOG: dict[str, dict] = {
         'remediation': '`unsafe-inline`/`unsafe-eval` を排除し、nonce/hash ベースに移行する。ソースは必要最小限のオリジンに限定する。',
         'references': ['https://owasp.org/www-community/controls/Content_Security_Policy'],
     },
+    'csp-bypassable': {
+        'title': 'Content-Security-Policy にバイパス可能な設定（object-src/base-uri/form-action/script-src）',
+        'owasp': 'A06:2025-安全でない設計',
+        'cwe': 'CWE-693',
+        'wstg': None,
+        'asvs': 'v5.0.0-3.4.3 (L2)',
+        # weak-csp（2.1・Low）と同帯。CSP は多層防御であり、その弱さ単体は直接の脆弱性でない
+        # （実 XSS には別途の注入点を要する）。default-src フォールバックを正しく評価し、
+        # 明確なバイパス条件（unsafe-inline nonce 無し・object/script の広い source・base-uri/
+        # form-action 欠如）のみを1所見に集約する（過検知回避）。
+        'cvss': 'CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:A/VC:L/VI:L/VA:N/SC:N/SI:N/SA:N',
+        'cvss_score': 2.1,
+        'description': 'Content-Security-Policy をディレクティブ単位で解析したところ、XSS を緩和しきれないバイパス可能な条件が確認された。例: script-src の `unsafe-inline`（nonce/hash 無し）、script-src/object-src の過度に広い source（`*`/`https:`/`data:`）、`base-uri` 未設定（`<base>` 注入で相対スクリプト URL を乗っ取れる）、`form-action` 未設定。`default-src` によるフォールバックは考慮済みで、`default-src \'none\'` 等で実効的に無害な場合は指摘しない。',
+        'impact': 'CSP による XSS 緩和が回避可能で、注入点が存在した場合に多層防御が機能しない。',
+        'remediation': "script-src は nonce/hash ベースにし `unsafe-inline` と広い source を排除する。`object-src 'none'`、`base-uri 'self'`（または 'none'）、`form-action` を明示的に設定する。",
+        'references': ['https://owasp.org/www-community/controls/Content_Security_Policy',
+                       'https://developer.mozilla.org/docs/Web/HTTP/CSP'],
+    },
     'missing-frame-options': {
         'title': 'クリックジャッキング対策（X-Frame-Options / frame-ancestors）未設定',
         'owasp': 'A06:2025-安全でない設計',

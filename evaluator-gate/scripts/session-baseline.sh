@@ -55,6 +55,10 @@ fi
 head=$(git -C "$project" rev-parse --verify HEAD 2>/dev/null || echo "")
 hash=$(compute_diff_hash "$project")
 branch=$(current_branch "$project")
+# セッション開始時刻。作業ツリー外のブランチ（別 worktree での作業）を検出する時間窓の起点。
+# ここでしか記録されないため、既存 state を上書きしない上の分岐より後で設定する。
+ST_SESSION_START_EPOCH=$(date +%s)
+ST_CONSEC_BLOCKS=0
 # baseline_head = eval_base = セッション開始時の HEAD。verdict は未評価（空）。
 state_write "$session_id" "$project" "$head" "$head" "$hash" "" "" "" 0 "baseline" "baseline" 0 "$branch" "" || true
 exit 0

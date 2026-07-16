@@ -160,12 +160,17 @@ state_file() { printf '%s/%s.json' "$GATE_STATE_DIR" "$1"; }
 #   eval_base     : 「評価済みとして受理した」地点の HEAD。ALLOW のときだけ前進する。
 #                   BLOCK / UNAVAILABLE では前進させないため、未検証のコミットが取り残されない
 #   last_claim_hash : 直近に評価した完了主張のハッシュ（同一 diff での主張差し替え検知用）
+# schema v4 で追加:
+#   session_start_epoch : SessionStart 時刻。ref discovery の時間窓の起点（0 = 未記録）
+#   consec_blocks       : 連続して差し戻したターン数。diff ハッシュに依存しない終端条件。
+#                         block_count（同一 diff の停滞）は共有ツリーがドリフトすると 1 に
+#                         戻るため、それだけでは終端が保証されない
 state_load() {
   local sf
   sf=$(state_file "$1")
   ST_LAST_HASH=""; ST_LAST_VERDICT=""; ST_LAST_REASON=""; ST_BLOCK_COUNT=0
   ST_PROJECT=""; ST_UPDATED_EPOCH=0; ST_BASELINE_HEAD=""; ST_EVAL_BASE=""; ST_LAST_CLAIM_HASH=""
-  ST_BRANCH=""; ST_ALLOWED_SIG=""
+  ST_BRANCH=""; ST_ALLOWED_SIG=""; ST_SESSION_START_EPOCH=0; ST_CONSEC_BLOCKS=0
   [ -f "$sf" ] || return 0
   ST_LAST_HASH=$(jq -r '.last_diff_hash // ""' "$sf" 2>/dev/null || echo "")
   ST_LAST_VERDICT=$(jq -r '.last_verdict // ""' "$sf" 2>/dev/null || echo "")
@@ -178,26 +183,38 @@ state_load() {
   ST_LAST_CLAIM_HASH=$(jq -r '.last_claim_hash // ""' "$sf" 2>/dev/null || echo "")
   ST_BRANCH=$(jq -r '.branch // ""' "$sf" 2>/dev/null || echo "")
   ST_ALLOWED_SIG=$(jq -r '.allowed_sig // ""' "$sf" 2>/dev/null || echo "")
+  ST_SESSION_START_EPOCH=$(jq -r '.session_start_epoch // 0' "$sf" 2>/dev/null || echo 0)
+  ST_CONSEC_BLOCKS=$(jq -r '.consec_blocks // 0' "$sf" 2>/dev/null || echo 0)
   case "$ST_BLOCK_COUNT" in ''|*[!0-9]*) ST_BLOCK_COUNT=0 ;; esac
   case "$ST_UPDATED_EPOCH" in ''|*[!0-9]*) ST_UPDATED_EPOCH=0 ;; esac
+  case "$ST_SESSION_START_EPOCH" in ''|*[!0-9]*) ST_SESSION_START_EPOCH=0 ;; esac
+  case "$ST_CONSEC_BLOCKS" in ''|*[!0-9]*) ST_CONSEC_BLOCKS=0 ;; esac
 }
 
 # 引数: session project baseline_head eval_base diff_hash claim_hash verdict reason
 #       block_count codex_v grok_v duration_s branch allowed_sig
+# session_start_epoch / consec_blocks はグローバル（ST_SESSION_START_EPOCH / ST_CONSEC_BLOCKS）
+# から取る。14 個ある位置引数をこれ以上増やすと呼び出し側の取り違えを招くため。
+# 呼び出し側は state_write の前に ST_CONSEC_BLOCKS を意図した値に設定すること。
 # 戻り値: 保存成功 0 / 失敗 非ゼロ（呼び出し側は BLOCK 前に必ず成功確認する）
 state_write() {
-  local sf tmpf
+  local sf tmpf sse cb
   sf=$(state_file "$1"); tmpf="$sf.tmp.$$"
   ensure_dirs
+  # 非数値が紛れると --argjson が壊れて state 保存ごと失敗する（＝ゲートが黙って死ぬ）ため丸める
+  sse="${ST_SESSION_START_EPOCH:-0}"; case "$sse" in ''|*[!0-9]*) sse=0 ;; esac
+  cb="${ST_CONSEC_BLOCKS:-0}"; case "$cb" in ''|*[!0-9]*) cb=0 ;; esac
   jq -n --arg project "$2" --arg bh "$3" --arg eb "$4" --arg hash "$5" --arg ch "$6" \
         --arg verdict "$7" --arg reason "$8" --argjson bc "${9:-0}" \
         --arg cv "${10:-}" --arg gv "${11:-}" --argjson dur "${12:-0}" \
         --arg br "${13:-}" --arg sig "${14:-}" \
+        --argjson sse "$sse" --argjson cb "$cb" \
         --arg ts "$(now_iso)" --argjson ep "$(date +%s)" \
-    '{schema:3, project:$project, baseline_head:$bh, eval_base:$eb, branch:$br,
+    '{schema:4, project:$project, baseline_head:$bh, eval_base:$eb, branch:$br,
+      session_start_epoch:$sse,
       last_diff_hash:$hash, last_claim_hash:$ch, allowed_sig:$sig,
       last_verdict:(if $verdict=="" then null else $verdict end),
-      last_reason:$reason, block_count:$bc,
+      last_reason:$reason, block_count:$bc, consec_blocks:$cb,
       last_eval:{ts:$ts, codex:$cv, grok:$gv, duration_s:$dur},
       updated:$ts, updated_epoch:$ep}' \
     > "$tmpf" 2>/dev/null && mv "$tmpf" "$sf"
@@ -256,6 +273,72 @@ compute_change_sig() {
 # 現在のブランチ名（detached は固定文字列）
 current_branch() {
   git -C "$1" symbolic-ref --quiet --short HEAD 2>/dev/null || printf 'DETACHED'
+}
+
+# セッション開始以降に更新され、現在の HEAD から到達できないローカルブランチを列挙する。
+#
+# 目的: 成果物が作業ツリーの外にある場合（隔離 worktree で実装 → push → PR）、
+# `git diff <base>` だけを証拠にすると申告した変更がどこにも現れず、評価者が正しく
+# 「差分に存在しない」と差し戻す。しかも作業ツリーが別セッションの WIP で汚れていると
+# 「空だから素通し」の分岐にも入らず、無関係な diff に申告を突き合わせ続けることになる。
+# git worktree は refs と object DB を親リポジトリと共有するため、worktree で作られた
+# ブランチはここに現れる（worktree を消した後でも refs/heads に残っていれば拾える）。
+#
+# 整合性: 検出元は git の ref だけで、ビルダーの申告は一切参照しない。ビルダーが「PR に
+# 出しました」と書くだけでゲートを抜けられる経路を作らないための不変条件。
+#
+# 引数: project since_epoch current_head [max_refs]
+# stdout: "oid<TAB>merge_base<TAB>refname"（committerdate の新しい順・最大 max_refs 件）
+discover_session_refs() {
+  local project since head max maxc default_br
+  project="$1"; since="${2:-0}"; head="${3:-}"; max="${4:-2}"
+  case "$since" in ''|*[!0-9]*) return 0 ;; esac
+  case "$max" in ''|*[!0-9]*) max=2 ;; esac
+  # since=0 は「SessionStart 未記録」（schema 3 以前の state 等）。時間窓が無いと
+  # リポジトリ中の全ブランチが候補になるため、検出しない方向に倒す
+  [ "$since" -gt 0 ] || return 0
+  [ -n "$head" ] || return 0
+  maxc="${EVALUATOR_GATE_MAX_COMMITS:-50}"
+  case "$maxc" in ''|*[!0-9]*) maxc=50 ;; esac
+
+  # 統合ブランチ（develop / main 等）は候補から外す。実リポジトリでは他セッションのマージで
+  # 頻繁に動くため時間窓を素通りするが、「このセッションが隔離 worktree で作った成果物」では
+  # ありえない。除外しないと max 件の枠を食い潰して本命のブランチを押し出す。
+  # 判定は「慣習名（下の case）」と「origin/HEAD の既定ブランチ」の和集合。片方では足りない:
+  #  - origin/HEAD は運用と乖離しうる（PR の base が develop でも origin/HEAD は main のまま、
+  #    という実例がある）ので、これだけに頼ると develop を除外できない
+  #  - 慣習名だけだと、既定ブランチ名が独自のリポジトリを取りこぼす
+  default_br=$(git -C "$project" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null)
+  default_br="${default_br#origin/}"
+
+  git -C "$project" for-each-ref --sort=-committerdate \
+      --format='%(committerdate:unix) %(objectname) %(refname:short)' refs/heads 2>/dev/null | \
+  { n=0; seen=""
+    while read -r cdate oid ref; do
+      case "$cdate" in ''|*[!0-9]*) continue ;; esac
+      # committerdate 降順なので、窓の外に出たら以降はすべて古い
+      [ "$cdate" -ge "$since" ] || break
+      [ -n "$oid" ] && [ -n "$ref" ] || continue
+      # 統合ブランチの除外。リストを変数に入れて `for d in $list` で回す書き方はしない:
+      # 未クォート展開の単語分割はシェル依存（zsh は分割しない）で、set -f の影響も受ける。
+      # リテラルの case なら分割にも glob にも依存しない（git の ref 名は * ? [ を許さない）
+      case "$ref" in main|master|develop|trunk) continue ;; esac
+      [ -n "$default_br" ] && [ "$ref" = "$default_br" ] && continue
+      # 同じコミットを指す別名ブランチを二重に載せない
+      case " $seen " in *" $oid "*) continue ;; esac
+      # 現在の HEAD から到達可能な ref の内容は、主証拠（base..作業ツリー）に既に入っている
+      git -C "$project" merge-base --is-ancestor "$oid" "$head" 2>/dev/null && continue
+      mb=$(git -C "$project" merge-base "$oid" "$head" 2>/dev/null) || continue
+      [ -n "$mb" ] || continue
+      # 分岐点から離れすぎている ref は、このセッションの作業ではなく長命ブランチの可能性が高い
+      ncom=$(git -C "$project" rev-list --count "$mb..$oid" 2>/dev/null || echo 0)
+      case "$ncom" in ''|*[!0-9]*) ncom=0 ;; esac
+      [ "$ncom" -ge 1 ] && [ "$ncom" -le "$maxc" ] || continue
+      printf '%s\t%s\t%s\n' "$oid" "$mb" "$ref"
+      seen="$seen $oid"
+      n=$((n + 1))
+      [ "$n" -ge "$max" ] && break
+    done; }
 }
 
 # セッション単位の排他ロック（同一セッションの多重 Stop で評価が交錯するのを防ぐ）
@@ -445,15 +528,20 @@ sanitize_evidence() {
   return 0
 }
 
-# 引数: project last_msg_file workdir [base_ref]
+# 引数: project last_msg_file workdir [base_ref] [refs_file]
 # base_ref は diff の起点。`git diff <base_ref>` は「base_ref から現在の作業ツリーまで」を出すため、
 # ターン内のコミット済み変更と未コミット変更の両方が1つの証拠に含まれる。
 # 省略時は HEAD（＝作業ツリーの未コミット変更のみ）。untracked は常に追記する。
+# refs_file は discover_session_refs の出力（作業ツリー外のブランチ）。非空なら各ブランチの
+# 差分も証拠に加える。
 # 生成物: workdir/{msg.txt, summary.txt, excerpt.txt}
 build_evidence() {
-  local project msg_file wdir base_ref DIFF_ARGS msg_size untracked tracked dlines dsize esize
-  project="$1"; msg_file="$2"; wdir="$3"; base_ref="${4:-}"
+  local project msg_file wdir base_ref refs_file DIFF_ARGS msg_size untracked tracked dlines dsize esize
+  local TAB REF_DIFF_LINES roid rmb rref
+  project="$1"; msg_file="$2"; wdir="$3"; base_ref="${4:-}"; refs_file="${5:-}"
   DIFF_ARGS="${base_ref:-HEAD}"
+  TAB=$(printf '\t')
+  REF_DIFF_LINES=200
   # tracked diff にも機微パスの内容を含めない（名前は --stat に出るが値は出さない）
   # 除外集合は SENSITIVE_GLOBS（単一ソース）から生成し、位置パラメータに載せる
   local IFS_SAVE="$IFS" specs glob_was_off=1
@@ -484,6 +572,19 @@ build_evidence() {
     if [ -n "$untracked" ]; then
       printf '\n# New (untracked) files:\n%s\n' "$untracked"
     fi
+    # 作業ツリー外のブランチ（別 worktree での作業 → push → PR のケース）
+    if [ -n "$refs_file" ] && [ -s "$refs_file" ]; then
+      printf '\n# Branches updated during this session that are NOT in the working tree.\n'
+      printf '# (found by the gate from git refs, not from the builder — work done in a\n'
+      printf '#  separate git worktree and pushed/opened as a PR shows up here.)\n'
+      while IFS="$TAB" read -r roid rmb rref; do
+        [ -n "$roid" ] && [ -n "$rmb" ] || continue
+        printf '\n## branch %s (%s..%s):\n' "$rref" \
+          "$(git -C "$project" rev-parse --short "$rmb" 2>/dev/null)" \
+          "$(git -C "$project" rev-parse --short "$roid" 2>/dev/null)"
+        git -C "$project" diff "$rmb..$roid" --stat -- "$@" 2>/dev/null | tail -40
+      done < "$refs_file"
+    fi
   } > "$wdir/summary.txt"
 
   # 抜粋: 400 行 / 32KB 以下なら全文、超過時は変更量上位 5 ファイル各 120 行
@@ -502,6 +603,18 @@ build_evidence() {
         printf '\n===== %s (first 120 lines of diff) =====\n' "$f"
         git -C "$project" diff "$DIFF_ARGS" --no-color -- "$f" 2>/dev/null | head -120
       done
+    fi
+    # 作業ツリー外のブランチの差分。untracked の内容抜粋より前に置く: 全体キャップ（48KB）で
+    # 切り詰められるのは末尾なので、申告された成果物である可能性が高いこちらを先に載せる
+    if [ -n "$refs_file" ] && [ -s "$refs_file" ]; then
+      while IFS="$TAB" read -r roid rmb rref; do
+        [ -n "$roid" ] && [ -n "$rmb" ] || continue
+        printf '\n===== branch %s (not in the working tree) — diff %s..%s (first %s lines) =====\n' \
+          "$rref" \
+          "$(git -C "$project" rev-parse --short "$rmb" 2>/dev/null)" \
+          "$(git -C "$project" rev-parse --short "$roid" 2>/dev/null)" "$REF_DIFF_LINES"
+        git -C "$project" diff "$rmb..$roid" --no-color -- "$@" 2>/dev/null | head -"$REF_DIFF_LINES"
+      done < "$refs_file"
     fi
     # untracked ファイルの内容抜粋（テキストのみ・機微パス除外・先頭 5 ファイル・各 100 行）
     git -C "$project" ls-files --others --exclude-standard -z 2>/dev/null | \

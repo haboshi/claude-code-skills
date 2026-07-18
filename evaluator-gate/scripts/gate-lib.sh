@@ -275,6 +275,25 @@ current_branch() {
   git -C "$1" symbolic-ref --quiet --short HEAD 2>/dev/null || printf 'DETACHED'
 }
 
+# transcript（JSONL）の最初に現れる "timestamp" を epoch 秒で返す。取れなければ 0。
+# session_start_epoch が state に無い場合（旧 schema からの引き継ぎ・セッション途中の有効化）に
+# 「会話の開始時刻」を復元する用途。JSONL は時系列順なので先頭一致が最古であり、resume で
+# 履歴が新 JSONL に引き継がれた場合も会話全体の開始時刻になる。
+# 注意: timestamp は "2026-07-16T04:49:23.413Z" のような小数秒つき ISO8601 文字列。
+# jq の fromdateiso8601 は小数秒を解釈できないため、変換前に必ず除去する。
+# 引数: transcript_path → stdout: epoch 秒（失敗はすべて 0 を出力・常に exit 0 = fail-open）
+transcript_first_epoch() {
+  local tf ts
+  tf="${1:-}"
+  if [ -z "$tf" ] || [ ! -f "$tf" ]; then echo 0; return 0; fi
+  # grep -m1 は「最初にマッチした行」で止まるが、-o は行内の全マッチを出すため head -1 を重ねる
+  ts=$(grep -m1 -o '"timestamp": *"[^"]*"' "$tf" 2>/dev/null | head -1 \
+       | sed 's/.*"\([^"]*\)"$/\1/')
+  if [ -z "$ts" ]; then echo 0; return 0; fi
+  printf '%s' "$ts" | jq -R 'sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601? // 0' 2>/dev/null || echo 0
+  return 0
+}
+
 # セッション開始以降に更新され、現在の HEAD から到達できないローカルブランチを列挙する。
 #
 # 目的: 成果物が作業ツリーの外にある場合（隔離 worktree で実装 → push → PR）、

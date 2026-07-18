@@ -912,7 +912,9 @@ if [ "$schema" = "4" ] && [ "$sse" != "null" ] && [ "$sse" -gt 0 ] 2>/dev/null; 
   ok "T34 SessionStart が session_start_epoch を記録（schema 4）"
 else bad "T34" "schema=$schema sse=$sse"; fi
 
-# --- T34b: 旧 schema の state（時間窓なし）ではブランチ検出をしない（全ブランチ混入の防止） ---
+# --- T34b: 旧 schema の state + transcript なしは now でバックフィルされる ---
+# 窓が now 始まりなので過去のブランチは混入しない（全ブランチ混入の防止は維持）。
+# バックフィル値は state に永続化される（session_start_epoch > 0）。
 S=s34b
 out=$(startjson $S | run_start)
 sf="$EVALUATOR_GATE_HOME/state/$S.json"
@@ -920,9 +922,11 @@ jq 'del(.session_start_epoch)' "$sf" > "$sf.t" && mv "$sf.t" "$sf"
 printf 'legacy state test\n' >> "$REPO/base.txt"
 reset_calls
 out=$(stopjson $S "完了しました" | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
-if [ "$(calls)" = "2" ] && ! grep -qE "T32MARK_DELIVERABLE|T32DMARK_CODE" "$(promptf)"; then
-  ok "T34b 旧schema（時間窓なし）ではブランチ検出をしない"
-else bad "T34b" "calls=$(calls) leaked=$(grep -oE 'T32MARK_DELIVERABLE|T32DMARK_CODE' "$(promptf)" | tr '\n' ',')"; fi
+sse34b=$(state_of $S | jq -r '.session_start_epoch')
+if [ "$(calls)" = "2" ] && ! grep -qE "T32MARK_DELIVERABLE|T32DMARK_CODE" "$(promptf)" && \
+   [ "$sse34b" -gt 0 ] 2>/dev/null; then
+  ok "T34b 旧schemaはnowでバックフィルされ過去ブランチは混入しない"
+else bad "T34b" "calls=$(calls) sse=$sse34b leaked=$(grep -oE 'T32MARK_DELIVERABLE|T32DMARK_CODE' "$(promptf)" | tr '\n' ',')"; fi
 
 # --- T34c: REF_DISCOVERY=0 で機能を無効化できる ---
 S=s34c
@@ -938,6 +942,112 @@ if [ "$(calls)" = "2" ] && ! grep -q "T34CMARK" "$(promptf)"; then
 else bad "T34c" "calls=$(calls)"; fi
 export FAKE_CODEX_OUTPUT="ALLOW: ok"
 export FAKE_GROK_OUTPUT="ALLOW: ok"
+
+# === F3: session_start_epoch のバックフィル（T34d 系） ===
+# セッション走行中の v0.3.0→v0.4.0 更新や途中の /evaluator-gate on では state に
+# session_start_epoch が無く 0 になる。SessionStart 再発火は既存 state を上書きしないため
+# 自己回復せず、ref discovery が丸ごと止まる（実インシデント: worktree 外の成果物が
+# 証拠に載らず差し戻しループ）。transcript の最初の timestamp からバックフィルする。
+
+# --- T34d: 旧 schema + transcript あり → 会話開始時刻でバックフィルされ検出が働く ---
+S=s34d
+out=$(startjson $S | run_start)
+sf="$EVALUATOR_GATE_HOME/state/$S.json"
+jq 'del(.session_start_epoch)' "$sf" > "$sf.t" && mv "$sf.t" "$sf"
+# transcript の先頭に「ブランチのコミットより古い」timestamp を置く（小数秒つき ISO8601）
+old_epoch34d=$(( $(date +%s) - 3600 ))
+old_iso34d=$(date -u -r "$old_epoch34d" +%Y-%m-%dT%H:%M:%S.000Z 2>/dev/null || \
+             date -u -d "@$old_epoch34d" +%Y-%m-%dT%H:%M:%S.000Z)
+TX34D="$WORK/tx34d.jsonl"
+printf '{"type":"attachment","timestamp":"%s"}\n' "$old_iso34d" > "$TX34D"
+tx_user "worktree で実装して PR に出して" >> "$TX34D"
+git -C "$REPO" worktree add -q -b fix/backfill-probe "$WORK/wt34d" >/dev/null 2>&1 || bad "T34d-setup" "worktree add 失敗"
+printf 'export const bf = 1; // T34DMARK_BACKFILL\n' > "$WORK/wt34d/backfill.ts"
+git -C "$WORK/wt34d" add -A >/dev/null; git -C "$WORK/wt34d" commit -qm "backfill probe" >/dev/null
+printf 'wip t34d\n' >> "$REPO/base.txt"
+reset_calls
+out=$(stopjson_tx $S "実装して PR に出しました" "$TX34D" | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
+sse34d=$(state_of $S | jq -r '.session_start_epoch')
+if [ "$(calls)" = "2" ] && grep -q "T34DMARK_BACKFILL" "$(promptf)" && [ "$sse34d" = "$old_epoch34d" ]; then
+  ok "T34d 旧schema+transcriptで会話開始時刻をバックフィルしブランチ検出が働く"
+else bad "T34d" "calls=$(calls) sse=$sse34d expected=$old_epoch34d mark=$(grep -c T34DMARK_BACKFILL "$(promptf)")"; fi
+# 後続テストの検出窓に漏らさない（T34d の成果物はここで片付ける）
+git -C "$REPO" worktree remove --force "$WORK/wt34d" >/dev/null 2>&1
+git -C "$REPO" branch -q -D fix/backfill-probe 2>/dev/null
+
+# --- T34e: 旧 schema + transcript なし → now フォールバック（窓は実質空・旧ブランチは載らない） ---
+S=s34e
+out=$(startjson $S | run_start)
+sf="$EVALUATOR_GATE_HOME/state/$S.json"
+jq 'del(.session_start_epoch)' "$sf" > "$sf.t" && mv "$sf.t" "$sf"
+# 「古い」ブランチを committerdate 2 分前で作る（同一秒の際どい比較に依存しないため）
+git -C "$REPO" worktree add -q -b old/nowin-probe "$WORK/wt34e" >/dev/null 2>&1 || bad "T34e-setup" "worktree add 失敗"
+printf 'old branch work T34EMARK_OLD\n' > "$WORK/wt34e/oldwork.ts"
+git -C "$WORK/wt34e" add -A >/dev/null
+GIT_COMMITTER_DATE="$(( $(date +%s) - 120 )) +0000" git -C "$WORK/wt34e" commit -qm "old work" >/dev/null
+printf 'wip t34e\n' >> "$REPO/base.txt"
+reset_calls
+out=$(stopjson $S "完了しました" | EVALUATOR_GATE_KEEP_TMP=1 run_gate); rc=$?
+sse34e=$(state_of $S | jq -r '.session_start_epoch')
+if [ "$rc" -eq 0 ] && [ "$(calls)" = "2" ] && ! grep -q "T34EMARK_OLD" "$(promptf)" && \
+   [ "$sse34e" -gt 0 ] 2>/dev/null; then
+  ok "T34e transcriptなしはnowフォールバック（旧ブランチは載らず・epochは永続化）"
+else bad "T34e" "rc=$rc calls=$(calls) sse=$sse34e leaked=$(grep -c T34EMARK_OLD "$(promptf)")"; fi
+git -C "$REPO" worktree remove --force "$WORK/wt34e" >/dev/null 2>&1
+git -C "$REPO" branch -q -D old/nowin-probe 2>/dev/null
+
+# --- T34f: 非ゼロの session_start_epoch は transcript があってもクロバーされない ---
+S=s34f
+out=$(startjson $S | run_start)
+sse_before34f=$(state_of $S | jq -r '.session_start_epoch')
+old_epoch34f=$(( $(date +%s) - 7200 ))
+old_iso34f=$(date -u -r "$old_epoch34f" +%Y-%m-%dT%H:%M:%S.000Z 2>/dev/null || \
+             date -u -d "@$old_epoch34f" +%Y-%m-%dT%H:%M:%S.000Z)
+TX34F="$WORK/tx34f.jsonl"
+printf '{"type":"attachment","timestamp":"%s"}\n' "$old_iso34f" > "$TX34F"
+printf 'wip t34f\n' >> "$REPO/base.txt"
+reset_calls
+out=$(stopjson_tx $S "実装しました" "$TX34F" | run_gate)
+sse_after34f=$(state_of $S | jq -r '.session_start_epoch')
+if [ "$(calls)" = "2" ] && [ "$sse_after34f" = "$sse_before34f" ] && \
+   [ "$sse_before34f" -gt 0 ] 2>/dev/null; then
+  ok "T34f 非ゼロのsession_start_epochはtranscriptでクロバーされない"
+else bad "T34f" "before=$sse_before34f after=$sse_after34f calls=$(calls)"; fi
+
+# --- T34g: transcript_path が実在しないパスでもクラッシュせず now フォールバック ---
+S=s34g
+out=$(startjson $S | run_start)
+sf="$EVALUATOR_GATE_HOME/state/$S.json"
+jq 'del(.session_start_epoch)' "$sf" > "$sf.t" && mv "$sf.t" "$sf"
+printf 'wip t34g\n' >> "$REPO/base.txt"
+reset_calls
+out=$(stopjson_tx $S "実装しました" "$WORK/no-such-transcript.jsonl" | run_gate); rc=$?
+sse34g=$(state_of $S | jq -r '.session_start_epoch')
+if [ "$rc" -eq 0 ] && [ "$(calls)" = "2" ] && [ "$sse34g" -gt 0 ] 2>/dev/null; then
+  ok "T34g transcript不在パスでもクラッシュせずnowフォールバック"
+else bad "T34g" "rc=$rc calls=$(calls) sse=$sse34g"; fi
+
+# --- T34h: 未来の timestamp（時計ずれ・不正データ）は now にクランプされる ---
+# 未来のまま採用すると committerdate 窓（cdate >= since）が恒久的に空になり、
+# ref discovery が「有効なのに何も見つけない」状態で静かに死ぬ。
+S=s34h
+out=$(startjson $S | run_start)
+sf="$EVALUATOR_GATE_HOME/state/$S.json"
+jq 'del(.session_start_epoch)' "$sf" > "$sf.t" && mv "$sf.t" "$sf"
+future_epoch34h=$(( $(date +%s) + 86400 ))
+future_iso34h=$(date -u -r "$future_epoch34h" +%Y-%m-%dT%H:%M:%S.000Z 2>/dev/null || \
+                date -u -d "@$future_epoch34h" +%Y-%m-%dT%H:%M:%S.000Z)
+TX34H="$WORK/tx34h.jsonl"
+printf '{"type":"attachment","timestamp":"%s"}\n' "$future_iso34h" > "$TX34H"
+printf 'wip t34h\n' >> "$REPO/base.txt"
+reset_calls
+out=$(stopjson_tx $S "実装しました" "$TX34H" | run_gate); rc=$?
+now_after34h=$(date +%s)
+sse34h=$(state_of $S | jq -r '.session_start_epoch')
+if [ "$rc" -eq 0 ] && [ "$(calls)" = "2" ] && [ "$sse34h" -gt 0 ] 2>/dev/null && \
+   [ "$sse34h" -le "$now_after34h" ] 2>/dev/null; then
+  ok "T34h 未来timestampはnowにクランプされる"
+else bad "T34h" "rc=$rc calls=$(calls) sse=$sse34h now=$now_after34h future=$future_epoch34h"; fi
 
 # --- T26: off で完全無音に戻る ---
 (cd "$REPO" && bash "$PLUG/scripts/gate-config.sh" off >/dev/null)

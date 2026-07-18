@@ -102,6 +102,21 @@ if [ -n "$ST_PROJECT" ] && [ "$ST_PROJECT" != "$project" ]; then
   # session_start_epoch は引き継ぐ（セッションの時間窓はプロジェクトを跨いでも同じ）
 fi
 
+# session_start_epoch が 0 のままの state（旧 schema からのプラグイン更新・セッション途中の
+# 有効化）を一点バックフィルする。0 だと ref discovery（作業ツリー外ブランチの証拠化）が
+# 丸ごと止まり、SessionStart の再発火は既存 state を上書きしないため自己回復しない。
+# transcript の最初の timestamp（= 会話の開始時刻）を採用し、取れなければ now に
+# フォールバック（そのターンの検出窓は実質空だが、0 = 機能停止よりは良い）。
+# 未来時刻（時計ずれ・不正データ）は now にクランプ。値はグローバル経由で以降の全
+# state_write 経路により永続化されるため、次のターンからは安定する。
+if [ "$ST_SESSION_START_EPOCH" -eq 0 ]; then
+  ST_SESSION_START_EPOCH=$(transcript_first_epoch "$transcript_path")
+  case "$ST_SESSION_START_EPOCH" in ''|*[!0-9]*) ST_SESSION_START_EPOCH=0 ;; esac
+  { [ "$ST_SESSION_START_EPOCH" -gt 0 ] && [ "$ST_SESSION_START_EPOCH" -le "$now_epoch" ]; } \
+    || ST_SESSION_START_EPOCH="$now_epoch"
+  note "session_start_epoch が未記録のためバックフィルしました（${ST_SESSION_START_EPOCH}）"
+fi
+
 # 完了主張が差し替わったか（同一内容でも再評価すべきか）を先に判定する。
 # 「WIP です」で ALLOW → 内容そのままコミット → 「全部完了・テスト通過」に化ける、を防ぐ。
 # ただし「完了主張 → 別の完了主張（言い換え）」では再評価しない。

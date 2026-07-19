@@ -47,14 +47,15 @@ Claude Code用プラグイン（スキル）のマーケットプレイスコレ
 { "name": "foo", "source": "./foo" }
 ```
 
-### 収録プラグイン一覧（13個）
+### 収録プラグイン一覧（15個）
 
 **ドキュメント生成**: pdf-creator-jp
 **画像生成**: image-creator, svg-header-image, svg-diagram, line-sticker-creator
 **画像変換**: svg-to-webp, mermaid-to-webp
 **音声**: tts（発音辞書機能を内蔵）
 **調査**: brave-research
-**開発ツール**: skill-creator-pro（配布パイプライン特化）, harness-analytics（transcript ログ分析→改善示唆）, provider-harness（外部プロバイダ統合のメタスキル + ドメインスキル + /provider-harvest 知見還流）, evaluator-gate（Stop フック完了ゲート。Codex/Grok の外部評価者が完了主張を検証して差し戻し。/evaluator-gate 切替・/evaluate 所見評価）
+**セキュリティ**: web-vuln-report（非破壊の脆弱性診断→日本語報告書 HTML/PDF 生成）
+**開発ツール**: skill-creator-pro（配布パイプライン特化）, harness-analytics（transcript ログ分析→改善示唆）, provider-harness（外部プロバイダ統合のメタスキル + ドメインスキル + /provider-harvest 知見還流）, evaluator-gate（Stop フック完了ゲート。Codex/Grok の外部評価者が完了主張を検証して差し戻し。/evaluator-gate 切替・/evaluate 所見評価）, orca-spinoff（Orca IDE の `orca` CLI で課題をチケット起票→別 worktree へフルハンドオフ。スクリプトなしの指示書型スキル）
 
 廃止済み（2026-07 棚卸し）: gen-ai-image（image-creator の fal.ai フォールバックに機能内包）、task-planner（汎用の計画スキルで代替。タスク記述フォーマットは docs/task-decomposition-format.md に知見として残置）、tts-dict（tts へ統合）、deep-research（実走ブラインド審査でグローバル汎用スキルに 2-0 敗北し一本化。設計知見は docs/deep-research-design-notes.md に残置）。
 

@@ -83,9 +83,10 @@ orca status --json
 二重スピンオフ検知: `orca worktree ps --json` で同じ課題・同名の worktree が既に無いか確認する。あれば起動せず、その worktree を報告する。
 
 ```bash
-orca worktree create --name <slug> --no-parent --agent <agent> --prompt "<ブリーフ>" --json
+orca worktree create --name <slug> --parent-worktree active --agent <agent> --prompt "<ブリーフ>" --json
 ```
 
+- `--parent-worktree active` は Orca のカード階層(lineage)の紐づけのみで、Git base には影響しない。スピンオフは現作業から派生した課題なので、カード上は子として見せる。ユーザーが「独立した作業として」と明示したときだけ `--no-parent` にする。フルハンドオフ方針(lifecycle 監視をしない)は lineage とは無関係に維持する。
 - `--base-branch` は渡さない(repo 既定 base を使う)。現在のブランチを base にするのは、ユーザーが stacked 作業を明示したときだけ。
 - `<slug>` はチケットキー/番号を含む短い英数字(例: `fix-123-login-css`)。
 - `<agent>` はユーザー指定 > そのプロジェクトの直近の慣行 > `claude`。

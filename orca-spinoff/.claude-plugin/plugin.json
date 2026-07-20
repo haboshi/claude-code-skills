@@ -1,6 +1,6 @@
 {
   "name": "orca-spinoff",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "開発中に見つけた課題を「チケット起票 → 別 Orca worktree で新セッション起動 → カード設定 → 報告」までワンアクションでスピンオフするワークフロースキル。Orca IDE（stablyai/orca）の公開 `orca` CLI を前提とし、フルハンドオフ方針（dispatch --inject / worker_done 監視はしない）。検収後の撤収（未 push 確認 → completed → worktree 削除）も担当。「この課題スピンオフして」「切り出して別セッションで」「チケット切って別worktreeで進めて」「撤収して」で発動。",
   "author": {
     "name": "haboshi",

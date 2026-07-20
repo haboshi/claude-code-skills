@@ -92,6 +92,17 @@ orca worktree create --name <slug> --parent-worktree active --agent <agent> --pr
 - `<agent>` はユーザー指定 > そのプロジェクトの直近の慣行 > `claude`。
 - 旧 CLI が `--agent`/`--prompt` を拒否した場合のフォールバック: `worktree create` → `orca terminal create --worktree id:<id> --command "<agent>" --json` → `orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 60000 --json` → `orca terminal send --terminal <handle> --text "<ブリーフ>" --enter --json`
 
+### パーミッションモード(Claude スピンオフ時)
+
+スピンオフ先は無人セッションのため、`default`/`manual` のままだと最初の許可プロンプトで停止する(誰もそのターミナルを見ていないと待ち続ける)。Claude を起動する場合は `--permission-mode auto` を推奨する(確認済み: `claude --help` の choices に存在、`claude auto-mode defaults` の分類器は「読み取り・プロジェクト内ローカル操作・宣言済み依存・origin への push 等を allow / 破壊的操作・本番・secret・認証情報漏洩・レビューなしマージ等を soft_deny / データ持ち出しを hard_deny」)。`acceptEdits` は bash で結局止まり、`bypassPermissions` は安全弁を全部外すため、無人用途では `auto` が最適。**このフラグは Claude Code 専用**で、`--agent codex` 等には付けない。
+
+注入経路(`--agent` プリセットはその場限りのフラグを受けないため、いずれか):
+
+- **恒久(推奨)**: Orca の Settings → Agents で起動コマンドが `claude --permission-mode auto` のカスタムエージェントを定義し、`--agent <そのID>` を使う。上の 1 行起動フローをそのまま保てる。
+- **都度**: `--agent` を付けずに `orca worktree create --name <slug> --parent-worktree active --json` → `orca terminal create --worktree id:<newId> --command "claude --permission-mode auto" --json` → `orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 60000 --json` → `orca terminal send --terminal <handle> --text "<ブリーフ>" --enter --json`。
+
+これは worktree に継承されない `settings.local.json` の許可蓄積を補う意味もある(スピンオフ先は蓄積済み許可を持たないため、モードで姿勢を与える)。ユーザーが姿勢を明示したらそれに従う。
+
 ## 5. カード設定(best-effort)
 
 `worktree create` の応答から id を取り:

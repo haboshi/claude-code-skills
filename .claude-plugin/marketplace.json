@@ -278,19 +278,22 @@
     },
     {
       "name": "orca-spinoff",
-      "description": "開発中に見つけた課題を「チケット起票 → 別 Orca worktree で新セッション起動 → カード設定 → 報告」までワンアクションでスピンオフするワークフロースキル。Orca IDE（stablyai/orca）の公開 `orca` CLI を前提とし、フルハンドオフ方針（dispatch --inject / worker_done 監視はしない）。検収後の撤収（未 push 確認 → completed → worktree 削除）も担当。「この課題スピンオフして」「切り出して別セッションで」「チケット切って別worktreeで進めて」「撤収して」で発動。",
+      "description": "開発中に見つけた課題を「チケット起票 → 別 Orca worktree で新セッション起動 → カード設定 → 報告」までワンアクションでスピンオフするワークフロースキル。Orca IDE（stablyai/orca）の公開 `orca` CLI を前提とし、既定はフルハンドオフ（dispatch --inject / worker_done 監視はしない）。ユーザーが「監視して」「完遂まで見て」と明示したときだけ opt-in の監督モードになり、dispatch --inject → check --wait のローリング待機 → 検収 → 撤収 → キャッチアップ報告まで親セッションが閉じる。検収後の撤収（未 push 確認 → completed → worktree 削除）も担当。「この課題スピンオフして」「切り出して別セッションで」「チケット切って別worktreeで進めて」「撤収して」で発動。",
       "source": "./orca-spinoff",
       "strict": false,
-      "version": "0.1.2",
+      "version": "0.2.0",
       "category": "developer-tools",
       "keywords": [
         "orca",
         "worktree",
         "spinoff",
         "handoff",
+        "supervised",
+        "orchestration",
         "parallel-agents",
         "ticket",
         "スピンオフ",
+        "監督モード",
         "課題切り出し",
         "並列開発"
       ]

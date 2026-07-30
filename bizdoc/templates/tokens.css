@@ -1,0 +1,75 @@
+/* bizdoc tokens.css — 白基調ビジネス文書の design tokens。
+   文書生成時は <style> にインライン展開して使う（CDN・外部参照禁止）。
+   アクセントは 1 色のみ（--accent）。project.json の accent が最優先。 */
+:root {
+  --accent: #2563eb;
+  --accent-soft: #eff6ff;
+  --ink: #1f2937;
+  --ink-2: #6b7280;
+  --line: #e5e7eb;
+  --bg: #ffffff;
+  --bg-soft: #f8fafc;
+}
+* { box-sizing: border-box; }
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body {
+  margin: 0 auto; padding: 2.5rem 1.5rem 5rem; max-width: 52rem;
+  background: var(--bg); color: var(--ink); line-height: 1.75; font-size: 16px;
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
+}
+h1 { font-size: 1.7rem; line-height: 1.35; margin: 0 0 .5rem; }
+h2 { font-size: 1.2rem; margin: 2.5rem 0 .75rem; padding-left: .6rem; border-left: 4px solid var(--accent); }
+h3 { font-size: 1rem; margin: 1.5rem 0 .5rem; }
+p { margin: .6rem 0; }
+figure { margin: 1.25rem 0; }
+figure svg { width: 100%; height: auto; }
+figcaption { color: var(--ink-2); font-size: .82rem; margin-top: .35rem; }
+
+/* 表紙相当（タイトル・日付・目的・読者） */
+.cover { border-bottom: 3px solid var(--accent); padding-bottom: 1.25rem; margin-bottom: 2rem; }
+.cover .meta { color: var(--ink-2); font-size: .88rem; display: flex; gap: 1.5rem; flex-wrap: wrap; }
+
+/* 結論先出し（エグゼクティブサマリ） */
+.exec-summary { background: var(--accent-soft); border-radius: 10px; padding: 1rem 1.25rem; margin: 1.5rem 0; }
+.exec-summary h2 { border: none; padding: 0; margin: 0 0 .5rem; font-size: 1rem; }
+.exec-summary ol, .exec-summary ul { margin: 0; padding-left: 1.3rem; }
+
+.callout { background: var(--bg-soft); border-left: 4px solid var(--accent); border-radius: 6px; padding: .7rem 1rem; margin: 1rem 0; }
+.callout-warn { background: #fef9ee; border-left: 4px solid #d97706; border-radius: 6px; padding: .7rem 1rem; margin: 1rem 0; }
+
+/* KPI カード */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: .8rem; margin: 1.25rem 0; }
+.kpi { border: 1px solid var(--line); border-radius: 10px; padding: .8rem 1rem; }
+.kpi .value { font-size: 1.6rem; font-weight: 700; color: var(--accent); line-height: 1.2; }
+.kpi .label { color: var(--ink-2); font-size: .82rem; }
+.kpi .src { color: var(--ink-2); font-size: .72rem; }
+
+/* 2カラム対比 */
+.compare-cols { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; margin: 1.25rem 0; }
+.compare-cols .col { border: 1px solid var(--line); border-radius: 10px; padding: .8rem 1rem; }
+.compare-cols .col.pick { border-color: var(--accent); background: var(--accent-soft); }
+.compare-cols h3 { margin-top: 0; }
+
+/* 手順・プロセス（番号付き） */
+.steps { counter-reset: step; list-style: none; padding: 0; margin: 1.25rem 0; }
+.steps li { counter-increment: step; position: relative; padding: .35rem 0 .35rem 2.4rem; }
+.steps li::before {
+  content: counter(step); position: absolute; left: 0; top: .45rem;
+  width: 1.6rem; height: 1.6rem; border-radius: 50%; background: var(--accent); color: #fff;
+  font-size: .85rem; font-weight: 700; display: flex; align-items: center; justify-content: center;
+}
+
+table { width: 100%; border-collapse: collapse; font-size: .9rem; margin: 1rem 0; }
+th { text-align: left; background: var(--bg-soft); border-bottom: 2px solid var(--line); padding: .5rem .6rem; }
+td { border-bottom: 1px solid var(--line); padding: .5rem .6rem; vertical-align: top; }
+tr.pick { background: var(--accent-soft); }
+.src { color: var(--ink-2); font-size: .78rem; }
+
+/* A4 印刷 */
+@page { size: A4; margin: 14mm; }
+@media print {
+  body { padding: 0; max-width: none; font-size: 11pt; }
+  figure, table, .kpi-grid, .compare-cols, .callout, .callout-warn, .exec-summary { break-inside: avoid; }
+  h2, h3 { break-after: avoid; }
+  a { color: var(--ink); text-decoration: none; }
+}

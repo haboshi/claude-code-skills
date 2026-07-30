@@ -1,0 +1,9 @@
+{
+  "name": "bizdoc",
+  "version": "0.1.0",
+  "description": "ビジネス白基調・SVG図解付き1枚HTML文書の生成（bizdoc）と、プロジェクト別ドキュメント統合管理 doc-hub（~/Documents/doc-hub・ファイルSSOT・静的index）",
+  "author": {
+    "name": "haboshi",
+    "email": "haboshi@allambitious.co.jp"
+  }
+}

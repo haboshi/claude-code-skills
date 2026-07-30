@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>社内ナレッジ共有ツール導入提案</title>
+<style>
+:root {
+  --accent: #2563eb;
+  --accent-soft: #eff6ff;
+  --ink: #1f2937;
+  --ink-2: #6b7280;
+  --line: #e5e7eb;
+  --bg: #ffffff;
+  --bg-soft: #f8fafc;
+}
+* { box-sizing: border-box; }
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body {
+  margin: 0 auto; padding: 2.5rem 1.5rem 5rem; max-width: 52rem;
+  background: var(--bg); color: var(--ink); line-height: 1.75; font-size: 16px;
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
+}
+h1 { font-size: 1.7rem; line-height: 1.35; margin: 0 0 .5rem; }
+h2 { font-size: 1.2rem; margin: 2.5rem 0 .75rem; padding-left: .6rem; border-left: 4px solid var(--accent); }
+h3 { font-size: 1rem; margin: 1.5rem 0 .5rem; }
+p { margin: .6rem 0; }
+figure { margin: 1.25rem 0; }
+figure svg { width: 100%; height: auto; }
+figcaption { color: var(--ink-2); font-size: .82rem; margin-top: .35rem; }
+
+.cover { border-bottom: 3px solid var(--accent); padding-bottom: 1.25rem; margin-bottom: 2rem; }
+.cover .meta { color: var(--ink-2); font-size: .88rem; display: flex; gap: 1.5rem; flex-wrap: wrap; }
+
+.exec-summary { background: var(--accent-soft); border-radius: 10px; padding: 1rem 1.25rem; margin: 1.5rem 0; }
+.exec-summary h2 { border: none; padding: 0; margin: 0 0 .5rem; font-size: 1rem; }
+.exec-summary ol, .exec-summary ul { margin: 0; padding-left: 1.3rem; }
+
+.callout { background: var(--bg-soft); border-left: 4px solid var(--accent); border-radius: 6px; padding: .7rem 1rem; margin: 1rem 0; }
+.callout-warn { background: #fef9ee; border-left: 4px solid #d97706; border-radius: 6px; padding: .7rem 1rem; margin: 1rem 0; }
+
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: .8rem; margin: 1.25rem 0; }
+.kpi { border: 1px solid var(--line); border-radius: 10px; padding: .8rem 1rem; }
+.kpi .value { font-size: 1.6rem; font-weight: 700; color: var(--accent); line-height: 1.2; }
+.kpi .label { color: var(--ink-2); font-size: .82rem; }
+.kpi .src { color: var(--ink-2); font-size: .72rem; }
+
+.compare-cols { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; margin: 1.25rem 0; }
+.compare-cols .col { border: 1px solid var(--line); border-radius: 10px; padding: .8rem 1rem; }
+.compare-cols .col.pick { border-color: var(--accent); background: var(--accent-soft); }
+.compare-cols h3 { margin-top: 0; }
+
+.steps { counter-reset: step; list-style: none; padding: 0; margin: 1.25rem 0; }
+.steps li { counter-increment: step; position: relative; padding: .35rem 0 .35rem 2.4rem; }
+.steps li::before {
+  content: counter(step); position: absolute; left: 0; top: .45rem;
+  width: 1.6rem; height: 1.6rem; border-radius: 50%; background: var(--accent); color: #fff;
+  font-size: .85rem; font-weight: 700; display: flex; align-items: center; justify-content: center;
+}
+
+table { width: 100%; border-collapse: collapse; font-size: .9rem; margin: 1rem 0; }
+th { text-align: left; background: var(--bg-soft); border-bottom: 2px solid var(--line); padding: .5rem .6rem; }
+td { border-bottom: 1px solid var(--line); padding: .5rem .6rem; vertical-align: top; }
+tr.pick { background: var(--accent-soft); }
+.src { color: var(--ink-2); font-size: .78rem; }
+
+@page { size: A4; margin: 14mm; }
+@media print {
+  body { padding: 0; max-width: none; font-size: 11pt; }
+  figure, table, .kpi-grid, .compare-cols, .callout, .callout-warn, .exec-summary { break-inside: avoid; }
+  h2, h3 { break-after: avoid; }
+  a { color: var(--ink); text-decoration: none; }
+}
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <h1>社内ナレッジ共有ツール導入提案</h1>
+  <div class="meta">
+    <span>作成日: 2026年7月</span>
+    <span>種別: 提案書</span>
+    <span>目的: 来期予算でのツール本格導入の承認を得る</span>
+    <span>読者: 経営層・情報システム部</span>
+  </div>
+</div>
+
+<div class="exec-summary">
+<h2>結論</h2>
+<ol>
+  <li>各部署に散在する業務ノウハウ・FAQ・議事録を検索可能な形で一元化することで、問い合わせ対応にかかる時間を約42%削減できる見込み</li>
+  <li>3案（現行維持・段階導入・全面刷新）を比較検討した結果、初期費用を抑えつつ2ヶ月で効果を検証できる「段階導入」案を推奨する</li>
+  <li>月額50万円の投資で、問い合わせ対応工数の削減分から6ヶ月以内の投資回収を見込む</li>
+</ol>
+</div>
+
+<h2>背景・課題</h2>
+<p>現在、各部署の業務ノウハウやFAQ、議事録はチャットの過去ログや個人のメモに散在しており、同じ質問への回答を情報システム部が都度作成する状態が続いている。特に新入社員は独り立ちまでに社内の誰に何を聞けばよいかを探すところから始めており、立ち上がりが遅れる一因になっている。</p>
+<div class="callout-warn">
+  <strong>注意:</strong> 現状を放置した場合、来期の組織拡大に伴い問い合わせ件数がさらに増加し、情報システム部の対応工数が逼迫する見込み。
+</div>
+
+<h2>導入によって見込まれる効果</h2>
+<div class="kpi-grid">
+  <div class="kpi">
+    <div class="value">42%</div>
+    <div class="label">問い合わせ対応時間 削減率</div>
+    <p class="src">※ 出典: 架空の社内調査（サンプル）</p>
+  </div>
+  <div class="kpi">
+    <div class="value">1.1h</div>
+    <div class="label">平均一次回答時間（導入後）</div>
+    <p class="src">※ 出典: 架空の社内調査（サンプル）</p>
+  </div>
+  <div class="kpi">
+    <div class="value">65件</div>
+    <div class="label">月間の重複問い合わせ件数</div>
+    <p class="src">※ 出典: 架空の社内調査（サンプル）</p>
+  </div>
+  <div class="kpi">
+    <div class="value">3日</div>
+    <div class="label">新人オンボーディング短縮日数</div>
+    <p class="src">※ 出典: 架空の社内調査（サンプル）</p>
+  </div>
+</div>
+
+<h2>比較検討した3案</h2>
+<p>初期費用・拡張性・導入までのリスクを軸に3案を比較した。</p>
+<figure>
+<svg viewBox="0 0 740 210" role="img">
+  <title>ナレッジ共有ツール導入 3案比較（推奨: 段階導入）</title>
+  <g font-size="14">
+    <rect x="20" y="20" width="220" height="180" rx="10" fill="var(--bg-soft)" stroke="var(--line)"/>
+    <text x="130" y="46" font-size="16" font-weight="bold" text-anchor="middle" fill="var(--ink)">現行維持</text>
+    <line x1="20" y1="60" x2="240" y2="60" stroke="var(--line)"/>
+    <text x="36" y="86" fill="var(--ink-2)">費用: 現状維持</text>
+    <text x="36" y="112" fill="var(--ink-2)">期間: なし</text>
+    <text x="36" y="138" fill="var(--ink-2)">拡張性: 低い</text>
+    <text x="36" y="164" fill="var(--ink-2)">リスク: 低い</text>
+
+    <rect x="260" y="20" width="220" height="180" rx="10" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/>
+    <text x="276" y="46" font-size="16" font-weight="bold" fill="var(--ink)">段階導入</text>
+    <rect x="424" y="30" width="48" height="22" rx="5" fill="var(--accent)"/>
+    <text x="448" y="45" font-size="14" text-anchor="middle" fill="#ffffff">推奨</text>
+    <line x1="260" y1="60" x2="480" y2="60" stroke="var(--line)"/>
+    <text x="276" y="86" fill="var(--ink-2)">費用: 月50万円</text>
+    <text x="276" y="112" fill="var(--ink-2)">期間: 2ヶ月</text>
+    <text x="276" y="138" fill="var(--ink-2)">拡張性: 高い</text>
+    <text x="276" y="164" fill="var(--ink-2)">リスク: 中程度</text>
+
+    <rect x="500" y="20" width="220" height="180" rx="10" fill="var(--bg-soft)" stroke="var(--line)"/>
+    <text x="610" y="46" font-size="16" font-weight="bold" text-anchor="middle" fill="var(--ink)">全面刷新</text>
+    <line x1="500" y1="60" x2="720" y2="60" stroke="var(--line)"/>
+    <text x="516" y="86" fill="var(--ink-2)">費用: 初期800万円</text>
+    <text x="516" y="112" fill="var(--ink-2)">期間: 6ヶ月</text>
+    <text x="516" y="138" fill="var(--ink-2)">拡張性: 高い</text>
+    <text x="516" y="164" fill="var(--ink-2)">リスク: 高い</text>
+  </g>
+</svg>
+<figcaption>図: 現行維持・段階導入・全面刷新の3案比較（推奨: 段階導入）</figcaption>
+</figure>
+<div class="callout">
+  <strong>推奨: 段階導入</strong> — 初期投資を抑えつつ2ヶ月で効果を検証でき、拡張性も確保できるため。
+</div>
+
+<h2>導入前後の想定比較</h2>
+<table>
+  <thead><tr><th>指標</th><th>導入前</th><th>導入後</th></tr></thead>
+  <tbody>
+    <tr><td>平均一次回答時間</td><td>3.2時間</td><td>1.1時間</td></tr>
+    <tr><td>月間の重複問い合わせ件数</td><td>65件</td><td>20件</td></tr>
+    <tr class="pick"><td>新人独り立ちまでの日数</td><td>21日</td><td>18日</td></tr>
+  </tbody>
+</table>
+<p class="src">※ 出典: 架空の社内調査（サンプル）</p>
+
+<h2>導入プロセス</h2>
+<p>2ヶ月の試験導入で効果を確認したうえで、全社展開へ進める段階的な進め方を想定している。</p>
+<figure>
+<svg viewBox="0 0 760 120" role="img">
+  <title>導入プロセス（4ステップ）</title>
+  <g font-size="15" text-anchor="middle">
+    <rect x="10" y="30" width="150" height="52" rx="8" fill="var(--accent-soft)" stroke="var(--accent)"/>
+    <text x="85" y="61" fill="var(--ink)">要件整理</text>
+    <path d="M168 56 h24" stroke="var(--ink-2)" stroke-width="2" marker-end="url(#ar)"/>
+    <rect x="200" y="30" width="150" height="52" rx="8" fill="var(--accent-soft)" stroke="var(--accent)"/>
+    <text x="275" y="61" fill="var(--ink)">試験導入</text>
+    <path d="M358 56 h24" stroke="var(--ink-2)" stroke-width="2" marker-end="url(#ar)"/>
+    <rect x="390" y="30" width="150" height="52" rx="8" fill="var(--accent-soft)" stroke="var(--accent)"/>
+    <text x="465" y="61" fill="var(--ink)">効果測定</text>
+    <path d="M548 56 h24" stroke="var(--ink-2)" stroke-width="2" marker-end="url(#ar)"/>
+    <rect x="580" y="30" width="150" height="52" rx="8" fill="var(--accent)" stroke="var(--accent)"/>
+    <text x="655" y="61" fill="#ffffff">全社展開</text>
+  </g>
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="var(--ink-2)"/>
+    </marker>
+  </defs>
+</svg>
+<figcaption>図: 要件整理から全社展開までの導入プロセス（4ステップ）</figcaption>
+</figure>
+
+<h2>リスクと対応</h2>
+<div class="callout-warn">
+  <strong>注意:</strong> 全社展開の前にアクセス権限の棚卸しが未完了。情報システム部による確認が必要。
+</div>
+<table>
+  <thead><tr><th>リスク</th><th>発生可能性</th><th>影響</th></tr></thead>
+  <tbody>
+    <tr><td>アクセス権限設定の不備</td><td>中</td><td>大</td></tr>
+    <tr><td>利用者の定着遅れ</td><td>高</td><td>中</td></tr>
+  </tbody>
+</table>
+
+<h2>次のステップ</h2>
+<ol class="steps">
+  <li>試験導入部署の選定と要件整理（8月）</li>
+  <li>試験導入と利用状況のモニタリング（8月〜9月）</li>
+  <li>効果測定とアクセス権限の棚卸し（10月）</li>
+  <li>全社展開の判断と展開計画の確定（11月）</li>
+</ol>
+
+</body>
+</html>

@@ -203,7 +203,7 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/hub.mjs" list --project "$(pwd)" --json
 ```
 
 - 該当プロジェクトが存在し `accent` が非 null → その値を最優先で使う（tokens.css の `--accent` / `--accent-soft` をこの値に置換）
-- プロジェクトが未登録、または `accent` が null → 今回の文書用に選んだ色（迷えば tokens.css の既定 `#2563eb` のまま）を使う。Phase 5 の `hub.mjs add` 実行後、返ってきた `index.html` パスの3階層上（`.../projects/<id>/project.json`）を直接読み書きし、`accent` が null のときだけ選んだ色を書き戻す（他フィールドは変更しない）。既に値がある場合は上書きしない。
+- プロジェクトが未登録、または `accent` が null → 今回の文書用に選んだ色（迷えば tokens.css の既定 `#2563eb` のまま）を使う。Phase 5 の `hub.mjs add` 実行後、返ってきた `index.html` パスから dirname を3回上がった `project.json`（`.../projects/<id>/docs/<日付-slug>/index.html` → `.../projects/<id>/project.json`。書き換え前にパスが `projects/<id>/project.json` 形であることを確認する）を直接読み書きし、`accent` が null のときだけ選んだ色を書き戻す（他フィールドは変更しない）。既に値がある場合は上書きしない。**書き戻したら `node "${CLAUDE_PLUGIN_ROOT}/scripts/hub.mjs" reindex` を1回再実行する** — `add` 内部の reindex は書き戻し前の値で走り終わっているため、再実行しないと hub 一覧（導出物 index.html）に古い accent が残る。
 
 アクセントは1色のみ。`--accent-soft` は同系の薄色に揃える。
 
@@ -231,11 +231,11 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/hub.mjs" add "<組み立てたHTML>" \
 
 - `<組み立てたHTML>` = Phase 4 でスクラッチ領域に書き出した一時ファイルのパス
 - `<タイトル>` / `<英語kebab-caseスラッグ>` / `<種別>` / `<a,b>` = Phase 0/2 で確定した内容
-- `hub.mjs add` の1行目（決定論ゲート1）が SVG の XML 妥当性を検証する。不正な SVG があれば add がここで中止するので、Phase 3 のスニペットを見直す
+- `hub.mjs add` は内部処理の最初に SVG の XML 妥当性を検証する（決定論ゲート1。stdout の1行目＝保存先パスのことではない）。不正な SVG があれば add がここで中止するので、Phase 3 のスニペットを見直す
 - 同じ slug のドキュメントが既にあると `add` は既定で停止する（勝手に上書きしない）。ユーザーの意図が更新なら `--update`、別ドキュメントとして残すなら `--new` を確認してから付ける
 - `<scratchpad>/check.png` = 一時的なスクリーンショット保存先（`mktemp -d` 等で作った一時ディレクトリ）
 
-Read でスクリーンショットを開き、はみ出し・文字化け・アクセント色の破綻がないか確認する。崩れがあれば HTML を修正し、`--update` を付けて `add` を再実行する。再保存後は再度 PNG 化 → Read の確認を、崩れがなくなるまで繰り返す（修正後の再検証なしで完了しない）。最後に保存先を `open` し、doc-hub 全体の一覧（`node "${CLAUDE_PLUGIN_ROOT}/scripts/hub.mjs" open --project "$(pwd)"` で開ける）の場所をユーザーに案内する。
+Read でスクリーンショットを開き、はみ出し・文字化け・アクセント色の破綻がないか確認する。加えて**図中テキストの実表示サイズを明示的に見る**: viewBox 幅が本文幅（約780px）より大きい SVG は縮小表示されるため、図中文字が本文と同等以上の大きさで読めるか・複数の図の間で文字サイズが揃っているかを確認する（縮小率の高い図は viewBox 座標系の font-size を上げる。svg-patterns/README.md 予防則9）。崩れがあれば HTML を修正し、`--update` を付けて `add` を再実行する。再保存後は再度 PNG 化 → Read の確認を、崩れがなくなるまで繰り返す（修正後の再検証なしで完了しない）。最後に保存先を `open` し、doc-hub 全体の一覧（`node "${CLAUDE_PLUGIN_ROOT}/scripts/hub.mjs" open --project "$(pwd)"` で開ける）の場所をユーザーに案内する。
 
 ## 10. Phase 6: PDF（要求時のみ）
 

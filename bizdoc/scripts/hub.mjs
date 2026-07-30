@@ -89,17 +89,72 @@ function today() {
   return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
 }
 
+// manifest.slug ベースで同一 slug の既存ドキュメントを探す（ディレクトリ名 parse はしない —
+// slug 自体が -2 等で終わるケースと連番 suffix が区別できないため）
+function findBySlug(docsDir, slug) {
+  if (!fs.existsSync(docsDir)) return null;
+  let best = null;
+  for (const n of fs.readdirSync(docsDir)) {
+    const dDir = path.join(docsDir, n);
+    if (!fs.statSync(dDir).isDirectory()) continue;
+    const man = readManifest(dDir);
+    if (man?.slug === slug && (!best || (man.updated || '') > (best.man.updated || ''))) {
+      best = { name: n, man };
+    }
+  }
+  return best;
+}
+
+function extractSvgs(html) {
+  // 注意: <svg> の入れ子は非対応（svg-patterns の規約で入れ子を禁止している）
+  return html.match(/<svg[\s>][\s\S]*?<\/svg>/gi) || [];
+}
+
+function svgGate(html) {
+  const svgs = extractSvgs(html);
+  if (svgs.length === 0) return;
+  if (spawnSync('xmllint', ['--version'], { stdio: 'ignore' }).error) {
+    console.warn(`warn: xmllint が見つからないため SVG 検証をスキップ（${svgs.length}件）`);
+    return;
+  }
+  svgs.forEach((svg, i) => {
+    const tmp = path.join(os.tmpdir(), `hub-svg-${process.pid}-${i}.svg`);
+    fs.writeFileSync(tmp, svg);
+    const r = spawnSync('xmllint', ['--noout', tmp], { encoding: 'utf8' });
+    fs.rmSync(tmp, { force: true });
+    if (r.status !== 0) die(`SVG #${i + 1} が不正な XML です（add を中止）:\n${r.stderr}`);
+  });
+}
+
 function cmdAdd(htmlPath, opts) {
   ensureHub();
   if (!htmlPath || !fs.existsSync(htmlPath)) die(`HTML が見つかりません: ${htmlPath}`);
   const html = fs.readFileSync(htmlPath, 'utf8');
+  svgGate(html);
   const proj = resolveProject(opts.project || process.cwd());
   const title = opts.title || readTitle(html, path.basename(htmlPath, path.extname(htmlPath)));
   const slug = slugify(opts.slug || title);
   const docsDir = path.join(PROJECTS, proj.id, 'docs');
   fs.mkdirSync(docsDir, { recursive: true });
 
-  const name = `${today()}-${slug}`;
+  const existing = findBySlug(docsDir, slug);
+  let name;
+  let prev = null;
+  if (opts.update) {
+    if (!existing) die(`--update の対象がありません（slug: ${slug}）`);
+    name = existing.name;
+    prev = existing.man;
+  } else if (existing && !opts.new) {
+    die(
+      `同じ slug のドキュメントが既にあります: ${existing.name}` +
+        `（title: ${existing.man.title} / updated: ${existing.man.updated}）\n` +
+        `--update で更新、--new で別ドキュメントとして追加してください`
+    );
+  } else {
+    name = `${today()}-${slug}`;
+    let n = 2;
+    while (fs.existsSync(path.join(docsDir, name))) name = `${today()}-${slug}-${n++}`;
+  }
   const docDir = path.join(docsDir, name);
   fs.mkdirSync(docDir, { recursive: true });
   fs.copyFileSync(htmlPath, path.join(docDir, 'index.html'));
@@ -110,14 +165,14 @@ function cmdAdd(htmlPath, opts) {
     schema_version: 1,
     title,
     slug,
-    type: opts.type || 'その他',
-    created: now,
+    type: opts.type || prev?.type || 'その他',
+    created: prev?.created || now,
     updated: now,
     entry: 'index.html',
-    source_skill: opts['source-skill'] || 'bizdoc',
+    source_skill: opts['source-skill'] || prev?.source_skill || 'bizdoc',
     project_id: proj.id,
-    tags: opts.tags ? opts.tags.split(',').map((s) => s.trim()).filter(Boolean) : [],
-    links: { decision_ids: [], jiku_focus_ids: [] },
+    tags: opts.tags ? opts.tags.split(',').map((s) => s.trim()).filter(Boolean) : prev?.tags || [],
+    links: prev?.links || { decision_ids: [], jiku_focus_ids: [] },
   };
   fs.writeFileSync(path.join(docDir, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
   cmdReindex();

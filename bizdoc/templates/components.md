@@ -20,6 +20,10 @@
 以下、伝達目的ごとに表現を列挙する。SVG を使う表現は `svg-patterns/` の完全なスニペットを直接埋め込む
 （`<img src>` は `:root` の CSS 変数を解決できないため使わない）。
 
+注: 本カタログ内の SVG スニペット（timeline / matrix-2x2 / architecture / process-flow / funnel /
+relation の6件）は `svg-patterns/*.md` の原本の逐語コピー。パターンファイルを編集したら本カタログの
+対応スニペットも必ず同期すること（空白正規化後 diff 一致が受け入れ基準）。
+
 ---
 
 ## 比較させる

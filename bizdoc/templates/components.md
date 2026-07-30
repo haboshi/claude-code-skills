@@ -15,7 +15,7 @@
 ## 文書の骨格（参考・目的キーではない）
 
 `.cover`（表紙相当）と `.exec-summary`（結論先出し）は特定の伝達目的ではなく文書の骨格に属するため、
-下表には含めない。使い方は Task 7 の SKILL.md（Phase 2/3）で扱う。
+下表には含めない。使い方は bizdoc スキル（skills/bizdoc/SKILL.md）の Phase 2/3 で扱う。
 
 以下、伝達目的ごとに表現を列挙する。SVG を使う表現は `svg-patterns/` の完全なスニペットを直接埋め込む
 （`<img src>` は `:root` の CSS 変数を解決できないため使わない）。

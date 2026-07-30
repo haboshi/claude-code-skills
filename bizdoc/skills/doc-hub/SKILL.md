@@ -27,7 +27,7 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/hub.mjs" add <html> --project <path> \
 - 成功時、stdout に保存先 `index.html` の絶対パスが1行だけ出る。後続操作（open・PDF化等）はこのパスを使う
 - `--title` 省略時は HTML の `<title>` から取得する
 - **日本語タイトルのみだと slug が `project` に潰れる**（slugify が非 ASCII を除去するため）。`--slug` に英語 kebab-case を明示するのを推奨
-- `--project` は対象プロジェクトの絶対パス（省略時はカレントディレクトリ）。`list`/`open` の `--project` とは異なり、**id は受け付けない**（発番・新規プロジェクト作成に関わるコマンドのため、パス以外を渡すと別パス扱いで意図しない新規プロジェクトを発番しかねない）
+- `--project` は絶対パスで渡すのが基本（省略時はカレントディレクトリ）。登録済みプロジェクト id も解決されるが、typo や未登録の id はパスとして解釈され意図しない新規プロジェクトを発番し得るため、id 指定は避ける
 - 同じ slug の文書が既にあると **既定でエラー停止**（勝手に上書きしない）。更新なら `--update`、別文書として残すなら `--new`
 - HTML 内に不正な XML の SVG があると xmllint 検証で add 自体が拒否される（§5 参照）
 

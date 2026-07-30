@@ -304,6 +304,34 @@ function cmdReindex() {
   fs.renameSync(tmp, path.join(HUB, 'index.html')); // 原子書き込み（iCloud 同期・並行実行への防御）
 }
 
+function cmdList(opts) {
+  ensureHub();
+  let data = collectIndex();
+  if (opts.project) {
+    const p = findProject(opts.project);
+    data = p ? data.filter((x) => x.id === p.id) : [];
+  }
+  if (opts.json) {
+    console.log(JSON.stringify(data, null, 2));
+    return;
+  }
+  for (const p of data) {
+    console.log(`${p.label} (${p.id}) — ${p.docs.length}件`);
+    for (const d of p.docs) console.log(`  ${d.dir}  [${d.type}] ${d.title}`);
+  }
+}
+
+function cmdOpen(opts) {
+  ensureHub();
+  if (!fs.existsSync(path.join(HUB, 'index.html'))) cmdReindex();
+  let url = 'file://' + path.join(HUB, 'index.html');
+  if (opts.project) {
+    const p = findProject(opts.project);
+    if (p) url += `#p-${p.id}`;
+  }
+  spawnSync('open', [url]);
+}
+
 function parseArgs(argv) {
   const args = { _: [] };
   for (let i = 0; i < argv.length; i++) {
@@ -319,4 +347,6 @@ const args = parseArgs(process.argv.slice(2));
 const cmd = args._[0];
 if (cmd === 'add') cmdAdd(args._[1], args);
 else if (cmd === 'reindex') cmdReindex();
+else if (cmd === 'list') cmdList(args);
+else if (cmd === 'open') cmdOpen(args);
 else die(`使い方: hub.mjs <add|list|reindex|open> ...（不明なコマンド: ${cmd ?? '(なし)'}）`);

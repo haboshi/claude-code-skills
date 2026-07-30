@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Claude Code用スキルコレクション",
-    "version": "0.13.2",
+    "version": "0.14.0",
     "homepage": "https://github.com/haboshi/claude-code-skills"
   },
   "plugins": [
@@ -296,6 +296,27 @@
         "監督モード",
         "課題切り出し",
         "並列開発"
+      ]
+    },
+    {
+      "name": "bizdoc",
+      "description": "ビジネス白基調・SVG図解付き1枚HTML文書の生成と doc-hub 統合管理",
+      "source": "./bizdoc",
+      "strict": false,
+      "version": "0.1.0",
+      "category": "document-generation",
+      "keywords": [
+        "business-document",
+        "html",
+        "svg-diagram",
+        "proposal",
+        "report",
+        "doc-hub",
+        "document-management",
+        "ビジネス文書",
+        "提案書",
+        "報告書",
+        "ドキュメント管理"
       ]
     }
   ]

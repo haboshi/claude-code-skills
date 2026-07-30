@@ -47,9 +47,9 @@ Claude Code用プラグイン（スキル）のマーケットプレイスコレ
 { "name": "foo", "source": "./foo" }
 ```
 
-### 収録プラグイン一覧（15個）
+### 収録プラグイン一覧（16個）
 
-**ドキュメント生成**: pdf-creator-jp
+**ドキュメント生成**: pdf-creator-jp, bizdoc（ビジネス白基調のSVG図解付き1枚HTML生成 + doc-hub 統合管理）
 **画像生成**: image-creator, svg-header-image, svg-diagram, line-sticker-creator
 **画像変換**: svg-to-webp, mermaid-to-webp
 **音声**: tts（発音辞書機能を内蔵）
@@ -62,7 +62,7 @@ Claude Code用プラグイン（スキル）のマーケットプレイスコレ
 ### スクリプト言語
 
 - Python スクリプト: image-creator, pdf-creator-jp, brave-research, skill-creator-pro, line-sticker-creator
-- Node.js スクリプト: svg-to-webp, svg-header-image, svg-diagram, mermaid-to-webp, tts, harness-analytics
+- Node.js スクリプト: svg-to-webp, svg-header-image, svg-diagram, mermaid-to-webp, tts, harness-analytics, bizdoc
 - Bash スクリプト: provider-harness（SessionEnd/SessionStart フック用。macOS 標準 bash 3.2 互換）, evaluator-gate（Stop フック用。同じく bash 3.2 互換）
 
 Python は `uv run --with <deps>` で実行（venv不要）。Node.js は各プラグインの `node_modules` を使用。
@@ -105,6 +105,9 @@ cd svg-header-image && node scripts/generate.test.js
 
 # npm test が定義されているプラグイン（svg-to-webp / mermaid-to-webp / svg-diagram / tts）
 cd svg-to-webp && npm test
+
+# bizdoc（doc-hub の Node.js テストスイート）
+cd bizdoc && npm test
 
 # Bash テスト（evaluator-gate — fake 評価者による決定論テスト、実 LLM 呼び出しなし）
 bash evaluator-gate/tests/run-tests.sh

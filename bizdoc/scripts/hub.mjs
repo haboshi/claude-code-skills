@@ -118,10 +118,8 @@ function svgGate(html) {
     return;
   }
   svgs.forEach((svg, i) => {
-    const tmp = path.join(os.tmpdir(), `hub-svg-${process.pid}-${i}.svg`);
-    fs.writeFileSync(tmp, svg);
-    const r = spawnSync('xmllint', ['--noout', tmp], { encoding: 'utf8' });
-    fs.rmSync(tmp, { force: true });
+    // stdin 渡しで検証する（共有 tmp への予測可能な一時ファイルは symlink 攻撃の余地があるため作らない）
+    const r = spawnSync('xmllint', ['--noout', '-'], { input: svg, encoding: 'utf8' });
     if (r.status !== 0) die(`SVG #${i + 1} が不正な XML です（add を中止）:\n${r.stderr}`);
   });
 }

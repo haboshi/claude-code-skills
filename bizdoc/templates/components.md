@@ -169,7 +169,7 @@ relation の6件）は `svg-patterns/*.md` の原本の逐語コピー。パタ�
       <line x1="612" y1="142" x2="612" y2="148"/>
       <line x1="740" y1="142" x2="740" y2="148"/>
     </g>
-    <g font-size="14" fill="var(--ink-2)" text-anchor="middle">
+    <g font-size="14.5" fill="var(--ink-2)" text-anchor="middle">
       <text x="164" y="163">8月</text>
       <text x="292" y="163">9月</text>
       <text x="420" y="163">10月</text>

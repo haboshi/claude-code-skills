@@ -1,17 +1,20 @@
 # comparison — 2〜3案の対比
 
 用途: 2〜3 案を横並びの箱で対比し、推し案を強調する。数値中心の比較は `<table>` を使う。
+様式: カード + 項目行 + 注釈行（README の様式イディオム準拠。カード内は文字数制約が強いため
+2行構成ノードは適用せず、項目行の情報密度で代替する）。
 
 | 要素 | 上限 |
 |---|---|
 | 案の数 | 2〜3 |
 | 案名 | 全角8文字 |
 | 項目 | 全角12文字（各案 3〜5 項目） |
+| 注釈行 | 全角40文字 × 0〜2行 |
 
 ```svg
-<svg viewBox="0 0 740 210" role="img">
+<svg viewBox="0 0 740 270" role="img">
   <title>ツール導入 3案比較（推奨: 段階導入）</title>
-  <g font-size="14">
+  <g font-size="14.5">
     <rect x="20" y="20" width="220" height="180" rx="10" fill="var(--bg-soft)" stroke="var(--line)"/>
     <text x="130" y="46" font-size="16" font-weight="bold" text-anchor="middle" fill="var(--ink)">現行維持</text>
     <line x1="20" y1="60" x2="240" y2="60" stroke="var(--line)"/>
@@ -23,7 +26,7 @@
     <rect x="260" y="20" width="220" height="180" rx="10" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/>
     <text x="276" y="46" font-size="16" font-weight="bold" fill="var(--ink)">段階導入</text>
     <rect x="424" y="30" width="48" height="22" rx="5" fill="var(--accent)"/>
-    <text x="448" y="45" font-size="14" text-anchor="middle" fill="#ffffff">推奨</text>
+    <text x="448" y="45" font-size="14.5" text-anchor="middle" fill="#ffffff">推奨</text>
     <line x1="260" y1="60" x2="480" y2="60" stroke="var(--line)"/>
     <text x="276" y="86" fill="var(--ink-2)">費用: 月50万円</text>
     <text x="276" y="112" fill="var(--ink-2)">期間: 2ヶ月</text>
@@ -37,6 +40,11 @@
     <text x="516" y="112" fill="var(--ink-2)">期間: 6ヶ月</text>
     <text x="516" y="138" fill="var(--ink-2)">拡張性: 高い</text>
     <text x="516" y="164" fill="var(--ink-2)">リスク: 高い</text>
+
+    <rect x="20" y="222" width="7" height="7" fill="var(--accent)"/>
+    <text x="36" y="231" fill="var(--ink-2)">段階導入は初期費用を抑えつつ2ヶ月で効果を検証できる</text>
+    <rect x="20" y="246" width="7" height="7" fill="var(--accent)"/>
+    <text x="36" y="255" fill="var(--ink-2)">全面刷新はリスクが高く、拡張性重視の場合のみ検討する</text>
   </g>
 </svg>
 ```
@@ -44,5 +52,7 @@
 調整ポイント:
 - 2 案にするときは `viewBox` 幅を 500（220×2 + 20×3 の目安）に縮め、x 座標を詰め直す
 - 推し案は `fill="var(--accent-soft)"` + `stroke="var(--accent)"` の箱に「推奨」バッジ（`fill="var(--accent)"` の角丸矩形 + 白文字）を1つだけ乗せる。複数案を同時に推さない
-- 項目行は最大 5 行まで。増えるときは行間 26px を保ったまま `viewBox` 高さを伸ばす
+- 項目行は最大 5 行まで。増えるときは行間 26px を保ったまま `viewBox` 高さを伸ばす（注釈行の y も追随させる）
+- 文字サイズは README 予防則9 の規範どおり（項目行 14.5・案名見出しは強調のため 16 のまま）。カード内幅は約 204px のため、項目行は全角12文字が上限
+- 注釈行（0〜2行、様式は README 参照）はカード群の下 22px の位置から開始する。カード数・行数を変えたら `viewBox` 高さと注釈行 y 座標を合わせて調整する
 - 数値の出典が必要な場合は、この図の外側に `<p class="src">` を添える（SVG 内には出典を書かない）

@@ -116,7 +116,13 @@ footer { margin-top: 3.2rem; padding-top: .9rem; border-top: 1px solid var(--lin
 @media print {
   body { padding: 0; max-width: none; font-size: 10.5pt; }
   body::before { margin: 0 0 1.6rem; }
-  figure, table, .kpi-grid, .cols-2, .compare-cols, .callout, .callout-warn, .exec-summary, .kpi, .card { break-inside: avoid; }
+  p, li { orphans: 3; widows: 3; }
+  figure, .kpi-grid, .cols-2, .compare-cols, .callout, .callout-warn, .exec-summary, .kpi, .card { break-inside: avoid; }
+  /* 表は行単位で改ページを許す（thead はブラウザが次ページへ自動繰り返す）。長表を丸ごと avoid にすると1ページ超で余白が崩れる */
+  tr, .steps li { break-inside: avoid; }
   section > h2, h3 { break-after: avoid; }
   a { color: var(--ink); }
+  .src { font-size: 8.5pt; }
+  /* 明示的な改ページが欲しい箇所に付けるユーティリティ */
+  .page-break { break-before: page; }
 }

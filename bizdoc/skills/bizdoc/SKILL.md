@@ -258,6 +258,8 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/print-pdf.mjs" \
   "<保存先index.html>" "$HOME/Downloads/<slug>.pdf" --title "<タイトル>"
 ```
 
+印刷レイアウトは画面より高密度になる（tokens.css の `@media print` が余白・行間・部品を圧縮する）。ページ数をさらに絞りたい要望があれば `--scale 0.9` を付けて全体を縮小できる（既定 1）。
+
 Chrome が既定パスにない等で主経路が失敗したときだけ、フォールバック（ページ番号なし）を使う:
 
 ```bash

@@ -114,15 +114,47 @@ footer { margin-top: 3.2rem; padding-top: .9rem; border-top: 1px solid var(--lin
 /* ── A4 印刷 ──────────────────────────── */
 @page { size: A4; margin: 13mm; }
 @media print {
-  body { padding: 0; max-width: none; font-size: 10.5pt; }
-  body::before { margin: 0 0 1.6rem; }
+  /* 印刷は画面より一段高密度（IR・コーポレート資料の紙面感）。
+     画面側の余白・行間はそのまま、印刷層だけで圧縮する */
+  body { padding: 0; max-width: none; font-size: 10pt; line-height: 1.65; }
+  body::before { margin: 0 0 1.2rem; height: 5px; }
+  p { margin: .4rem 0; }
   p, li { orphans: 3; widows: 3; }
+  .cover { margin-bottom: 1.4rem; padding-bottom: 1rem; }
+  .cover h1 { font-size: 21pt; margin: .4rem 0 .55rem; }
+  .cover .lede { font-size: 9.5pt; line-height: 1.7; margin-bottom: .8rem; }
+  .cover .meta { font-size: 8.5pt; }
+  .exec-summary { padding: .85rem 1rem .7rem; margin: 1.1rem 0; }
+  .exec-summary ol li { font-size: 10pt; padding: .22rem 0 .22rem 2rem; }
+  .exec-summary ol li small { font-size: 8.8pt; line-height: 1.55; }
+  section { margin: 1.5rem 0; }
+  section > h2 { font-size: 13pt; margin-bottom: .3rem; }
+  .sec-lede { font-size: 9pt; margin-bottom: .6rem; }
+  h3 { margin: .9rem 0 .35rem; }
+  figure { margin: .9rem 0; padding: .7rem .7rem .45rem; }
+  figcaption { margin-top: .4rem; padding-top: .35rem; font-size: 8.5pt; }
+  table { font-size: 9pt; margin: .8rem 0; }
+  th { padding: .4rem .55rem; font-size: 8.5pt; }
+  td { padding: .42rem .55rem; }
+  .kpi-grid { gap: .65rem; margin: .9rem 0; }
+  .kpi { padding: .6rem .8rem .45rem; }
+  .kpi .value { font-size: 22pt; }
+  .kpi .label { font-size: 8.8pt; }
+  .cols-2, .compare-cols { gap: .7rem; margin: .9rem 0; }
+  .card, .compare-cols .col { padding: .65rem .85rem; }
+  .card ul { font-size: 8.8pt; }
+  .callout, .callout-warn { padding: .55rem .85rem; margin: .8rem 0; font-size: 9pt; }
+  .steps { margin: .8rem 0; }
+  .steps li { padding: .28rem 0 .28rem 2.2rem; }
+  .steps li b { font-size: 10pt; }
+  .steps li small { font-size: 8.8pt; }
+  .src { font-size: 8pt; }
+  footer { margin-top: 1.6rem; padding-top: .6rem; }
   figure, .kpi-grid, .cols-2, .compare-cols, .callout, .callout-warn, .exec-summary, .kpi, .card { break-inside: avoid; }
   /* 表は行単位で改ページを許す（thead はブラウザが次ページへ自動繰り返す）。長表を丸ごと avoid にすると1ページ超で余白が崩れる */
   tr, .steps li { break-inside: avoid; }
   section > h2, h3 { break-after: avoid; }
   a { color: var(--ink); }
-  .src { font-size: 8.5pt; }
   /* 明示的な改ページが欲しい箇所に付けるユーティリティ */
   .page-break { break-before: page; }
 }

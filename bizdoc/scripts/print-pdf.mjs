@@ -6,8 +6,8 @@
 // file:// パスを印字してしまい path-privacy 違反になる）ため、CDP 経由にしている。
 //
 // 使い方:
-//   node print-pdf.mjs <input.html> <output.pdf> [--title "<フッター表示タイトル>"]
-//   --title 省略時は HTML の <title> を使う
+//   node print-pdf.mjs <input.html> <output.pdf> [--title "<フッター表示タイトル>"] [--scale 0.9]
+//   --title 省略時は HTML の <title> を使う。--scale は全体の印刷倍率（0.5〜2、既定 1）
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -135,8 +135,10 @@ try {
     `<span>${escapeHtml(title)}</span>` +
     `<span><span class="pageNumber"></span> / <span class="totalPages"></span></span></div>`;
 
+  const scale = Math.min(2, Math.max(0.5, parseFloat(args.scale ?? '1') || 1));
   const { data } = await cdp.send('Page.printToPDF', {
     printBackground: true,
+    scale,
     preferCSSPageSize: false,
     paperWidth: 8.27,   // A4
     paperHeight: 11.69,

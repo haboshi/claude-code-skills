@@ -17,6 +17,10 @@
 `.cover`（表紙相当）と `.exec-summary`（結論先出し）は特定の伝達目的ではなく文書の骨格に属するため、
 下表には含めない。使い方は bizdoc スキル（skills/bizdoc/SKILL.md）の Phase 2/3 で扱う。
 
+v2 では骨格・見出し回りに `.kicker`（表紙の細字ラベル）・`.sec-lede`（セクション見出し直下のリード文）・
+`.cols-2`（2カラムの汎用グリッド）・`.card`（`.tag` 付きのカード単位）が加わり、`figure` の枠とキャプション
+採番（「図N｜」）は自動で付く。下表の各表現もこれらのクラスを組み合わせて使ってよい。
+
 以下、伝達目的ごとに表現を列挙する。SVG を使う表現は `svg-patterns/` の完全なスニペットを直接埋め込む
 （`<img src>` は `:root` の CSS 変数を解決できないため使わない）。
 
@@ -92,22 +96,35 @@ relation の6件）は `svg-patterns/*.md` の原本の逐語コピー。パタ�
 
 ```html
 <figure>
-  <svg viewBox="0 0 760 150" role="img">
+  <svg viewBox="0 0 760 210" role="img">
     <title>導入スケジュール（4マイルストーン）</title>
     <line x1="40" y1="80" x2="720" y2="80" stroke="var(--line)" stroke-width="3"/>
-    <g text-anchor="middle">
+    <g text-anchor="middle" font-size="14.5">
       <circle cx="120" cy="80" r="9" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/>
-      <text x="120" y="55" font-size="14" fill="var(--ink-2)">8月</text>
+      <text x="120" y="55" fill="var(--ink-2)">8月</text>
       <text x="120" y="112" font-size="15" fill="var(--ink)">試験導入</text>
+      <text x="120" y="132" fill="var(--ink-2)">対象:情シス部</text>
+
       <circle cx="300" cy="80" r="9" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/>
-      <text x="300" y="55" font-size="14" fill="var(--ink-2)">9月上旬</text>
+      <text x="300" y="55" fill="var(--ink-2)">9月上旬</text>
       <text x="300" y="112" font-size="15" fill="var(--ink)">利用者研修</text>
+      <text x="300" y="132" fill="var(--ink-2)">全部門・半日</text>
+
       <circle cx="480" cy="80" r="9" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/>
-      <text x="480" y="55" font-size="14" fill="var(--ink-2)">10月</text>
+      <text x="480" y="55" fill="var(--ink-2)">10月</text>
       <text x="480" y="112" font-size="15" fill="var(--ink)">全社展開</text>
+      <text x="480" y="132" fill="var(--ink-2)">全社一斉移行</text>
+
       <circle cx="660" cy="80" r="10" fill="var(--accent)" stroke="var(--accent)" stroke-width="2"/>
-      <text x="660" y="55" font-size="14" fill="var(--ink-2)">12月末</text>
+      <text x="660" y="55" fill="var(--ink-2)">12月末</text>
       <text x="660" y="112" font-size="15" fill="var(--ink)">効果測定</text>
+      <text x="660" y="132" fill="var(--ink-2)">KPI検証・報告</text>
+    </g>
+    <g font-size="14.5" fill="var(--ink-2)">
+      <rect x="40" y="160" width="7" height="7" fill="var(--accent)"/>
+      <text x="56" y="169">各マイルストーンの遅延は次工程着手前に必ず共有する</text>
+      <rect x="40" y="184" width="7" height="7" fill="var(--accent)"/>
+      <text x="56" y="193">最終マイルストーンのみ強調し、達成基準を明記する</text>
     </g>
   </svg>
   <figcaption>ラベル上限・調整方法は svg-patterns/timeline.md を参照</figcaption>
@@ -197,7 +214,7 @@ relation の6件）は `svg-patterns/*.md` の原本の逐語コピー。パタ�
 
 ```html
 <figure>
-  <svg viewBox="0 0 760 560" role="img">
+  <svg viewBox="0 0 760 600" role="img">
     <title>施策の優先度マトリクス（効果 × 実現難易度）</title>
     <rect x="150" y="60" width="460" height="420" fill="none" stroke="var(--line)" stroke-width="2"/>
     <rect x="150" y="60" width="230" height="210" fill="var(--accent-soft)"/>
@@ -206,7 +223,8 @@ relation の6件）は `svg-patterns/*.md` の原本の逐語コピー。パタ�
     <rect x="380" y="270" width="230" height="210" fill="var(--bg-soft)"/>
     <line x1="380" y1="60" x2="380" y2="480" stroke="var(--line)" stroke-width="2"/>
     <line x1="150" y1="270" x2="610" y2="270" stroke="var(--line)" stroke-width="2"/>
-    <g font-size="14" fill="var(--ink-2)">
+
+    <g font-size="14.5" fill="var(--ink-2)">
       <text x="265" y="505" text-anchor="middle">低い</text>
       <text x="495" y="505" text-anchor="middle">高い</text>
       <text x="380" y="530" text-anchor="middle">実現難易度</text>
@@ -214,21 +232,57 @@ relation の6件）は `svg-patterns/*.md` の原本の逐語コピー。パタ�
       <text x="130" y="375" text-anchor="end">低い</text>
       <text x="60" y="270" text-anchor="middle" transform="rotate(-90 60 270)">効果</text>
     </g>
-    <g font-size="14" fill="var(--ink)">
+
+    <g font-size="14.5" fill="var(--ink)">
       <text x="165" y="90" font-size="15" font-weight="bold">即着手</text>
       <text x="165" y="118">受発注自動化</text>
       <text x="165" y="142">帳票電子化</text>
+
       <text x="395" y="90" font-size="15" font-weight="bold">計画実施</text>
       <text x="395" y="118">基幹刷新</text>
       <text x="395" y="142">API連携基盤</text>
+
       <text x="165" y="300" font-size="15" font-weight="bold">小規模改善</text>
       <text x="165" y="328">画面表示改善</text>
+
       <text x="395" y="300" font-size="15" font-weight="bold">見送り候補</text>
       <text x="395" y="328">旧基盤再構築</text>
+    </g>
+
+    <g font-size="14.5" fill="var(--ink-2)">
+      <rect x="150" y="552" width="7" height="7" fill="var(--accent)"/>
+      <text x="166" y="561">即着手の象限から優先的に着手し、四半期ごとに再評価する</text>
+      <rect x="150" y="576" width="7" height="7" fill="var(--accent)"/>
+      <text x="166" y="585">見送り候補は要件が固まるまで再検討を保留する</text>
     </g>
   </svg>
   <figcaption>ラベル上限・調整方法は svg-patterns/matrix-2x2.md を参照</figcaption>
 </figure>
+```
+
+### 表現3: ゲート/対比カード（`.cols-2` + `.card` + `.tag`）
+
+通過条件（GO）と保留条件をカードで並べ、次フェーズに進めるかを一目で判断させたいときに効く
+（`.callout` + 表よりも、条件を主語ごとにカード分けして読ませられる）。
+
+```html
+<div class="cols-2">
+  <div class="card pick">
+    <h3>次フェーズへ進む <span class="tag">GO</span></h3>
+    <ul>
+      <li>一次回答時間: 6.0時間→1.5時間に短縮</li>
+      <li>利用部門から重大な障害報告なし</li>
+      <li>追加予算は既存枠内で確保済み</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>保留条件</h3>
+    <ul>
+      <li>試験期間中にエラー率が5%を超えた場合</li>
+      <li>対象部門の利用率が50%を下回る場合</li>
+    </ul>
+  </div>
+</div>
 ```
 
 ---
@@ -283,37 +337,50 @@ relation の6件）は `svg-patterns/*.md` の原本の逐語コピー。パタ�
 
 ```html
 <figure>
-  <svg viewBox="0 0 760 370" role="img">
+  <svg viewBox="0 0 780 446" role="img">
     <title>システム構成（3層）</title>
-    <g font-size="14">
-      <rect x="20" y="20" width="720" height="90" rx="10" fill="var(--bg-soft)" stroke="var(--line)"/>
-      <text x="34" y="38" fill="var(--ink-2)">画面層</text>
-      <rect x="170" y="48" width="200" height="48" rx="8" fill="var(--accent-soft)" stroke="var(--accent)"/>
-      <text x="270" y="78" text-anchor="middle" fill="var(--ink)">Webブラウザ</text>
-      <rect x="390" y="48" width="200" height="48" rx="8" fill="var(--accent-soft)" stroke="var(--accent)"/>
-      <text x="490" y="78" text-anchor="middle" fill="var(--ink)">モバイル画面</text>
-      <path d="M380 110 v30" stroke="var(--ink-2)" stroke-width="2" marker-end="url(#ar-arch)"/>
-      <rect x="20" y="140" width="720" height="90" rx="10" fill="var(--bg-soft)" stroke="var(--line)"/>
-      <text x="34" y="158" fill="var(--ink-2)">業務ロジック層</text>
-      <rect x="120" y="168" width="160" height="48" rx="8" fill="var(--accent-soft)" stroke="var(--accent)"/>
-      <text x="200" y="198" text-anchor="middle" fill="var(--ink)">API連携</text>
-      <rect x="300" y="168" width="160" height="48" rx="8" fill="var(--accent-soft)" stroke="var(--accent)"/>
-      <text x="380" y="198" text-anchor="middle" fill="var(--ink)">認証処理</text>
-      <rect x="480" y="168" width="160" height="48" rx="8" fill="var(--accent-soft)" stroke="var(--accent)"/>
-      <text x="560" y="198" text-anchor="middle" fill="var(--ink)">業務ルール</text>
-      <path d="M380 230 v30" stroke="var(--ink-2)" stroke-width="2" marker-end="url(#ar-arch)"/>
-      <rect x="20" y="260" width="720" height="90" rx="10" fill="var(--bg-soft)" stroke="var(--line)"/>
-      <text x="34" y="278" fill="var(--ink-2)">データ層</text>
-      <rect x="170" y="288" width="200" height="48" rx="8" fill="var(--accent)" stroke="var(--accent)"/>
-      <text x="270" y="318" text-anchor="middle" fill="#ffffff">DB</text>
-      <rect x="390" y="288" width="200" height="48" rx="8" fill="var(--accent-soft)" stroke="var(--accent)"/>
-      <text x="490" y="318" text-anchor="middle" fill="var(--ink)">外部連携</text>
-    </g>
     <defs>
-      <marker id="ar-arch" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <marker id="ar-arch" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto">
         <path d="M0 0 L10 5 L0 10 z" fill="var(--ink-2)"/>
       </marker>
     </defs>
+    <g font-size="14.5">
+      <rect x="20" y="18" width="740" height="104" rx="10" fill="var(--bg-soft)" stroke="var(--line-strong)"/>
+      <text x="36" y="42" fill="var(--ink-2)" font-weight="700">画面層</text>
+      <rect x="160" y="54" width="220" height="52" rx="8" fill="var(--bg)" stroke="var(--accent)"/>
+      <text x="270" y="75" text-anchor="middle" fill="var(--ink)" font-size="15">Web ブラウザ</text>
+      <text x="270" y="95" text-anchor="middle" fill="var(--ink-2)">社内ポータル経由</text>
+      <rect x="400" y="54" width="220" height="52" rx="8" fill="var(--bg)" stroke="var(--accent)"/>
+      <text x="510" y="75" text-anchor="middle" fill="var(--ink)" font-size="15">モバイル</text>
+      <text x="510" y="95" text-anchor="middle" fill="var(--ink-2)">現場端末</text>
+      <path d="M390 122 v26" stroke="var(--ink-2)" stroke-width="1.6" fill="none" marker-end="url(#ar-arch)"/>
+      <text x="404" y="140" fill="var(--ink-2)">HTTPS</text>
+      <rect x="20" y="152" width="740" height="104" rx="10" fill="var(--bg-soft)" stroke="var(--line-strong)"/>
+      <text x="36" y="176" fill="var(--ink-2)" font-weight="700">業務ロジック層</text>
+      <rect x="70" y="188" width="200" height="52" rx="8" fill="var(--bg)" stroke="var(--accent)"/>
+      <text x="170" y="209" text-anchor="middle" fill="var(--ink)" font-size="15">API 連携</text>
+      <text x="170" y="229" text-anchor="middle" fill="var(--ink-2)">外部 SaaS 接続</text>
+      <rect x="290" y="188" width="200" height="52" rx="8" fill="var(--bg)" stroke="var(--accent)"/>
+      <text x="390" y="209" text-anchor="middle" fill="var(--ink)" font-size="15">認証処理</text>
+      <text x="390" y="229" text-anchor="middle" fill="var(--ink-2)">SSO・権限判定</text>
+      <rect x="510" y="188" width="200" height="52" rx="8" fill="var(--bg)" stroke="var(--accent)"/>
+      <text x="610" y="209" text-anchor="middle" fill="var(--ink)" font-size="15">業務ルール</text>
+      <text x="610" y="229" text-anchor="middle" fill="var(--ink-2)">承認フロー</text>
+      <path d="M390 256 v26" stroke="var(--ink-2)" stroke-width="1.6" fill="none" marker-end="url(#ar-arch)"/>
+      <text x="404" y="274" fill="var(--ink-2)">SQL</text>
+      <rect x="20" y="286" width="740" height="104" rx="10" fill="var(--bg-soft)" stroke="var(--line-strong)"/>
+      <text x="36" y="310" fill="var(--ink-2)" font-weight="700">データ層</text>
+      <rect x="160" y="322" width="220" height="52" rx="8" fill="var(--accent)" stroke="var(--accent)"/>
+      <text x="270" y="343" text-anchor="middle" fill="#ffffff" font-size="15">基幹 DB</text>
+      <text x="270" y="363" text-anchor="middle" fill="#ffffff">データの実体</text>
+      <rect x="400" y="322" width="220" height="52" rx="8" fill="var(--bg)" stroke="var(--accent)"/>
+      <text x="510" y="343" text-anchor="middle" fill="var(--ink)" font-size="15">外部連携</text>
+      <text x="510" y="363" text-anchor="middle" fill="var(--ink-2)">日次ファイル連携</text>
+      <rect x="20" y="408" width="7" height="7" fill="var(--accent)"/>
+      <text x="36" y="417" fill="var(--ink-2)">全経路が認証処理（SSO）を経由する — 直接 DB へ到達する経路はない</text>
+      <rect x="20" y="432" width="7" height="7" fill="var(--accent)"/>
+      <text x="36" y="441" fill="var(--ink-2)">バックアップは日次・別リージョン保管</text>
+    </g>
   </svg>
   <figcaption>ラベル上限・調整方法は svg-patterns/architecture.md を参照</figcaption>
 </figure>
@@ -367,26 +434,40 @@ relation の6件）は `svg-patterns/*.md` の原本の逐語コピー。パタ�
 
 ```html
 <figure>
-  <svg viewBox="0 0 760 120" role="img">
+  <svg viewBox="0 0 780 172" role="img">
     <title>導入プロセス（4ステップ）</title>
-    <g font-size="15" text-anchor="middle">
-      <rect x="10" y="30" width="150" height="52" rx="8" fill="var(--accent-soft)" stroke="var(--accent)"/>
-      <text x="85" y="61" fill="var(--ink)">要件整理</text>
-      <path d="M168 56 h24" stroke="var(--ink-2)" stroke-width="2" marker-end="url(#ar)"/>
-      <rect x="200" y="30" width="150" height="52" rx="8" fill="var(--accent-soft)" stroke="var(--accent)"/>
-      <text x="275" y="61" fill="var(--ink)">試験導入</text>
-      <path d="M358 56 h24" stroke="var(--ink-2)" stroke-width="2" marker-end="url(#ar)"/>
-      <rect x="390" y="30" width="150" height="52" rx="8" fill="var(--accent-soft)" stroke="var(--accent)"/>
-      <text x="465" y="61" fill="var(--ink)">全社展開</text>
-      <path d="M548 56 h24" stroke="var(--ink-2)" stroke-width="2" marker-end="url(#ar)"/>
-      <rect x="580" y="30" width="150" height="52" rx="8" fill="var(--accent)" stroke="var(--accent)"/>
-      <text x="655" y="61" fill="#ffffff">定着運用</text>
-    </g>
     <defs>
-      <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto">
         <path d="M0 0 L10 5 L0 10 z" fill="var(--ink-2)"/>
       </marker>
     </defs>
+    <g font-size="14.5">
+      <circle cx="98" cy="44" r="22" fill="var(--accent-soft)" stroke="var(--accent)"/>
+      <text x="98" y="50" text-anchor="middle" fill="var(--accent)" font-weight="700" font-size="15">1</text>
+      <circle cx="293" cy="44" r="22" fill="var(--accent-soft)" stroke="var(--accent)"/>
+      <text x="293" y="50" text-anchor="middle" fill="var(--accent)" font-weight="700" font-size="15">2</text>
+      <circle cx="488" cy="44" r="22" fill="var(--accent-soft)" stroke="var(--accent)"/>
+      <text x="488" y="50" text-anchor="middle" fill="var(--accent)" font-weight="700" font-size="15">3</text>
+      <circle cx="683" cy="44" r="22" fill="var(--accent)" stroke="var(--accent)"/>
+      <text x="683" y="50" text-anchor="middle" fill="#ffffff" font-weight="700" font-size="15">4</text>
+      <path d="M126 44 h134" stroke="var(--ink-2)" stroke-width="1.6" fill="none" marker-end="url(#ar)"/>
+      <path d="M321 44 h134" stroke="var(--ink-2)" stroke-width="1.6" fill="none" marker-end="url(#ar)"/>
+      <path d="M516 44 h134" stroke="var(--ink-2)" stroke-width="1.6" fill="none" marker-end="url(#ar)"/>
+      <text x="98" y="92" text-anchor="middle" fill="var(--ink)" font-size="15">要件整理</text>
+      <text x="293" y="92" text-anchor="middle" fill="var(--ink)" font-size="15">試験導入</text>
+      <text x="488" y="92" text-anchor="middle" fill="var(--ink)" font-size="15">全社展開</text>
+      <text x="683" y="92" text-anchor="middle" fill="var(--ink)" font-size="15">定着運用</text>
+      <rect x="23" y="108" width="150" height="30" rx="6" fill="var(--bg-soft)" stroke="var(--line)"/>
+      <text x="98" y="128" text-anchor="middle" fill="var(--ink-2)">要求一覧</text>
+      <rect x="218" y="108" width="150" height="30" rx="6" fill="var(--bg-soft)" stroke="var(--line)"/>
+      <text x="293" y="128" text-anchor="middle" fill="var(--ink-2)">1部門・2週間</text>
+      <rect x="413" y="108" width="150" height="30" rx="6" fill="var(--bg-soft)" stroke="var(--line)"/>
+      <text x="488" y="128" text-anchor="middle" fill="var(--ink-2)">全部門</text>
+      <rect x="608" y="108" width="150" height="30" rx="6" fill="var(--bg-soft)" stroke="var(--line)"/>
+      <text x="683" y="128" text-anchor="middle" fill="var(--ink-2)">定例レビュー</text>
+      <rect x="23" y="152" width="7" height="7" fill="var(--accent)"/>
+      <text x="39" y="161" fill="var(--ink-2)">移行期間中は旧手順と並行運用し、問題があれば1ステップ戻す</text>
+    </g>
   </svg>
   <figcaption>ラベル上限・調整方法は svg-patterns/process-flow.md を参照</figcaption>
 </figure>
@@ -434,7 +515,7 @@ relation の6件）は `svg-patterns/*.md` の原本の逐語コピー。パタ�
 
 ```html
 <figure>
-  <svg viewBox="0 0 760 340" role="img">
+  <svg viewBox="0 0 760 380" role="img">
     <title>商談ファネル（問い合わせから受注まで）</title>
     <g stroke="var(--accent)" stroke-width="2">
       <rect x="20" y="20" width="520" height="64" fill="var(--accent-soft)"/>
@@ -448,11 +529,17 @@ relation の6件）は `svg-patterns/*.md` の原本の逐語コピー。パタ�
       <text x="560" y="194">提案</text>
       <text x="560" y="268">受注</text>
     </g>
-    <g font-size="14" fill="var(--ink-2)">
+    <g font-size="14.5" fill="var(--ink-2)">
       <text x="560" y="68">1,200件</text>
       <text x="560" y="142">450件</text>
       <text x="560" y="216">180件</text>
       <text x="560" y="290">60件</text>
+    </g>
+    <g font-size="14.5" fill="var(--ink-2)">
+      <rect x="20" y="326" width="7" height="7" fill="var(--accent)"/>
+      <text x="36" y="335">段の幅は件数比ではなく等比の模式表現である</text>
+      <rect x="20" y="350" width="7" height="7" fill="var(--accent)"/>
+      <text x="36" y="359">正確な歩留まり率は隣接する段階表で確認する</text>
     </g>
   </svg>
   <figcaption>ラベル上限・調整方法は svg-patterns/funnel.md を参照</figcaption>
@@ -488,7 +575,7 @@ relation の6件）は `svg-patterns/*.md` の原本の逐語コピー。パタ�
 
 ```html
 <figure>
-  <svg viewBox="0 0 760 470" role="img">
+  <svg viewBox="0 0 760 510" role="img">
     <title>推進体制図（事務局中心の関係）</title>
     <g stroke="var(--ink-2)" stroke-width="2">
       <line x1="380" y1="250" x2="380" y2="65"/>
@@ -497,6 +584,7 @@ relation の6件）は `svg-patterns/*.md` の原本の逐語コピー。パタ�
       <line x1="380" y1="250" x2="271" y2="400"/>
       <line x1="380" y1="250" x2="204" y2="193"/>
     </g>
+
     <g>
       <rect x="360" y="147" width="40" height="22" rx="5" fill="var(--bg)" stroke="var(--line)"/>
       <rect x="448" y="211" width="40" height="22" rx="5" fill="var(--bg)" stroke="var(--line)"/>
@@ -504,15 +592,20 @@ relation の6件）は `svg-patterns/*.md` の原本の逐語コピー。パタ�
       <rect x="306" y="314" width="40" height="22" rx="5" fill="var(--bg)" stroke="var(--line)"/>
       <rect x="272" y="211" width="40" height="22" rx="5" fill="var(--bg)" stroke="var(--line)"/>
     </g>
-    <g font-size="14" text-anchor="middle" fill="var(--ink-2)">
+    <g font-size="14.5" text-anchor="middle" fill="var(--ink-2)">
       <text x="380" y="163">報告</text>
       <text x="468" y="227">要望</text>
       <text x="435" y="330">連携</text>
       <text x="326" y="330">委託</text>
       <text x="292" y="227">支援</text>
     </g>
+
     <circle cx="380" cy="250" r="56" fill="var(--accent)"/>
-    <text x="380" y="255" text-anchor="middle" font-size="15" fill="#ffffff">推進事務局</text>
+    <g text-anchor="middle" fill="#ffffff">
+      <text x="380" y="246" font-size="15">推進事務局</text>
+      <text x="380" y="264" font-size="14.5">全体進行管理</text>
+    </g>
+
     <g>
       <circle cx="380" cy="65" r="48" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/>
       <circle cx="556" cy="193" r="48" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/>
@@ -520,12 +613,24 @@ relation の6件）は `svg-patterns/*.md` の原本の逐語コピー。パタ�
       <circle cx="271" cy="400" r="48" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/>
       <circle cx="204" cy="193" r="48" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/>
     </g>
-    <g font-size="14" text-anchor="middle" fill="var(--ink)">
-      <text x="380" y="70">経営層</text>
-      <text x="556" y="198">利用部門</text>
-      <text x="489" y="405">情シス部</text>
-      <text x="271" y="405">外部ベンダー</text>
-      <text x="204" y="198">監査部門</text>
+    <g text-anchor="middle">
+      <text x="380" y="61" font-size="15" fill="var(--ink)">経営層</text>
+      <text x="380" y="79" font-size="14.5" fill="var(--ink-2)">投資判断</text>
+      <text x="556" y="189" font-size="15" fill="var(--ink)">利用部門</text>
+      <text x="556" y="207" font-size="14.5" fill="var(--ink-2)">現場適用</text>
+      <text x="489" y="396" font-size="15" fill="var(--ink)">情シス部</text>
+      <text x="489" y="414" font-size="14.5" fill="var(--ink-2)">運用管理</text>
+      <text x="271" y="396" font-size="15" fill="var(--ink)">外部ベンダー</text>
+      <text x="271" y="414" font-size="14.5" fill="var(--ink-2)">開発支援</text>
+      <text x="204" y="189" font-size="15" fill="var(--ink)">監査部門</text>
+      <text x="204" y="207" font-size="14.5" fill="var(--ink-2)">統制確認</text>
+    </g>
+
+    <g font-size="14.5" fill="var(--ink-2)">
+      <rect x="20" y="456" width="7" height="7" fill="var(--accent)"/>
+      <text x="36" y="465">推進事務局が窓口となり、部門間の直接のやり取りを整理する</text>
+      <rect x="20" y="480" width="7" height="7" fill="var(--accent)"/>
+      <text x="36" y="489">エッジラベルは関係の種類を表し、実務上の指示系統ではない</text>
     </g>
   </svg>
   <figcaption>ラベル上限・調整方法は svg-patterns/relation.md を参照</figcaption>

@@ -253,10 +253,25 @@ Read でスクリーンショットを開き、はみ出し・文字化け・ア
 「PDF でも」「配布用に」と言われたときだけ実行する。
 
 ```bash
+# 主経路: 全ページに「文書タイトル ｜ ページ番号/総ページ」フッター付きの A4 PDF
+node "${CLAUDE_PLUGIN_ROOT}/scripts/print-pdf.mjs" \
+  "<保存先index.html>" "$HOME/Downloads/<slug>.pdf" --title "<タイトル>"
+```
+
+Chrome が既定パスにない等で主経路が失敗したときだけ、フォールバック（ページ番号なし）を使う:
+
+```bash
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new \
   --print-to-pdf="$HOME/Downloads/<slug>.pdf" --no-pdf-header-footer \
   --virtual-time-budget=20000 "file://<保存先index.html>"
 ```
+
+（フォールバックでは `--no-pdf-header-footer` を必ず付ける — Chrome 既定のフッターは file:// のフルパスを印字してしまい path-privacy 違反になる）
+
+書き出し後は Read で**先頭・中間・末尾ページ**を目視し、次を確認する:
+- フッターのタイトル・ページ番号が全ページに入っているか（主経路）
+- 図・表・カードが不自然に分断されていないか（長い表は行単位で改ページし、ヘッダ行が次ページに繰り返されるのは正常）
+- 白基調の面色（exec-summary・表ヘッダ等）が抜けていないか・日本語の文字化けがないか
 
 PDF は一時配布物なので manifest に記録しない（`hub.mjs add` を再実行しない）。ラスタ画像（codex-imagegen 生成分）を使った文書は、そのまま書き出すと容量が膨らむため、印刷用の一時コピーを作って画像だけ軽量化してから書き出す（元の HTML・保存済みドキュメントは変更しない）。書き出し後は Read で先頭数ページを目視し、分断・色抜け・文字化けがないか確認する。
 

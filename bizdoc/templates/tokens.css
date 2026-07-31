@@ -1,75 +1,122 @@
-/* bizdoc tokens.css — 白基調ビジネス文書の design tokens。
-   文書生成時は <style> にインライン展開して使う（CDN・外部参照禁止）。
-   アクセントは 1 色のみ（--accent）。project.json の accent が最優先。 */
+/* bizdoc tokens v2 — 白基調・上質コーポレート文書
+   v1 の class 契約（.cover/.exec-summary/.callout/.callout-warn/.kpi-grid/.kpi/
+   .compare-cols/.pick/.steps/table/tr.pick/.src）は維持し、視覚設計を刷新。
+   追加クラス: .kicker / .sec-lede / .cols-2 / .card / figure 枠 / footer */
 :root {
   --accent: #2563eb;
-  --accent-soft: #eff6ff;
-  --ink: #1f2937;
-  --ink-2: #6b7280;
+  --accent-soft: #eef4ff;
+  --ink: #111827;
+  --ink-2: #4b5563;
+  --ink-3: #9ca3af;
   --line: #e5e7eb;
+  --line-strong: #d1d5db;
   --bg: #ffffff;
   --bg-soft: #f8fafc;
 }
 * { box-sizing: border-box; }
 html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 body {
-  margin: 0 auto; padding: 2.5rem 1.5rem 5rem; max-width: 52rem;
-  background: var(--bg); color: var(--ink); line-height: 1.75; font-size: 16px;
+  margin: 0 auto; padding: 0 2.2rem 4rem; max-width: 54rem;
+  background: var(--bg); color: var(--ink);
   font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
+  font-size: 15.5px; line-height: 1.85;
+  font-feature-settings: "palt"; -webkit-font-smoothing: antialiased;
+  counter-reset: fig;
 }
-h1 { font-size: 1.7rem; line-height: 1.35; margin: 0 0 .5rem; }
-h2 { font-size: 1.2rem; margin: 2.5rem 0 .75rem; padding-left: .6rem; border-left: 4px solid var(--accent); }
-h3 { font-size: 1rem; margin: 1.5rem 0 .5rem; }
-p { margin: .6rem 0; }
-figure { margin: 1.25rem 0; }
-figure svg { width: 100%; height: auto; }
-figcaption { color: var(--ink-2); font-size: .82rem; margin-top: .35rem; }
+body::before { content: ""; display: block; height: 6px; background: var(--accent); margin: 0 -2.2rem 2.4rem; }
+p { margin: .55rem 0; }
+a { color: var(--accent); text-decoration: none; }
+strong { font-weight: 700; }
 
-/* 表紙相当（タイトル・日付・目的・読者） */
-.cover { border-bottom: 3px solid var(--accent); padding-bottom: 1.25rem; margin-bottom: 2rem; }
-.cover .meta { color: var(--ink-2); font-size: .88rem; display: flex; gap: 1.5rem; flex-wrap: wrap; }
+/* ── 表紙 ─────────────────────────────── */
+.kicker { font-size: 11.5px; letter-spacing: .18em; font-weight: 700; color: var(--accent); }
+.cover { margin: 0 0 2.4rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--line-strong); }
+.cover h1 { font-size: 32px; line-height: 1.45; letter-spacing: .01em; margin: .55rem 0 .8rem; }
+.cover .lede { color: var(--ink-2); font-size: 14.5px; line-height: 1.9; max-width: 46rem; margin: 0 0 1.25rem; }
+.cover .meta { display: flex; flex-wrap: wrap; gap: .4rem 2.2rem; font-size: 12.5px; color: var(--ink-2); }
+.cover .meta b { color: var(--ink-3); font-weight: 600; font-size: 11px; letter-spacing: .1em; margin-right: .55em; }
 
-/* 結論先出し（エグゼクティブサマリ） */
-.exec-summary { background: var(--accent-soft); border-radius: 10px; padding: 1rem 1.25rem; margin: 1.5rem 0; }
-.exec-summary h2 { border: none; padding: 0; margin: 0 0 .5rem; font-size: 1rem; }
-.exec-summary ol, .exec-summary ul { margin: 0; padding-left: 1.3rem; }
+/* ── 結論先出し ────────────────────────── */
+.exec-summary { background: var(--accent-soft); border-radius: 12px; padding: 1.2rem 1.45rem 1.1rem; margin: 1.9rem 0; }
+.exec-summary h2 { font-size: 12.5px; letter-spacing: .16em; color: var(--accent); margin: 0 0 .65rem; border: none; padding: 0; }
+.exec-summary ol { margin: 0; padding: 0; list-style: none; counter-reset: es; }
+.exec-summary ol li { counter-increment: es; position: relative; padding: .34rem 0 .34rem 2.15rem; font-weight: 650; font-size: 14.5px; }
+.exec-summary ol li::before {
+  content: counter(es); position: absolute; left: 0; top: .48rem;
+  width: 1.35rem; height: 1.35rem; border-radius: 50%; background: var(--accent); color: #fff;
+  font-size: .78rem; font-weight: 700; display: flex; align-items: center; justify-content: center;
+}
+.exec-summary ol li small { display: block; font-weight: 400; color: var(--ink-2); font-size: 13px; line-height: 1.75; margin-top: .1rem; }
 
-.callout { background: var(--bg-soft); border-left: 4px solid var(--accent); border-radius: 6px; padding: .7rem 1rem; margin: 1rem 0; }
-.callout-warn { background: #fef9ee; border-left: 4px solid #d97706; border-radius: 6px; padding: .7rem 1rem; margin: 1rem 0; }
+/* ── セクション（番号つきメッセージ見出し）── */
+main { counter-reset: sec; }
+section { margin: 2.7rem 0; }
+section > h2 { counter-increment: sec; font-size: 19.5px; line-height: 1.5; margin: 0 0 .4rem; display: flex; gap: .7rem; align-items: baseline; }
+section > h2::before {
+  content: counter(sec, decimal-leading-zero); flex: none; transform: translateY(-2px);
+  font-size: 11.5px; font-weight: 700; letter-spacing: .1em; color: var(--accent);
+  border: 1px solid var(--accent); border-radius: 4px; padding: .08rem .42rem;
+}
+.sec-lede { color: var(--ink-2); font-size: 13.5px; margin: 0 0 1rem; }
+h3 { font-size: 15px; margin: 1.4rem 0 .5rem; }
 
-/* KPI カード */
-.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: .8rem; margin: 1.25rem 0; }
-.kpi { border: 1px solid var(--line); border-radius: 10px; padding: .8rem 1rem; }
-.kpi .value { font-size: 1.6rem; font-weight: 700; color: var(--accent); line-height: 1.2; }
-.kpi .label { color: var(--ink-2); font-size: .82rem; }
-.kpi .src { color: var(--ink-2); font-size: .72rem; }
+/* ── 図版（枠＋採番キャプション）─────────── */
+figure { margin: 1.35rem 0; counter-increment: fig; border: 1px solid var(--line); border-radius: 12px; padding: 1.05rem 1.05rem .7rem; background: #fff; }
+figure svg { width: 100%; height: auto; display: block; }
+figcaption { margin-top: .6rem; padding-top: .55rem; border-top: 1px dashed var(--line); color: var(--ink-2); font-size: 12.5px; }
+figcaption::before { content: "図" counter(fig) " ｜ "; color: var(--accent); font-weight: 700; }
 
-/* 2カラム対比 */
-.compare-cols { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; margin: 1.25rem 0; }
-.compare-cols .col { border: 1px solid var(--line); border-radius: 10px; padding: .8rem 1rem; }
-.compare-cols .col.pick { border-color: var(--accent); background: var(--accent-soft); }
-.compare-cols h3 { margin-top: 0; }
+/* ── 表 ──────────────────────────────── */
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin: 1.15rem 0; font-variant-numeric: tabular-nums; }
+th { text-align: left; font-size: 12px; letter-spacing: .05em; color: var(--ink-2); background: var(--bg-soft);
+     border-top: 1px solid var(--line-strong); border-bottom: 1px solid var(--line-strong); padding: .55rem .7rem; }
+td { border-bottom: 1px solid var(--line); padding: .62rem .7rem; vertical-align: top; }
+tr.pick td { background: var(--accent-soft); }
+tr.pick td:first-child { box-shadow: inset 3px 0 var(--accent); font-weight: 650; }
 
-/* 手順・プロセス（番号付き） */
-.steps { counter-reset: step; list-style: none; padding: 0; margin: 1.25rem 0; }
-.steps li { counter-increment: step; position: relative; padding: .35rem 0 .35rem 2.4rem; }
+/* ── KPI カード ───────────────────────── */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr)); gap: .9rem; margin: 1.25rem 0; }
+.kpi { border: 1px solid var(--line); border-top: 3px solid var(--accent); border-radius: 10px; padding: .9rem 1.05rem .7rem; background: #fff; }
+.kpi .value { font-size: 31px; font-weight: 750; color: var(--accent); line-height: 1.15; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.kpi .label { font-size: 12.5px; font-weight: 650; margin-top: .18rem; }
+.kpi .src { margin-top: .3rem; }
+
+/* ── 2カラム・カード ──────────────────── */
+.cols-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.25rem 0; }
+.compare-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.25rem 0; }
+.card, .compare-cols .col { border: 1px solid var(--line); border-radius: 10px; padding: .95rem 1.15rem; background: var(--bg-soft); }
+.compare-cols .col.pick, .card.pick { border-color: var(--accent); background: var(--accent-soft); }
+.card h3, .compare-cols h3 { margin: 0 0 .45rem; font-size: 14px; display: flex; align-items: center; gap: .5rem; }
+.card .tag { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; color: #fff; background: var(--accent); border-radius: 3px; padding: .1rem .4rem; }
+.card ul { margin: .2rem 0 0; padding-left: 1.15rem; font-size: 13px; color: var(--ink-2); }
+.card li { margin: .18rem 0; }
+
+/* ── コールアウト ─────────────────────── */
+.callout { background: var(--bg-soft); border-left: 4px solid var(--accent); border-radius: 6px; padding: .75rem 1.05rem; margin: 1.05rem 0; font-size: 13.5px; }
+.callout-warn { background: #fdf7ec; border-left: 4px solid #c2740a; border-radius: 6px; padding: .75rem 1.05rem; margin: 1.05rem 0; font-size: 13.5px; }
+
+/* ── 手順 ─────────────────────────────── */
+.steps { counter-reset: step; list-style: none; padding: 0; margin: 1.2rem 0; }
+.steps li { counter-increment: step; position: relative; padding: .4rem 0 .4rem 2.5rem; }
 .steps li::before {
-  content: counter(step); position: absolute; left: 0; top: .45rem;
-  width: 1.6rem; height: 1.6rem; border-radius: 50%; background: var(--accent); color: #fff;
+  content: counter(step); position: absolute; left: 0; top: .5rem;
+  width: 1.65rem; height: 1.65rem; border-radius: 50%; background: var(--accent); color: #fff;
   font-size: .85rem; font-weight: 700; display: flex; align-items: center; justify-content: center;
 }
+.steps li b { display: block; font-size: 14.5px; }
+.steps li small { color: var(--ink-2); font-size: 13px; }
 
-table { width: 100%; border-collapse: collapse; font-size: .9rem; margin: 1rem 0; }
-th { text-align: left; background: var(--bg-soft); border-bottom: 2px solid var(--line); padding: .5rem .6rem; }
-td { border-bottom: 1px solid var(--line); padding: .5rem .6rem; vertical-align: top; }
-tr.pick { background: var(--accent-soft); }
-.src { color: var(--ink-2); font-size: .78rem; }
+.src { color: var(--ink-3); font-size: 11.5px; display: block; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .88em; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 4px; padding: .06em .38em; }
 
-/* A4 印刷 */
-@page { size: A4; margin: 14mm; }
+footer { margin-top: 3.2rem; padding-top: .9rem; border-top: 1px solid var(--line-strong); color: var(--ink-3); font-size: 11.5px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: .4rem 1.5rem; }
+
+/* ── A4 印刷 ──────────────────────────── */
+@page { size: A4; margin: 13mm; }
 @media print {
-  body { padding: 0; max-width: none; font-size: 11pt; }
-  figure, table, .kpi-grid, .compare-cols, .callout, .callout-warn, .exec-summary { break-inside: avoid; }
-  h2, h3 { break-after: avoid; }
-  a { color: var(--ink); text-decoration: none; }
+  body { padding: 0; max-width: none; font-size: 10.5pt; }
+  body::before { margin: 0 0 1.6rem; }
+  figure, table, .kpi-grid, .cols-2, .compare-cols, .callout, .callout-warn, .exec-summary, .kpi, .card { break-inside: avoid; }
+  section > h2, h3 { break-after: avoid; }
+  a { color: var(--ink); }
 }

@@ -169,7 +169,8 @@ function digestFromRecords(records, opts = {}) {
     }
     // tool_result 本文に作話/混線の痕跡がないか（成功結果でも走査＝R8 は is_error=false で来る）
     if (res && res.text && hallucinations.length < CAP) {
-      const h = detectHallucinationMarkers(res.text);
+      // 出所を渡し、プロトコル構文を仕様上含むツール（TaskOutput 等）や transcript の読み取りを除外
+      const h = detectHallucinationMarkers(res.text, { toolName: use.name, target: use.target });
       if (h.suspected) hallucinations.push({ where: 'tool_result', tool: use.name, markers: h.markers, turn_idx: use.turnIdx });
     }
     const isError = res ? res.isError : false;
@@ -180,7 +181,9 @@ function digestFromRecords(records, opts = {}) {
       const entry = {
         tool: use.name,
         error_class: errClass,
-        preview_masked: C.sanitize(res.text, 240),
+        // 先頭切り詰めでは traceback の例外名など「原因を名指しする行」が落ちるため、
+        // 先頭文脈＋シグナル行を優先抽出する（2026-07-27。分類不能プレビューの解消）
+        preview_masked: C.signalPreview(res.text, 480),
         turn_idx: use.turnIdx,
       };
       if (storeRaw) entry.raw = res.text; // 既定 false（漏洩面を作らない）

@@ -91,6 +91,39 @@ function sanitize(text, maxLen = 240) {
   return out;
 }
 
+// 失敗の「診断に効く行」を優先して残すプレビュー（2026-07-27 追加）。
+// 動機: 素の先頭切り詰めは、python traceback のように最終行に例外名が来る出力で
+//   識別情報を落とす（実測: not_found/Bash の17.8%・script_error の20%が分類不能になっていた）。
+// 方式: 先頭 headLines 行（何をしたかの文脈）＋ シグナル行（例外名・error/fatal/denied 等）を
+//   元の出現順で結合し、maxLen に収める。決定論・依存ゼロ。
+const SIGNAL_LINE = /(\w*(?:Error|Exception)\b|Traceback|fatal:|FATAL|error:|ERROR|FAIL\b|failed|denied|refused|timed out|not found|No such file|command not found|no matches found|Permission|Exit code \d+|not a git repository|did not match)/i;
+function signalPreview(text, maxLen = 480, headLines = 2) {
+  const src = maskPaths(maskSecrets(text || ''));
+  if (src.length <= maxLen) return src;
+  const lines = src.split('\n');
+  const picked = new Map(); // idx -> line（重複排除しつつ元順を保つ）
+  for (let i = 0; i < Math.min(headLines, lines.length); i++) {
+    if (lines[i].trim()) picked.set(i, lines[i]);
+  }
+  // シグナル行は「末尾に近いものほど原因に近い」ため後ろから拾う
+  for (let i = lines.length - 1; i >= 0 && picked.size < headLines + 6; i--) {
+    if (SIGNAL_LINE.test(lines[i])) picked.set(i, lines[i]);
+  }
+  const ordered = [...picked.keys()].sort((a, b) => a - b);
+  let out = '';
+  let prev = -1;
+  for (const i of ordered) {
+    if (prev >= 0 && i > prev + 1) out += ' … ';
+    else if (out) out += '\n';
+    const room = maxLen - out.length;
+    if (room <= 0) break;
+    out += lines[i].length > room ? lines[i].slice(0, room) + '…' : lines[i];
+    prev = i;
+  }
+  if (!out) out = src.slice(0, maxLen) + '…';           // シグナル皆無なら従来どおり先頭
+  return out;
+}
+
 // cwd を安定ハッシュ化（外部送信時に生パスの代わりに使う匿名 ID）
 function projectHash(cwd) {
   if (!cwd) return 'unknown';
@@ -246,7 +279,7 @@ module.exports = {
   HA_DIR, DIGESTS_DIR, ROLLUPS_DIR, CLUSTERS_DIR, REPORTS_DIR, HISTORY_DIR, LOGS_DIR,
   INFOGRAPHICS_DIR, CURSORS_PATH, CONFIG_PATH, SERVER_INFO_PATH, SERVER_LOCK_PATH, AUTO_REFRESH_PATH, DIGEST_VERSION,
   today, nowIso, mtimeMsOf, sizeOf,
-  maskSecrets, maskPaths, sanitize, projectHash,
+  maskSecrets, maskPaths, sanitize, signalPreview, projectHash,
   readJson, writeJson, writeText, getFlag,
   listTranscripts, cwdSlugOf, windowToMs, defaultConfig, loadConfig,
   isHeadless, openInBrowser, serverInfo, serverAlive, openReport,

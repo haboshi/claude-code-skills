@@ -1,6 +1,27 @@
 'use strict';
 // ダイジェスト集合 → KPI 集計（純関数）。cluster.js / build-report.js が利用。
 
+// 自動セキュリティレビュー（security-guidance プラグインの sdk-py セッション）の
+// 「所見を返せずに終わった」割合。2026-07-27 の調査で 25%（62/242）が StructuredOutput を
+// 出さずに終了しており、所見なし群は平均 steps 16.0 対 所見あり群 10.9 と長い＝
+// max_turns 上限（既定18・SG_AGENTIC_MAX_TURNS で変更可）での打ち切りが疑われる。
+// 従来 digest では完全に不可視だったカバレッジ欠損のため KPI として可視化する。
+function reviewCoverage(digests) {
+  const rows = (digests || []).filter((d) => d.entrypoint === 'sdk-py');
+  if (!rows.length) return null;
+  const withOut = rows.filter((d) => (d.tools || {}).StructuredOutput);
+  const noOut = rows.filter((d) => !(d.tools || {}).StructuredOutput);
+  const avg = (xs) => (xs.length ? Math.round((xs.reduce((s, x) => s + x, 0) / xs.length) * 10) / 10 : 0);
+  const steps = (d) => (d.turns || {}).assistant_steps || 0;
+  return {
+    sessions: rows.length,
+    no_output: noOut.length,
+    no_output_rate: Math.round((noOut.length / rows.length) * 1000) / 1000,
+    avg_steps_no_output: avg(noOut.map(steps)),
+    avg_steps_with_output: avg(withOut.map(steps)),
+  };
+}
+
 // digests: セッションダイジェスト配列
 function computeKpis(digests) {
   const n = digests.length;
@@ -48,10 +69,12 @@ function computeKpis(digests) {
     orphaned_sessions: orphanSessions,
     hallucination_total: hallucTotal,
     hallucination_sessions: hallucSessions,
+    // 自動レビューのカバレッジ欠損（sdk-py セッションが存在するときのみ）
+    review_coverage: reviewCoverage(digests),
     by_tool: byTool,
     cost_hotspots: costBySession.slice(0, 10),
     compaction_hotspots: compactionBySession.slice(0, 10),
   };
 }
 
-module.exports = { computeKpis };
+module.exports = { computeKpis, reviewCoverage };

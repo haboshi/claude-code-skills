@@ -1,6 +1,6 @@
 ---
 name: bizdoc
-description: ビジネスシーン向けの白基調・SVG図解付き1枚HTML文書（提案書/報告書/解説/手順書/議事録）を生成し、doc-hub に保存する。「ビジネス資料作って」「提案書作って」「報告書をHTMLで」「白基調で資料」「図解入りの業務資料」「business document」で発動。イラスト風でない業務文書・関係部署に展開する資料が必要なときに使う。
+description: ビジネスシーン向けの白基調・SVG図解付き1枚HTML文書（提案書/報告書/解説/手順書/議事録）を生成し、doc-hub に保存する。「bizdoc」「ビジネス資料作って」「ビジネス文書」「業務資料作って」「提案書作って」「報告書作って」「報告書をHTMLで」「白基調で資料」「図解入りの業務資料」「◯◯の資料をまとめて」「business document」で発動。イラスト風でない業務文書・関係部署に展開する資料が必要なときに使う。住み分け — 図解・画像の単体生成は codex-imagegen / svg-diagram、カジュアルな解説ページは run-explainer-page、発表スライドは frontend-slides。「文書一式」を作るのが本スキル。
 user-invocable: true
 argument-hint: "[topic | URL | file path]"
 ---

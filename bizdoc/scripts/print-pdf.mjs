@@ -142,10 +142,12 @@ try {
     preferCSSPageSize: false,
     paperWidth: 8.27,   // A4
     paperHeight: 11.69,
-    marginTop: 0.51,    // ≈13mm
-    marginBottom: 0.67, // ≈17mm（フッター領域を含む）
-    marginLeft: 0.51,
-    marginRight: 0.51,
+    // 紙の余白。左右はビジネス文書として端に寄りすぎないよう 15mm を確保する
+    // （tokens.css の @media print が本文側にさらに 6mm の内側余白を足す）。
+    marginTop: 0.59,    // ≈15mm
+    marginBottom: 0.75, // ≈19mm（フッター領域を含む）
+    marginLeft: 0.59,
+    marginRight: 0.59,
     displayHeaderFooter: true,
     headerTemplate: '<span></span>',
     footerTemplate,

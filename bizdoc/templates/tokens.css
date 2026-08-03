@@ -112,12 +112,18 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .
 footer { margin-top: 3.2rem; padding-top: .9rem; border-top: 1px solid var(--line-strong); color: var(--ink-3); font-size: 11.5px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: .4rem 1.5rem; }
 
 /* ── A4 印刷 ──────────────────────────── */
-@page { size: A4; margin: 13mm; }
+/* ブラウザから直接印刷したときの余白。print-pdf.mjs 経由では CDP 側の余白を使うため
+   スクリプトが印刷時のみ margin:0 に上書きする（二重取りの回避）。 */
+@page { size: A4; margin: 15mm; }
 @media print {
   /* 印刷は画面より一段高密度（IR・コーポレート資料の紙面感）。
      画面側の余白・行間はそのまま、印刷層だけで圧縮する */
-  body { padding: 0; max-width: none; font-size: 10pt; line-height: 1.65; }
-  body::before { margin: 0 0 1.2rem; height: 5px; }
+  /* 左右の内側余白。CDP 側（print-pdf.mjs）が紙の余白 13mm を与えるのに加えて、
+     本文が断ち落とし際に寄らないよう内側にも余白を置く。0 にすると罫線・表・
+     コールアウトの枠が紙の端ぎりぎりに来て窮屈な紙面になる。 */
+  body { padding: 0 6mm; max-width: none; font-size: 10pt; line-height: 1.65; }
+  /* 上部のアクセント帯は本文の padding を打ち消して全幅に伸ばす（画面と同じ意匠） */
+  body::before { margin: 0 -6mm 1.2rem; height: 5px; }
   p { margin: .4rem 0; }
   p, li { orphans: 3; widows: 3; }
   .cover { margin-bottom: 1.4rem; padding-bottom: 1rem; }

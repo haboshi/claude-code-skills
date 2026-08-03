@@ -20,7 +20,9 @@ const REMEDIATION = {
   test_failure: { fix: 'テスト失敗の根因を修正（テストを甘くしない）', surface: '実装 / テスト' },
   type_error: { fix: '型不一致・未 export を解消してから進める', surface: '実装 / 型' },
   mcp_error: { fix: 'MCP スキーマドリフト対応（サーバ再起動 / 引数見直し）', surface: 'rules(mcp-schema-drift)' },
-  command_failed: { fix: 'コマンドの引数・前提条件を確認', surface: 'コマンド実行方針' },
+  script_error: { fix: 'インライン script（python -c / node -e / heredoc）の構文・データ形状エラー。複雑なものは Write でファイル化し、入力 JSON の形状は前提を確認してからアクセスする', surface: 'rules(coding-style) / インライン script 運用' },
+  command_failed: { fix: '非ゼロ終了を切り分ける（環境起因 / 前提誤り / スクリプト仕様上の非ゼロ）。同一引数の即リトライをしない', surface: 'コマンド実行方針' },
+  probe_nonzero: { fix: '診断プローブの期待どおりの非ゼロ（失敗ではない＝優先度から除外して読む）。反復するなら「問い」を複合コマンドの最終段に置かず、良性終端（; echo PROBE_DONE）か || echo NONE を付ける', surface: '計測(除外) / rules(coding-style)' },
   unavailable: { fix: '一時的な不可用（モデル/auto mode）。リトライ、または auto mode の許可設定を見直す', surface: 'auto mode / settings.json' },
   guard_block: { fix: '防御成功（フック/分類器が危険操作を正しく阻止）。失敗ではない＝失敗集計・コスト影響から除外して読む。反復するなら正規手順（[skip-gate:理由]＋ユーザー承認、サンクション済み経路の使用）に従う', surface: '計測(除外) / 行動: rules(git-workflow, dangerous-data-handling)' },
   no_op: { fix: '既適用／old==new の Edit を送らない。送信前に対象の現在値を確認する', surface: '作業手順 / Edit 粒度' },
@@ -30,6 +32,9 @@ const REMEDIATION = {
 
 // 防御成功（失敗ではない）error_class。集計/レポートで失敗と区別するために使う。
 const DEFENSE_CLASSES = new Set(['guard_block']);
+// 良性（失敗ではないが防御でもない）error_class。診断プローブの期待どおりの非ゼロ等。
+// hero/優先度マップ/失敗集計から除外し、詳細表にはバッジつきで残す。
+const BENIGN_CLASSES = new Set(['probe_nonzero']);
 
 // 窓内のダイジェストを読み込む
 function loadDigests(cutoffMs) {
@@ -82,18 +87,22 @@ function buildClusters(digests) {
         g.examples.push({ session_id: d.session_id, cwd_slug: d.cwd_slug, turn_idx: e.turn_idx, preview: C.sanitize(e.preview_masked || '', 200) });
       }
     }
-    // コスト影響: 当該セッションに該当クラスがあれば加算（重複加算を避けるためセッション単位で）
   }
-  // コスト影響をセッション単位で加算
+  // 関連コスト（按分）: エラーを含むセッションのコストを、そのセッション内のクラスター別エラー件数比で按分。
+  // 旧実装は「該当クラスを1回でも含むセッションの全コスト」を各クラスターへ丸ごと加算しており、
+  // クラスター横断で同一セッションが多重計上されて合計が総コストの3倍超になっていた（2026-07-26 修正）。
+  // 按分後はクラスター合計 ≤ 総コスト。無駄になった額ではなく優先度づけ用の参考値である点は変わらない。
   for (const d of digests) {
     const errs = (d.failure_signals && d.failure_signals.tool_errors) || [];
-    const seen = new Set();
+    if (!errs.length) continue;
+    const perKey = new Map();
     for (const e of errs) {
       const key = `${e.error_class || 'other'}::${e.tool || 'unknown'}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
+      perKey.set(key, (perKey.get(key) || 0) + 1);
+    }
+    for (const [key, n] of perKey) {
       const g = groups.get(key);
-      if (g) g.cost_impact_usd += d.cost_usd || 0;
+      if (g) g.cost_impact_usd += (d.cost_usd || 0) * (n / errs.length);
     }
   }
   const clusters = [...groups.values()].map((g) => ({
@@ -104,6 +113,7 @@ function buildClusters(digests) {
     affected_sessions: g.affected_sessions.size,
     cost_impact_usd: Math.round(g.cost_impact_usd * 10000) / 10000,
     is_defense: DEFENSE_CLASSES.has(g.error_class), // 防御成功（失敗ではない）。KPI/コストの読み分け用フラグ
+    is_benign: BENIGN_CLASSES.has(g.error_class),   // 良性非ゼロ（プローブ等）。hero/優先度から除外
     suggested_fix: g.suggested_fix,
     target_surface: g.target_surface,
     examples: g.examples,

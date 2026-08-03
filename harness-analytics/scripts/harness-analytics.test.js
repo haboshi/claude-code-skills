@@ -4,10 +4,11 @@ const assert = require('assert');
 const { classifyToolResult, detectRetries, detectDrift, detectHallucinationMarkers } = require('./classify');
 const { digestFromRecords } = require('./digest');
 const { buildClusters, attachTrend } = require('./cluster');
-const { computeKpis } = require('./rollup');
+const { computeKpis, reviewCoverage } = require('./rollup');
 const { costUsd } = require('./pricing');
 const { rankedBars, priorityBubbles, sparkline, donut, beforeAfterCard, wrapText } = require('./charts');
-const { prioritize, scoreOf, clusterDetailBlock } = require('./build-report');
+const C = require('./common');
+const { prioritize, scoreOf, clusterDetailBlock, mergeLlm } = require('./build-report');
 const { clusterImageFacts, cacheKey } = require('./infographic');
 const { shouldRefresh } = require('./ingest');
 
@@ -52,6 +53,74 @@ test('classifyToolResult: stale_read（File modified since read は Edit 系の�
 test('classifyToolResult: Edit 固有ワードは非 Edit ツールに適用しない', () => {
   assert.strictEqual(classifyToolResult('Bash', 'no changes to make', true), 'other');
 });
+test('classifyToolResult: zsh の glob 空振りは not_found（edit_no_match に誤爆しない）', () => {
+  assert.strictEqual(classifyToolResult('Bash', 'Exit code 1 (eval):1: no matches found: lib/**/verify*', true), 'not_found');
+});
+test('classifyToolResult: edit_no_match は Edit 系のみ（Bash の grep 出力等に適用しない）', () => {
+  assert.strictEqual(classifyToolResult('Edit', 'String to replace not found in file.', true), 'edit_no_match');
+  assert.notStrictEqual(classifyToolResult('Bash', 'grep output: ... found 3 matches ...', true), 'edit_no_match');
+});
+test('classifyToolResult: script_error（インライン script の traceback/構文崩れ・Bash のみ）', () => {
+  assert.strictEqual(classifyToolResult('Bash', 'Exit code 1 Traceback (most recent call last):\n  File "<string>", line 3, in <module>\nKeyError: \'findings\'', true), 'script_error');
+  assert.strictEqual(classifyToolResult('Bash', 'Exit code 1 (eval):1: bad substitution', true), 'script_error');
+  // Bash 以外にはゲートで適用しない
+  assert.notStrictEqual(classifyToolResult('Read', 'Traceback (most recent call last)', true), 'script_error');
+});
+test('classifyToolResult: script_error はインライン実行痕跡なしの traceback を取り込まない', () => {
+  // 実測18%の誤取り込み: Swift コンパイル / prisma / PostgREST 等が出力に traceback を含むだけのケース
+  const swift = 'Exit code 1 [3/6] Compiling plan_dump main.swift\nerror: cannot find type in scope';
+  assert.notStrictEqual(classifyToolResult('Bash', swift, true), 'script_error');
+  // .py ファイル実行の traceback（インライン script ではない）も対象外
+  const filetb = 'Exit code 1 Traceback (most recent call last):\n  File "scripts/run.py", line 10, in main\n    x()\nValueError: bad';
+  assert.notStrictEqual(classifyToolResult('Bash', filetb, true), 'script_error');
+});
+
+// --- signalPreview（プレビューの切り詰めで診断情報を落とさない）---
+test('signalPreview: 長い traceback でも例外名（最終行）を残す', () => {
+  const lines = ['Exit code 1', 'Traceback (most recent call last):'];
+  for (let i = 0; i < 40; i++) lines.push(`  File "<string>", line ${i}, in <module>`);
+  lines.push("KeyError: 'findings'");
+  const out = C.signalPreview(lines.join('\n'), 480);
+  assert.ok(/KeyError/.test(out), '例外名が残っていない');
+  assert.ok(out.length <= 520, '長さ上限を大きく超えている');
+  // 旧方式（先頭切り詰め）では落ちることの対比
+  assert.ok(!/KeyError/.test(C.sanitize(lines.join('\n'), 240)));
+});
+test('signalPreview: 短い入力はそのまま返す', () => {
+  assert.strictEqual(C.signalPreview('short output', 480), 'short output');
+});
+test('signalPreview: secret と絶対パスはマスクされる', () => {
+  const long = 'token sk-ant-ABCDEFGHIJKLMNOP\n' + 'x'.repeat(600) + '\nerror: boom';
+  const out = C.signalPreview(long, 200);
+  assert.ok(!/sk-ant-ABCDEFGHIJKLMNOP/.test(out), 'secret が漏れている');
+  const p = '/Users/tester/secret/path/file.ts\n' + 'y'.repeat(600) + '\nfatal: nope';
+  assert.ok(!/\/Users\/tester/.test(C.signalPreview(p, 200)), 'ユーザパスが漏れている');
+});
+test('classifyToolResult: probe_nonzero（診断プローブの期待どおりの非ゼロを分離）', () => {
+  // bare exit（出力なし）＝ bare grep 空振りの典型
+  assert.strictEqual(classifyToolResult('Bash', 'Exit code 1', true), 'probe_nonzero');
+  // 実質出力あり・エラートークンなし＝プローブは成果を出している
+  assert.strictEqual(classifyToolResult('Bash', 'Exit code 1 === 本番未適用マイグレーション7件 === 20260714084140_add_market_delivery_fee_config 20260716090000_scope_delivery_metrics', true), 'probe_nonzero');
+  // エラートークンがあれば command_failed のまま
+  assert.strictEqual(classifyToolResult('Bash', 'Exit code 1 error: pathspec \'apps/web/x.tsx\' did not match any file(s) known to git', true), 'command_failed');
+  assert.strictEqual(classifyToolResult('Bash', 'Exit code 1 1428 fable-playbook.md The following paths are ignored by one of your .gitignore files', true), 'command_failed');
+});
+test('classifyToolResult: probe_nonzero に本物の失敗を取り込まない（2026-07-27 精度検収）', () => {
+  // daemon 不達（同一リトライしても直らない環境起因）
+  assert.notStrictEqual(classifyToolResult('Bash', 'Exit code 1 The Orca runtime closed the connection before responding. Orca is not running.', true), 'probe_nonzero');
+  // クォート崩れ（インライン script の構文エラー）
+  assert.notStrictEqual(classifyToolResult('Bash', 'Exit code 1 (eval): unmatched "', true), 'probe_nonzero');
+  // テスト結果の混入
+  assert.notStrictEqual(classifyToolResult('Bash', 'Exit code 1 === 全件テスト === Test Suites: 2 skipped, 392 passed', true), 'probe_nonzero');
+});
+test('classifyToolResult: timeout は Bash ではハーネス kill 文言に限定（部分一致誤爆の是正）', () => {
+  assert.strictEqual(classifyToolResult('Bash', 'Exit code 143 Command timed out after 2m 0s', true), 'timeout');
+  // Playwright の waitFor timeout / TLS handshake timeout は Bash では timeout に分類しない
+  assert.notStrictEqual(classifyToolResult('Bash', 'Exit code 1 locator.waitFor: Timeout 30000ms exceeded', true), 'timeout');
+  assert.notStrictEqual(classifyToolResult('Bash', 'Exit code 1 net/http: TLS handshake timeout', true), 'timeout');
+  // 非 Bash（MCP 等）は従来どおり広く拾う
+  assert.strictEqual(classifyToolResult('mcp__chrome-devtools__wait_for', 'Request timed out', true), 'timeout');
+});
 
 // --- detectHallucinationMarkers（R8 混線検出）---
 test('detectHallucinationMarkers: 高精度マーカー単独で suspected', () => {
@@ -60,6 +129,20 @@ test('detectHallucinationMarkers: 高精度マーカー単独で suspected', () 
 });
 test('detectHallucinationMarkers: 通常散文は非検出', () => {
   assert.strictEqual(detectHallucinationMarkers('普通の説明文です。ツールを実行しました。').suspected, false);
+});
+test('detectHallucinationMarkers: プロトコル構文を仕様上含む出所は誤検知にしない（2026-07-27）', () => {
+  const leak = '{"tool_use_id": "toolu_123"}';
+  // 出所を渡さなければ従来どおり suspected（後方互換）
+  assert.strictEqual(detectHallucinationMarkers(leak).suspected, true);
+  // TaskOutput はサブエージェント transcript をそのまま返すため仕様上含む＝除外
+  assert.strictEqual(detectHallucinationMarkers(leak, { toolName: 'TaskOutput' }).suspected, false);
+  // transcript / ログファイルの読み取りも除外
+  assert.strictEqual(detectHallucinationMarkers(leak, { toolName: 'Read', target: '~/.claude/projects/x/abc.jsonl' }).suspected, false);
+  assert.strictEqual(detectHallucinationMarkers(leak, { toolName: 'Bash', target: 'cat ~/.claude/logs/guard-activity.jsonl' }).suspected, false);
+  // 通常のソースファイル読み取りで漏れていれば従来どおり検出
+  assert.strictEqual(detectHallucinationMarkers(leak, { toolName: 'Read', target: 'src/app/page.tsx' }).suspected, true);
+  // markers 自体は診断用に残る
+  assert.deepStrictEqual(detectHallucinationMarkers(leak, { toolName: 'TaskOutput' }).markers, ['tool_use_id_leak']);
 });
 test('detectHallucinationMarkers: 低精度マーカーは単独でも複数でも suspected にしない（オーサリング誤検知回避）', () => {
   // <invoke>/<parameter name=> は skill/agent 定義を書く正当なテキストと区別できないため高精度のみで判定
@@ -231,6 +314,21 @@ test('computeKpis: ハーネス健全性（打ち切り/作話）の総数を集
   assert.strictEqual(k.hallucination_sessions, 1);
 });
 
+// --- reviewCoverage（自動レビューのカバレッジ欠損）---
+test('reviewCoverage: sdk-py の無所見率とステップ数の対照を出す', () => {
+  const mk = (ep, hasOut, steps) => ({ entrypoint: ep, turns: { assistant_steps: steps }, tools: hasOut ? { StructuredOutput: { count: 1, errors: 0 } } : { Read: { count: 3, errors: 0 } } });
+  const ds = [mk('sdk-py', true, 10), mk('sdk-py', true, 12), mk('sdk-py', false, 18), mk('cli', false, 40)];
+  const rc = reviewCoverage(ds);
+  assert.strictEqual(rc.sessions, 3);           // cli は対象外
+  assert.strictEqual(rc.no_output, 1);
+  assert.strictEqual(rc.no_output_rate, 0.333);
+  assert.strictEqual(rc.avg_steps_no_output, 18);
+  assert.strictEqual(rc.avg_steps_with_output, 11);
+});
+test('reviewCoverage: sdk-py が無ければ null（KPI を出さない）', () => {
+  assert.strictEqual(reviewCoverage([{ entrypoint: 'cli', turns: {}, tools: {} }]), null);
+});
+
 // --- charts（SVG 出力）---
 const countMatches = (s, re) => (s.match(re) || []).length;
 test('rankedBars: バー本数=item数・SVG', () => {
@@ -286,6 +384,44 @@ test('prioritize: LLM priority が hero を上書き', () => {
     { error_class: 'b', tool: 'Y', count: 1, affected_sessions: 1, is_defense: false, llm: { priority: 0 } }, // LLM 最優先
   ];
   assert.strictEqual(prioritize(cs).hero.error_class, 'b');
+});
+test('prioritize: stale な LLM priority は hero を上書きしない', () => {
+  const cs = [
+    { error_class: 'a', tool: 'X', count: 100, affected_sessions: 10, is_defense: false },
+    { error_class: 'b', tool: 'Y', count: 1, affected_sessions: 1, is_defense: false, llm: { priority: 0, stale: true } },
+  ];
+  assert.strictEqual(prioritize(cs).hero.error_class, 'a');
+});
+
+// --- mergeLlm（鮮度ガード）---
+test('mergeLlm: 7日以内は fresh・7日超は stale＋analyzed_at 付与', () => {
+  const llm = { generated_at: '2026-07-12T00:00:00Z', analyses: [{ cluster_id: 'x-Y', root_cause: 'r', count: 322 }] };
+  const mk = () => [{ cluster_id: 'x-Y', count: 261, llm: null }];
+  const fresh = mergeLlm(mk(), llm, '2026-07-15T00:00:00Z');
+  assert.strictEqual(fresh[0].llm.stale, false);
+  const stale = mergeLlm(mk(), llm, '2026-07-26T00:00:00Z');
+  assert.strictEqual(stale[0].llm.stale, true);
+  assert.strictEqual(stale[0].llm.analyzed_at, '2026-07-12T00:00:00Z');
+  assert.strictEqual(stale[0].llm.count, 322); // 分析時点の件数を保持（現在の count 261 とは別）
+});
+test('mergeLlm: generated_at 欠落は stale 扱い（鮮度を証明できない）', () => {
+  const llm = { analyses: [{ cluster_id: 'x-Y', root_cause: 'r' }] };
+  const out = mergeLlm([{ cluster_id: 'x-Y', count: 1, llm: null }], llm, '2026-07-26T00:00:00Z');
+  assert.strictEqual(out[0].llm.stale, true);
+});
+
+// --- buildClusters（コスト按分）---
+test('buildClusters: 関連コストはセッション内按分で二重計上しない', () => {
+  const mkErr = (cls, tool) => ({ tool, error_class: cls, preview_masked: 'x', turn_idx: 0 });
+  const dA = { session_id: 'A', cwd_slug: 'a', cost_usd: 10, failure_signals: { tool_errors: [mkErr('x', 'T')] } };
+  const dB = { session_id: 'B', cwd_slug: 'b', cost_usd: 20, failure_signals: { tool_errors: [mkErr('x', 'T'), mkErr('y', 'T'), mkErr('y', 'T'), mkErr('y', 'T')] } };
+  const cs = buildClusters([dA, dB]);
+  const x = cs.find((c) => c.cluster_id === 'x-T');
+  const y = cs.find((c) => c.cluster_id === 'y-T');
+  assert.strictEqual(x.cost_impact_usd, 15);  // 10 + 20×(1/4)
+  assert.strictEqual(y.cost_impact_usd, 15);  // 20×(3/4)
+  const total = cs.reduce((s, c) => s + c.cost_impact_usd, 0);
+  assert.strictEqual(total, 30);              // クラスター合計 = エラーセッションの総コスト（≤ 全体総コスト）
 });
 
 // --- beforeAfterCard / wrapText / clusterDetailBlock ---

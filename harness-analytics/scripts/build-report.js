@@ -14,9 +14,17 @@ const esc = (s) => String(s == null ? '' : s)
 const TREND_MARK = { up: '▲', down: '▼', flat: '＝', new: '✦' };
 const CRIT = 'var(--c-crit)', WARN = 'var(--c-warn)', ACCENT = 'var(--c-accent)', GOOD = 'var(--c-good)';
 
-// llm 分析をマージ（絶対パス等を maskPaths で畳む＝path-privacy）
-function mergeLlm(clusters, llm) {
+// LLM 分析は「生成時点の窓」に対する所見。窓がずれた古い分析を現在の集計に無条件合成すると
+// 件数不一致（例: 本文322件 vs バッジ261件）や時代遅れの根因が「現在の事実」として表示される。
+// clusters の生成時刻との差がこの日数を超えたら stale 扱い（表示はするが旧分析と明示・hero 選定から除外）。
+const LLM_STALE_DAYS = 7;
+
+// llm 分析をマージ（絶対パス等を maskPaths で畳む＝path-privacy。鮮度メタを付与）
+function mergeLlm(clusters, llm, clustersGeneratedAt) {
   if (!llm) return clusters;
+  const llmAtMs = llm.generated_at ? Date.parse(llm.generated_at) : NaN;
+  const baseMs = clustersGeneratedAt ? Date.parse(clustersGeneratedAt) : Date.now();
+  const stale = !Number.isFinite(llmAtMs) || (baseMs - llmAtMs) > LLM_STALE_DAYS * 86400000;
   const byId = {};
   for (const item of (llm.analyses || [])) byId[item.cluster_id] = item;
   for (const c of clusters) {
@@ -27,6 +35,8 @@ function mergeLlm(clusters, llm) {
       root_cause: a.root_cause ? C.maskPaths(a.root_cause) : a.root_cause,
       proposed_edit: a.proposed_edit ? C.maskPaths(a.proposed_edit) : a.proposed_edit,
       target_files: Array.isArray(a.target_files) ? a.target_files.map((f) => C.maskPaths(f)) : a.target_files,
+      analyzed_at: llm.generated_at || null,
+      stale,
     };
   }
   return clusters;
@@ -35,19 +45,30 @@ function mergeLlm(clusters, llm) {
 const scoreOf = (c) => (c.count || 0) * (c.affected_sessions || 0);
 
 function prioritize(clusters) {
-  const problems = (clusters || []).filter((c) => !c.is_defense);
+  // problems = 実失敗のみ。防御成功（guard_block）と良性非ゼロ（probe_nonzero）は hero/優先度から除外
+  const problems = (clusters || []).filter((c) => !c.is_defense && !c.is_benign);
   const defenses = (clusters || []).filter((c) => c.is_defense);
+  const benigns = (clusters || []).filter((c) => c.is_benign);
   const byScore = [...problems].sort((a, b) => scoreOf(b) - scoreOf(a));
-  const byLlm = problems.filter((c) => c.llm && c.llm.priority != null).sort((a, b) => a.llm.priority - b.llm.priority);
+  // stale な LLM priority に hero を固定させない（旧窓の優先度は現在の窓に対して無根拠）
+  const byLlm = problems.filter((c) => c.llm && c.llm.priority != null && !c.llm.stale).sort((a, b) => a.llm.priority - b.llm.priority);
   const hero = byLlm[0] || byScore[0] || null;
-  return { problems, defenses, byScore, hero };
+  return { problems, defenses, benigns, byScore, hero };
 }
 
-// クラスターの「問題」テキスト（画像/before-after 用）
+// 旧分析の注記（stale のときだけ表示）。分析時点の件数（analysis.count）があれば併記する。
+function llmStaleNote(c) {
+  if (!c.llm || !c.llm.stale) return '';
+  const when = c.llm.analyzed_at ? String(c.llm.analyzed_at).slice(0, 10) : '時期不明';
+  const cnt = c.llm.count != null && c.llm.count !== c.count ? `・当時${c.llm.count}件/現在${c.count}件` : '';
+  return `<span class="badge warn">旧分析 ${esc(when)} 時点${cnt}・要再分析</span>`;
+}
+
+// クラスターの「問題」テキスト（before-after SVG 用）。root_cause は長文で 5 行枠に収まらず
+// 「ラベルと食い違う切れた文」になるため、枠には常に決定論の事実サマリを出す
+// （root_cause の全文は下の「根因」ブロックに表示される）。
 function problemText(c) {
-  if (c.llm && c.llm.root_cause) return c.llm.root_cause;
-  if (c.examples && c.examples[0] && c.examples[0].preview) return c.examples[0].preview;
-  return `${c.error_class} が ${c.tool} で ${c.count} 回発生`;
+  return `${c.error_class}/${c.tool} のエラーが ${c.count}件・${c.affected_sessions}セッションで発生`;
 }
 
 function heroCard(hero) {
@@ -59,11 +80,11 @@ function heroCard(hero) {
   const name = `${esc(hero.error_class)} <span class="muted">/ ${esc(hero.tool)}</span>`;
   const chips = [
     `${hero.count}件`, `${hero.affected_sessions} セッションに影響`,
-    `コスト影響 $${(hero.cost_impact_usd || 0).toFixed(2)}`, `優先度スコア ${scoreOf(hero)}`,
+    `関連コスト(按分) $${(hero.cost_impact_usd || 0).toFixed(2)}`, `優先度スコア ${scoreOf(hero)}`,
   ].map((t) => `<span class="chip">${esc(t)}</span>`).join('');
   const files = hero.llm && hero.llm.target_files && hero.llm.target_files.length
     ? hero.llm.target_files.map(esc).join(', ') : esc(hero.target_surface);
-  const cause = hero.llm && hero.llm.root_cause ? `<div class="hero-cause"><b>根因（推定）:</b> ${esc(hero.llm.root_cause)}</div>` : '';
+  const cause = hero.llm && hero.llm.root_cause ? `<div class="hero-cause"><b>根因（推定）:</b> ${llmStaleNote(hero)} ${esc(hero.llm.root_cause)}</div>` : '';
   const conf = hero.llm && hero.llm.confidence != null ? `<span class="badge">確信度 ${esc(hero.llm.confidence)}</span>` : '';
   return `<div class="hero"><div class="hero-eyebrow">まず直すべき1件</div>
     <div class="hero-title">${name}</div>
@@ -110,9 +131,9 @@ function clusterDetailBlock(c, i, imageIndex) {
     ? `<img class="cl-img" loading="lazy" alt="問題→改善の図解" src="../infographics/${esc(idx.hash)}/image.jpg">`
     : CH.beforeAfterCard(problemText(c), c.suggested_fix);
   const conf = c.llm && c.llm.confidence != null ? `<span class="badge">確信度 ${esc(c.llm.confidence)}</span>` : '';
-  const chips = [`${c.count}件`, `${c.affected_sessions} セッション`, `コスト影響 $${(c.cost_impact_usd || 0).toFixed(2)}`]
+  const chips = [`${c.count}件`, `${c.affected_sessions} セッション`, `関連コスト(按分) $${(c.cost_impact_usd || 0).toFixed(2)}`]
     .map((t) => `<span class="chip">${esc(t)}</span>`).join('');
-  const rootCause = c.llm && c.llm.root_cause ? `<div class="cl-block"><h4>根因（推定）</h4><p>${esc(c.llm.root_cause)}</p></div>` : '';
+  const rootCause = c.llm && c.llm.root_cause ? `<div class="cl-block"><h4>根因（推定）${llmStaleNote(c)}</h4><p>${esc(c.llm.root_cause)}</p></div>` : '';
   const exList = (c.examples || []).map((e) => `<div class="cl-ex">${esc(e.preview)}</div>`).join('');
   const examples = exList ? `<div class="cl-block"><h4>実例（マスク済）</h4>${exList}</div>` : '';
   const files = c.llm && c.llm.target_files && c.llm.target_files.length ? c.llm.target_files.map(esc).join(', ') : esc(c.target_surface);
@@ -137,7 +158,7 @@ function renderClusterSection(problems, imageIndex) {
 }
 
 function backlog(clusters) {
-  const items = [...clusters].filter((c) => !c.is_defense).sort((a, b) => {
+  const items = [...clusters].filter((c) => !c.is_defense && !c.is_benign).sort((a, b) => {
     const pa = a.llm && a.llm.priority != null ? a.llm.priority : 99;
     const pb = b.llm && b.llm.priority != null ? b.llm.priority : 99;
     if (pa !== pb) return pa - pb;
@@ -154,7 +175,7 @@ function clusterRows(clusters) {
   if (!clusters.length) return '<tr><td colspan="7" class="muted">失敗クラスターは検出されませんでした。</td></tr>';
   return clusters.map((c) => {
     const trend = TREND_MARK[c.trend] || '';
-    const tag = c.is_defense ? ' <span class="badge good">防御成功</span>' : '';
+    const tag = c.is_defense ? ' <span class="badge good">防御成功</span>' : c.is_benign ? ' <span class="badge benign">良性</span>' : '';
     const files = c.llm && c.llm.target_files ? `<div class="files">→ ${c.llm.target_files.map(esc).join(', ')}</div>` : '';
     return `<tr><td><code>${esc(c.error_class)}</code>${tag}<br><span class="muted">${esc(c.tool)}</span></td>
       <td class="num">${esc(c.count)}</td><td class="num">${esc(c.affected_sessions)}</td><td class="num">${trend}</td>
@@ -188,9 +209,17 @@ function harnessHealth(kpis) {
   ];
   const cellHtml = cells.map(([k, v, s]) =>
     `<div class="kpi"><div class="kpi-v">${esc(v)}</div><div class="kpi-k">${esc(k)}<br><span class="muted">${esc(s)}</span></div></div>`).join('');
-  return `<h2>ハーネス健全性 — 打ち切り・作話の可視化</h2>
+  const rc = kpis.review_coverage;
+  const rcHtml = rc ? `<div class="kpis" style="grid-template-columns:repeat(3,1fr);max-width:1100px;margin-top:10px">
+      <div class="kpi"><div class="kpi-v">${(rc.no_output_rate * 100).toFixed(1)}%</div><div class="kpi-k">自動レビューの無所見率<br><span class="muted">${rc.no_output}/${rc.sessions} セッション</span></div></div>
+      <div class="kpi"><div class="kpi-v">${rc.avg_steps_no_output}</div><div class="kpi-k">無所見時の平均ステップ<br><span class="muted">上限打ち切りの疑い</span></div></div>
+      <div class="kpi"><div class="kpi-v">${rc.avg_steps_with_output}</div><div class="kpi-k">所見あり時の平均ステップ<br><span class="muted">対照</span></div></div>
+    </div>
+    <div class="meta"><b>自動レビューのカバレッジ欠損</b>＝ security-guidance プラグイン（sdk-py）のレビューが所見（StructuredOutput）を返さずに終わった割合。無所見側のステップ数が有意に長ければ <code>max_turns</code> 上限（既定18）での打ち切りが疑われる。上限は環境変数 <code>SG_AGENTIC_MAX_TURNS</code> で変更できる。</div>` : '';
+  return `<h2>ハーネス健全性 — 打ち切り・作話・レビュー欠損の可視化</h2>
     <div class="kpis" style="grid-template-columns:repeat(2,1fr);max-width:760px">${cellHtml}</div>
-    <div class="meta">従来 digest で不可視だった「静かな失敗」。<b>打ち切り</b>＝ツール結果が返る前にターンが切れた回数（model-side error 等の代理シグナル）。<b>作話疑い</b>＝tool_result に内部プロトコル構文が混入した痕跡（advisory・メタ議論由来の誤検知を含みうる）。件数&gt;0 は該当セッションが存在することを示す。</div>`;
+    <div class="meta">従来 digest で不可視だった「静かな失敗」。<b>打ち切り</b>＝ツール結果が返る前にターンが切れた回数（model-side error 等の代理シグナル）。<b>作話疑い</b>＝tool_result に内部プロトコル構文が混入した痕跡（TaskOutput・transcript 読取など仕様上プロトコル構文を含む出所は除外済み）。</div>
+    ${rcHtml}`;
 }
 
 const STYLE = `
@@ -229,7 +258,7 @@ const STYLE = `
   .hero-chips { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
   .chip { font-family:ui-monospace,monospace; font-size:12px; background:var(--card2); border:1px solid var(--line); border-radius:999px; padding:3px 11px; }
   .hero-fix { font-size:14px; margin:6px 0; } .hero-target { font-size:13px; color:var(--muted); } .hero-cause { font-size:13px; margin-top:8px; }
-  .badge { background:var(--c-accent); color:#fff; border-radius:5px; padding:1px 6px; font-size:10px; } .badge.good { background:var(--c-good); }
+  .badge { background:var(--c-accent); color:#fff; border-radius:5px; padding:1px 6px; font-size:10px; } .badge.good { background:var(--c-good); } .badge.warn { background:var(--c-warn); } .badge.benign { background:var(--c-axis); }
   .fig { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 18px; }
   .fignote,.c-note { font-size:11px; color:var(--muted); margin-top:6px; }
 
@@ -294,14 +323,16 @@ function html(data) {
   const { window: win, generated_at, kpis, clusters } = data;
   const trend = data.trend || { friction: [], err: [] };
   const imageIndex = data.imageIndex || {};
-  const { problems, defenses, byScore, hero } = prioritize(clusters);
+  const { problems, defenses, benigns, byScore, hero } = prioritize(clusters);
 
   const points = problems.slice(0, 30).map((c) => ({ label: `${c.error_class}/${c.tool}`, x: c.count || 0, y: c.affected_sessions || 0, size: c.cost_impact_usd || 0, top: c === hero }));
   const realCount = problems.reduce((s, c) => s + (c.count || 0), 0);
   const defenseCount = defenses.reduce((s, c) => s + (c.count || 0), 0);
-  const donutCard = (realCount + defenseCount) > 0 ? `<div class="card"><h3>実失敗 vs 防御成功</h3>
-      ${CH.donut([{ label: '実失敗', value: realCount, color: CRIT }, { label: '防御成功', value: defenseCount, color: GOOD }], { centerLabel: String(realCount), centerSub: '実失敗件数' })}
-      <div class="legend"><span><i style="background:var(--c-crit)"></i>実失敗 ${realCount}</span><span><i style="background:var(--c-good)"></i>防御成功 ${defenseCount}</span></div></div>` : '';
+  const benignCount = benigns.reduce((s, c) => s + (c.count || 0), 0);
+  const donutCard = (realCount + defenseCount + benignCount) > 0 ? `<div class="card"><h3>実失敗 / 防御成功 / 良性非ゼロ</h3>
+      ${CH.donut([{ label: '実失敗', value: realCount, color: CRIT }, { label: '防御成功', value: defenseCount, color: GOOD }, { label: '良性非ゼロ', value: benignCount, color: 'var(--c-axis)' }], { centerLabel: String(realCount), centerSub: '実失敗件数' })}
+      <div class="legend"><span><i style="background:var(--c-crit)"></i>実失敗 ${realCount}</span><span><i style="background:var(--c-good)"></i>防御成功 ${defenseCount}</span><span><i style="background:var(--c-axis)"></i>良性非ゼロ ${benignCount}</span></div>
+      <div class="c-note">良性非ゼロ＝診断プローブの期待どおりの非ゼロ（grep 空振り等）。失敗ではないため優先度から除外。</div></div>` : '';
   const trendCard = `<div class="card"><h3>トレンド（日次）</h3>
       <div class="spark-row"><span class="spark-k">平均 friction</span>${CH.sparkline(trend.friction)}</div>
       <div class="spark-row"><span class="spark-k">ツールエラー率</span>${CH.sparkline(trend.err)}</div>
@@ -319,7 +350,7 @@ function html(data) {
 <div class="top-grid">
   ${heroCard(hero)}
   <div class="fig"><h3>優先度マップ — どれを先に直すか</h3>${CH.priorityBubbles(points)}
-    <div class="fignote">右上ほど「何度も・広く」起きている＝優先。円の大きさ＝コスト影響。赤＝最優先。</div></div>
+    <div class="fignote">右上ほど「何度も・広く」起きている＝優先。円の大きさ＝関連コスト（エラーを含むセッションのコストをクラスター間で按分した参考値。無駄になった額ではない）。赤＝最優先。</div></div>
 </div>
 
 ${harnessHealth(kpis)}
@@ -339,7 +370,7 @@ ${renderClusterSection(problems, imageIndex)}
 <ol class="backlog">${backlog(clusters)}</ol>
 
 <details><summary>詳細データ（全クラスターの表）を開く</summary>
-  <div class="scroll"><table><thead><tr><th>クラス/ツール</th><th>件数</th><th>影響</th><th>傾向</th><th>コスト影響</th><th>改善示唆</th><th>例(マスク済)</th></tr></thead>
+  <div class="scroll"><table><thead><tr><th>クラス/ツール</th><th>件数</th><th>影響</th><th>傾向</th><th>関連コスト(按分)</th><th>改善示唆</th><th>例(マスク済)</th></tr></thead>
   <tbody>${clusterRows(clusters)}</tbody></table></div>
   <div class="scroll"><table><thead><tr><th>ツール</th><th>回数</th><th>エラー</th><th>エラー率</th></tr></thead>
   <tbody>${toolTableRows(kpis.by_tool)}</tbody></table></div></details>
@@ -353,10 +384,13 @@ function markdown(data) {
   const { hero } = prioritize(clusters);
   const lines = [`# harness-analytics レポート`, ``, `- 窓: ${win}`, `- 生成: ${generated_at}`, `- 注: コストは概算、改善は示唆（自動適用なし）`, ``, `## まず直すべき1件`, ``];
   if (hero) {
-    lines.push(`**${hero.error_class}/${hero.tool}** — ${hero.count}件 / ${hero.affected_sessions}セッション / コスト影響 $${(hero.cost_impact_usd || 0).toFixed(2)}`, ``, `- 推奨対応: ${hero.suggested_fix}`);
+    lines.push(`**${hero.error_class}/${hero.tool}** — ${hero.count}件 / ${hero.affected_sessions}セッション / 関連コスト(按分) $${(hero.cost_impact_usd || 0).toFixed(2)}`, ``, `- 推奨対応: ${hero.suggested_fix}`);
     const files = hero.llm && hero.llm.target_files ? hero.llm.target_files.join(', ') : hero.target_surface;
     lines.push(`- 直す場所: ${files}`);
-    if (hero.llm && hero.llm.root_cause) lines.push(`- 根因(推定): ${hero.llm.root_cause}`);
+    if (hero.llm && hero.llm.root_cause) {
+      const staleTag = hero.llm.stale ? `（旧分析 ${String(hero.llm.analyzed_at || '').slice(0, 10)} 時点・要再分析）` : '';
+      lines.push(`- 根因(推定)${staleTag}: ${hero.llm.root_cause}`);
+    }
   } else { lines.push(`優先度の高い失敗は検出されませんでした。`); }
   lines.push(``, `## KPI`, ``, `| 指標 | 値 |`, `|---|---|`, `| セッション | ${kpis.sessions} |`, `| 総コスト(概算) | $${(kpis.total_cost_usd || 0).toFixed(2)} |`, `| ツールエラー率 | ${((kpis.tool_error_rate || 0) * 100).toFixed(1)}% |`, `| 平均 friction | ${kpis.avg_friction} |`, ``,
     `## ハーネス健全性（打ち切り/作話の可視化）`, ``, `| 指標 | 件数 | 影響セッション |`, `|---|---|---|`,
@@ -390,7 +424,7 @@ async function main() {
   const data = C.readJson(clustersPath, null);
   if (!data) { process.stderr.write('clusters が見つかりません。先に cluster.js を実行してください。\n'); process.exit(1); }
   const llm = fs.existsSync(llmPath) ? C.readJson(llmPath, null) : null;
-  data.clusters = mergeLlm(data.clusters || [], llm);
+  data.clusters = mergeLlm(data.clusters || [], llm, data.generated_at);
   data.trend = loadTrend();
   data.imageIndex = loadImageIndex();
 

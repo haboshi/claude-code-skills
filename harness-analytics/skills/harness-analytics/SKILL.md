@@ -36,14 +36,22 @@ Quality Flywheel（評価→失敗クラスター分析→最適化）のメタ�
 
 3. **LLM 分析**（`--no-llm` 時はスキップ）
    - `~/.claude/harness-analytics/clusters/latest.json` を Read し、上位 K 件（既定 8、config の `analysis.top_k_clusters`）を取る。
+   - **鮮度ルール**: 既存 `llm-latest.json` の `generated_at` が clusters の `generated_at` より **7日以上古い場合は再分析必須**
+     （レポートは stale 分析に「旧分析・要再分析」バッジを付け、hero 選定からも除外する。旧分析は旧窓に対する所見であり、
+     現窓の件数・構成に対して無根拠のため）。
    - 各クラスターについて **fresh-context の subagent**（Explore または general-purpose）を1体起動し、
-     **改善履歴を渡さず**次だけを与える: `error_class` / `tool` / `suggested_fix` / `target_surface` / `examples`（マスク済）/ `count` / `affected_sessions`。
+     **改善履歴を渡さず**次だけを与える: `error_class` / `tool` / `suggested_fix` / `target_surface` / `examples`（マスク済）/ `count` / `affected_sessions` /
+     **分析窓の開始・終了日時**（clusters の `window` と `generated_at` から算出。「規約 X の追記が窓のどこから効いたか」等の
+     時間推論を subagent が窓を知らずに誤ることを防ぐ）。
      subagent への指示: 「この失敗クラスターの**根本原因仮説**、変更すべき**具体ファイルパス**（スキル/ルール/CLAUDE.md/settings.json）、
      **提案編集テキスト**（適用はしない）、`confidence`(0-1)、`priority`(0=最優先) を返せ。裏が取れない推測は confidence を下げよ」。
-   - 収集結果を次の形で `~/.claude/harness-analytics/clusters/llm-latest.json` に **Write**:
+   - 収集結果を次の形で `~/.claude/harness-analytics/clusters/llm-latest.json` に **Write**
+     （`generated_at`・`window` はトップレベル必須。各 analysis に**分析時点の `count`/`affected_sessions` を必ず埋め込む**。
+     後で窓がずれた時に「本文の件数」と「現在の件数」を照合可能にするため）:
      ```json
-     { "analyses": [
-       { "cluster_id": "file_not_read-Edit", "root_cause": "...", "target_files": ["CLAUDE.md"],
+     { "generated_at": "<ISO8601>", "window": "14d", "analyses": [
+       { "cluster_id": "file_not_read-Edit", "count": 34, "affected_sessions": 17,
+         "root_cause": "...", "target_files": ["CLAUDE.md"],
          "proposed_edit": "...", "confidence": 0.8, "priority": 1 }
      ] }
      ```

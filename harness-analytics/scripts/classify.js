@@ -3,6 +3,9 @@
 // LLM は一切使わない。分類は「明らかな欠落の検出」レベルの補助であり、確信度は cluster 段で扱う。
 
 // 判定順に評価（先勝ち）。ラベルは harness-research/06 の remediation テーブルのキーに対応。
+// 第3要素（任意）は toolName ゲート: 指定時、マッチするツールにのみそのルールを適用する。
+// （実データ 2026-07-26: Edit 専用の /no match/ が zsh の「no matches found:」等 Bash 出力に誤爆し
+//  edit_no_match/Bash 偽クラスター49件を生んでいた。）
 const RULES = [
   // guard_block: フック/分類器が危険操作を正しく阻止した「防御成功」。失敗ではないため permission_denied より前段で捕捉し、
   // クラスターとして可視化しつつ失敗集計から分離できるようにする（secret-leak-guard / commit-test-guard / git-commit-gate /
@@ -11,12 +14,21 @@ const RULES = [
   ['unavailable', /temporarily unavailable|cannot determine the safety|auto mode cannot|service unavailable|overloaded/i],
   ['permission_denied', /permission denied|permission for this action was denied|denied by the .*classifier|was blocked|\bblocked:|may only (?:list|access|read|write)|not permitted|user (?:denied|declined|rejected)|requires approval|operation not permitted/i],
   ['file_not_read', /file has not been read yet|read it first|must read the file|has not been read/i],
-  ['edit_no_match', /string not found|string to replace (?:was )?not found|not find the string|old_string.*not|no match|to replace was not found|found \d+ matches/i],
-  ['not_found', /\bENOENT\b|no such file or directory|file does not exist|command not found|not found:/i],
-  ['timeout', /timed out|timeout|etimedout|deadline exceeded/i],
+  ['edit_no_match', /string not found|string to replace (?:was )?not found|not find the string|old_string.*not|no match|to replace was not found|found \d+ matches/i, /^(Edit|Write|NotebookEdit|MultiEdit)$/],
+  ['not_found', /\bENOENT\b|no such file or directory|file does not exist|command not found|not found:|no matches found/i],
+  // timeout は Bash ではハーネスの kill 文言に限定する（Playwright の locator.waitFor / TLS handshake timeout /
+  // commit message 内の "timeout" 文字列等の部分一致誤爆が実測 9/41=22% あったため。非 Bash は従来どおり）。
+  ['timeout', /command timed out after|exit code 143/i, /^Bash$/],
+  ['timeout', /timed out|timeout|etimedout|deadline exceeded/i, /^(?!Bash$)/],
   ['test_failure', /test(?:s)? failed|assertion(?:error)?|\b\d+ failed\b|expect(?:ed)?.*received|✗|FAIL /i],
   ['type_error', /\bTS\d{3,}\b|type error|typeerror|is not assignable|cannot find name|has no exported member/i],
   ['mcp_error', /mcp error|-32\d{3}|input validation error|tool ran without|mcp__/i],
+  // script_error: インライン script（python -c / node -e / heredoc / zsh 展開）の構文・実行時エラー。
+  // command_failed の雑多バケットから「行動で直せる失敗」（クォート崩れ・データ形状の思い込み）を分離する。
+  // 2026-07-27: 素の traceback 一致は Swift コンパイル / prisma / PostgREST 由来の非 script 失敗を
+  //   18% 取り込んでいた（実測）。インライン実行の痕跡（<string>/<stdin>/(eval)/-c/-e/heredoc）か、
+  //   インライン script 固有の構文エラー語との組合せに限定する。
+  ['script_error', /(?:traceback \(most recent call last\)[\s\S]{0,400}?(?:file "<(?:string|stdin)>"|line \d+, in <module>))|(?:^|[^\w])(?:\(eval\)|\[eval\]):\d+|bad substitution|invalid or unexpected token|json\.decoder|unexpected end of (?:file|input)|unexpected eof/i, /^Bash$/],
   ['command_failed', /exit code [1-9]|non-zero exit|command failed|returned error|\bstderr\b/i],
 ];
 
@@ -32,10 +44,29 @@ function classifyToolResult(toolName, text, isError) {
     if (/no changes to make|old_string and new_string are exactly the same/i.test(t)) return 'no_op';
     if (/has been modified since (?:you )?read|modified since read|read it again before attempt/i.test(t)) return 'stale_read';
   }
-  for (const [label, re] of RULES) {
-    if (re.test(t)) return label;
+  for (const [label, re, toolGate] of RULES) {
+    if (toolGate && !toolGate.test(String(toolName || ''))) continue;
+    if (re.test(t)) return demoteProbe(label, toolName, t);
   }
   return 'other';
+}
+
+// command_failed(Bash) の後処理: 診断プローブの「期待どおりの非ゼロ」を probe_nonzero に分離する。
+// 実測（2026-07-26・14日窓）: 失敗 Bash の61.3%がプローブ形（===/--- バナー・末尾 grep/wc/test/diff）で、
+// `;` 連鎖の終了コードを最終段の「問い」（空振り=1）が決めて is_error 化していた。件数≠ミス数。
+// ヒューリスティック: エラーらしいトークンが無く、(a) 実質的な出力がある（プローブは成果を出している）か
+// (b) 出力ゼロの bare exit（bare grep 空振りの典型）なら probe_nonzero。誤爆코스트は低い（良性クラスとして
+// hero/優先度から外れるだけで、詳細表には残る）。
+// 2026-07-27 精度検収（実データ156件の目視サンプル）で12%の誤分類が判明したため語彙を拡張:
+// daemon 不達（"not running" / "closed the connection"）・クォート崩れ（"unmatched"）・
+// テスト結果の混入（"Test Suites:"）は良性ではなく本物の失敗。
+const ERRORISH = /error|fatal|denied|refused|conflict|abort|exception|traceback|failed|ignored by|did not match|cannot|unable|missing|invalid|unmatched|not running|closed the connection|test suites:|parse error|no such/i;
+function demoteProbe(label, toolName, t) {
+  if (label !== 'command_failed' || !/^Bash$/.test(String(toolName || ''))) return label;
+  if (ERRORISH.test(t)) return label;
+  const body = String(t).replace(/exit code \d+/gi, '').trim();
+  if (body.length === 0 || body.length > 40) return 'probe_nonzero';
+  return label;
 }
 
 // リトライ検出: 同一ツール×同一ターゲットの連続失敗を数える。
@@ -109,13 +140,27 @@ const HALLUC_MARKERS = [
 ];
 const HALLUC_HP = new Set(['result_name_combo', 'tool_use_id_leak']);
 
+// プロトコル構文を「仕様上」含むツール結果の出所か（2026-07-27 追加）。
+// 実測: 作話疑い9件中6件が (a) TaskOutput（サブエージェント transcript をそのまま返す）と
+// (b) transcript/ログファイルの Read で、いずれも tool_use_id を含むのが正常動作＝誤検知だった。
+// これらを除外しないと「作話疑い」KPI が観測行為そのものに反応して膨らむ（自己言及ノイズ）。
+const PROTOCOL_BEARING_TOOLS = /^(TaskOutput|TaskGet|TaskList)$/;
+const TRANSCRIPT_TARGET = /\.jsonl$|[/\\](?:projects|logs|tasks|transcripts?)[/\\]|transcript|guard-activity|harness-analytics/i;
+function isProtocolBearingSource(toolName, target) {
+  if (PROTOCOL_BEARING_TOOLS.test(String(toolName || ''))) return true;
+  return TRANSCRIPT_TARGET.test(String(target || ''));
+}
+
 // text から作話痕跡マーカーを検出。{ suspected, markers } を返す（markers はマッチした kind の配列）。
 // suspected は高精度マーカーが1つ以上あるときのみ true（低精度は誤検知源のため単独では立てない）。
-function detectHallucinationMarkers(text) {
+// opts.toolName / opts.target を渡すと、プロトコル構文を仕様上含む出所（TaskOutput・transcript の
+// Read/Bash）を suspected から除外する（markers は診断用に残す）。
+function detectHallucinationMarkers(text, opts = {}) {
   const t = String(text || '');
   const markers = [];
   for (const [kind, re] of HALLUC_MARKERS) if (re.test(t)) markers.push(kind);
-  const suspected = markers.some((m) => HALLUC_HP.has(m));
+  let suspected = markers.some((m) => HALLUC_HP.has(m));
+  if (suspected && isProtocolBearingSource(opts.toolName, opts.target)) suspected = false;
   return { suspected, markers };
 }
 

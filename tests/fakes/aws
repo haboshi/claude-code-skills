@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# fake aws — sts get-caller-identity だけを模擬する
+# FAKE_AWS_ACCOUNT / FAKE_AWS_ARN で応答を制御。FAKE_AWS_FAIL=1 で失敗させる。
+if [ "${FAKE_AWS_FAIL:-0}" = "1" ]; then
+  echo "fake aws: credential error" >&2
+  exit 255
+fi
+if [ "${1:-}" = "sts" ] && [ "${2:-}" = "get-caller-identity" ]; then
+  printf '{"UserId":"AROAEXAMPLE:session","Account":"%s","Arn":"%s"}\n' \
+    "${FAKE_AWS_ACCOUNT:-000000000000}" \
+    "${FAKE_AWS_ARN:-arn:aws:sts::000000000000:assumed-role/ExampleAgentReadOnly/session}"
+  exit 0
+fi
+echo "fake aws: unsupported command: $*" >&2
+exit 64

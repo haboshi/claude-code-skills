@@ -139,6 +139,32 @@ FS_AFTER=$(find "$WORK" -mindepth 1 | sort)
 [ "$FS_BEFORE" = "$FS_AFTER" ] && ok "runtime/ の外にファイルが作られない" \
   || bad "runtime/ の外にファイルが作られない" "ファイルシステムに差分あり"
 
+# --- Task 3: STS 照合 ---
+chmod +x "$TESTS_DIR/fakes/aws" 2>/dev/null
+export PATH="$TESTS_DIR/fakes:$PATH"
+
+verify() { bash "$PLUG/scripts/verify-identity.sh" "$AWS_HARNESS_HOME/contracts/$CID" >/dev/null 2>&1; echo $?; }
+
+OKARN="arn:aws:sts::$ACCT:assumed-role/ExampleAgentReadOnly/session"
+[ "$(FAKE_AWS_ACCOUNT="$ACCT" FAKE_AWS_ARN="$OKARN" verify)" = "0" ] \
+  && ok "Account と ARN が一致すれば通過" || bad "Account と ARN が一致すれば通過" "rc != 0"
+
+[ "$(FAKE_AWS_ACCOUNT=000000000001 FAKE_AWS_ARN="arn:aws:sts::000000000001:assumed-role/ExampleAgentReadOnly/session" verify)" = "3" ] \
+  && ok "Account 不一致は拒否" || bad "Account 不一致は拒否" "rc != 3"
+
+[ "$(FAKE_AWS_ACCOUNT=$ACCT FAKE_AWS_ARN="arn:aws:sts::$ACCT:assumed-role/SomeOtherRole/session" verify)" = "3" ] \
+  && ok "ARN 不一致は拒否" || bad "ARN 不一致は拒否" "rc != 3"
+
+[ "$(FAKE_AWS_FAIL=1 verify)" = "3" ] && ok "credential 取得失敗は拒否" \
+  || bad "credential 取得失敗は拒否" "rc != 3"
+
+# Account ID が生のまま出ないこと
+ERRTXT=$(FAKE_AWS_ACCOUNT=000000000001 bash "$PLUG/scripts/verify-identity.sh" \
+  "$AWS_HARNESS_HOME/contracts/$CID" 2>&1 >/dev/null)
+echo "$ERRTXT" | grep -q "000000000001" \
+  && bad "エラー出力に Account ID を出さない" "生の ID が出力された" \
+  || ok "エラー出力に Account ID を出さない"
+
 echo "----"
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

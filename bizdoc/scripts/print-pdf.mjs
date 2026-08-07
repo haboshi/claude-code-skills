@@ -16,6 +16,14 @@ import { setTimeout as delay } from 'node:timers/promises';
 
 const CHROME = process.env.BIZDOC_CHROME || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 
+// A4 の紙面余白（mm）。ここが唯一の正で、@page への注入と CDP の margin* の
+// 両方をこの値から導出する。片方だけ変えると Chrome 側で不整合になる。
+// 下だけ広いのは、フッター（タイトル｜ページ番号）を下余白の中に描くため。
+const MARGIN_TOP_MM = 15;
+const MARGIN_SIDE_MM = 15;
+const MARGIN_BOTTOM_MM = 19;
+const MM_PER_INCH = 25.4;
+
 function die(msg) {
   console.error(msg);
   process.exit(1);
@@ -120,17 +128,19 @@ try {
   await Promise.race([loaded, delay(10000)]);
   await delay(300); // フォント・レイアウトの安定待ち
 
-  // tokens.css の @page margin は紙面レイアウト用。CDP 側の margin（フッター領域）と
-  // 二重になるため、印刷時のみ @page margin を 0 に上書きする（余白は CDP 側で与える）
+  // Chrome の printToPDF は、文書が @page margin を明示していると CDP の margin*
+  // パラメータを無視して CSS 側を優先する。かつて「二重になるのを避ける」目的で
+  // @page{margin:0} を注入していたが、それが勝って余白が完全に消えていた（実測 0mm）。
+  // 正しくは CDP と同じ値を @page に注入し、両者を一致させる。
   await cdp.send('Runtime.evaluate', {
     expression:
       "(() => { const s = document.createElement('style');" +
-      " s.textContent = '@media print{@page{margin:0}}';" +
+      ` s.textContent = '@media print{@page{margin:${MARGIN_TOP_MM}mm ${MARGIN_SIDE_MM}mm ${MARGIN_BOTTOM_MM}mm}}';` +
       " document.head.appendChild(s); })()",
   }, sessionId);
 
   const footerTemplate =
-    `<div style="width:100%;font-size:8px;color:#9ca3af;padding:0 12mm;display:flex;` +
+    `<div style="width:100%;font-size:8px;color:#9ca3af;padding:0 ${MARGIN_SIDE_MM}mm;display:flex;` +
     `justify-content:space-between;font-family:'Hiragino Sans','Hiragino Kaku Gothic ProN',sans-serif;">` +
     `<span>${escapeHtml(title)}</span>` +
     `<span><span class="pageNumber"></span> / <span class="totalPages"></span></span></div>`;
@@ -142,12 +152,10 @@ try {
     preferCSSPageSize: false,
     paperWidth: 8.27,   // A4
     paperHeight: 11.69,
-    // 紙の余白。左右はビジネス文書として端に寄りすぎないよう 15mm を確保する
-    // （tokens.css の @media print が本文側にさらに 6mm の内側余白を足す）。
-    marginTop: 0.59,    // ≈15mm
-    marginBottom: 0.75, // ≈19mm（フッター領域を含む）
-    marginLeft: 0.59,
-    marginRight: 0.59,
+    marginTop: MARGIN_TOP_MM / MM_PER_INCH,
+    marginBottom: MARGIN_BOTTOM_MM / MM_PER_INCH, // フッター領域を含む
+    marginLeft: MARGIN_SIDE_MM / MM_PER_INCH,
+    marginRight: MARGIN_SIDE_MM / MM_PER_INCH,
     displayHeaderFooter: true,
     headerTemplate: '<span></span>',
     footerTemplate,

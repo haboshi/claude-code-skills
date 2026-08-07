@@ -289,3 +289,13 @@ PDF は一時配布物なので manifest に記録しない（`hub.mjs add` を�
 - **SVG は必ずインライン** — `<img src="pattern.svg">` にすると `var(--accent)` 等の CSS 変数が解決できず無色・黒塗りになる
 - **project.json の accent は既存値があれば上書きしない** — 同一プロジェクトの文書間でアクセントがぶれるのを防ぐ
 - **codex-imagegen の marker 検証を省略しない** — 省略すると偽装・流用画像をそのまま納品してしまう
+- **PDF の紙面余白は目視でなく実測で確かめる** — Chrome の `Page.printToPDF` は、文書が `@page` の margin を明示していると CDP の `margin*` パラメータを**無視して CSS 側を優先する**。かつて print-pdf.mjs は「二重適用を避ける」つもりで `@media print{@page{margin:0}}` を注入しており、それが勝って余白が完全に消えていた（2026-08-07 実測で左右 0.0mm）。現在は同スクリプトの `MARGIN_*_MM` を唯一の正とし、`@page` への注入と CDP の両方をそこから導出している。余白を変えるときは必ずこの定数を触り、書き出し後に実測する:
+  ```bash
+  python3 -c "
+  import fitz; d=fitz.open('<out.pdf>'); mm=25.4/72; p=d[0]; r=p.rect
+  bb=None
+  for g in p.get_drawings(): bb = g['rect'] if bb is None else bb | g['rect']
+  print(f'L{bb.x0*mm:.1f} R{(r.width-bb.x1)*mm:.1f} T{bb.y0*mm:.1f} B{(r.height-bb.y1)*mm:.1f} mm')"
+  ```
+  ページ画像の目視ではこの種の欠落を見落とす（本文が紙面いっぱいでも「そういうデザイン」に見えてしまう）
+- **スキルを直したら `version` を上げる** — プラグインキャッシュ（`~/.claude/plugins/cache/`）は version が変わらないと再取得されない。配布元リポジトリだけ直してもセッションには反映されず、「直したつもりで直っていない」状態になる（上記の余白バグは、値だけ 15mm に修正済みなのにキャッシュが 13mm のまま、かつ根本原因も残っていた実例）

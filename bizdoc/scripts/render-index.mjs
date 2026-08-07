@@ -88,7 +88,7 @@ export function renderIndex({ projects, groups }) {
     <div class="search"><input type="search" placeholder="タイトル・タグ・種別・プロジェクトで探す" aria-label="ドキュメントを探す（空白区切りで絞り込み）" autocomplete="off" spellcheck="false"><kbd>/</kbd></div>
   </header>
   <div class="facets-row">
-    <div class="facets" aria-label="種別とタグの絞り込み"></div>
+    <div class="facets" role="group" aria-label="種別とタグの絞り込み"></div>
     <div class="facet-actions">
       <button type="button" class="clearbtn" hidden>絞り込みを解除</button>
       <button type="button" class="sortbtn">更新日順 ⇄ タイトル順</button>

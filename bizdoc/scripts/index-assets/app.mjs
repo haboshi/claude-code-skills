@@ -144,7 +144,8 @@ export const APP_JS = `
     var a = new Date(t); a.setHours(0, 0, 0, 0);
     var b = new Date(); b.setHours(0, 0, 0, 0);
     var days = Math.round((b - a) / 86400000);
-    if (days <= 0) return '今日';
+    if (days < 0) return '未来の日付';
+    if (days === 0) return '今日';
     if (days === 1) return '昨日';
     if (days < 30) return days + '日前';
     var mo = Math.floor(days / 30);
@@ -684,8 +685,20 @@ export const APP_JS = `
   var brand = document.querySelector('.brand');
   brand.setAttribute('aria-controls', 'scopes');
   var syncBrand = function () {
-    brand.setAttribute('aria-expanded', narrowMq.matches ? String(!sideEl.classList.contains('collapsed')) : 'true');
+    var narrow = narrowMq.matches;
+    // 広い画面では常時表示なので開閉ボタンとして振る舞わせない
+    brand.disabled = !narrow;
+    if (narrow) brand.setAttribute('aria-expanded', String(!sideEl.classList.contains('collapsed')));
+    else brand.removeAttribute('aria-expanded');
   };
+  // 幅が変わったときに畳み状態を合わせ直す（開いたまま狭くすると一覧が覆われる）
+  var onWidthChange = function () {
+    if (narrowMq.matches) sideEl.classList.add('collapsed');
+    else sideEl.classList.remove('collapsed');
+    syncBrand();
+  };
+  if (narrowMq.addEventListener) narrowMq.addEventListener('change', onWidthChange);
+  else narrowMq.addListener(onWidthChange); // 古い Safari 向け
   syncBrand();
   brand.addEventListener('click', function () {
     if (!narrowMq.matches) return;

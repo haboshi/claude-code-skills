@@ -56,6 +56,7 @@ mark { background: transparent; color: inherit; font-weight: 700; box-shadow: in
   display: flex; flex-direction: column; min-height: 0;
 }
 .brand { display: block; width: 100%; text-align: left; padding: 1.15rem 1.1rem .85rem; border-bottom: 1px solid var(--line); cursor: default; }
+.brand:disabled { opacity: 1; } /* 広い画面では押せないだけで、見た目は変えない */
 .brand b { display: block; font-size: 15px; letter-spacing: .02em; }
 .brand span { display: block; margin-top: .1rem; font-size: 10.5px; letter-spacing: .16em; color: var(--ink-3); font-weight: 700; }
 .brand i { display: block; width: 2.2rem; height: 3px; background: var(--accent); border-radius: 2px; margin-top: .5rem; }
@@ -123,8 +124,10 @@ mark { background: transparent; color: inherit; font-weight: 700; box-shadow: in
 .facet-actions { flex: none; align-self: flex-start; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .3rem; }
 .sortbtn, .clearbtn { font-size: 11.5px; color: var(--ink-2); padding: .1rem .55rem; border: 1px solid var(--line); border-radius: 999px; white-space: nowrap; }
 .sortbtn:hover { border-color: var(--line-strong); background: var(--bg-soft); }
-.clearbtn { border-color: var(--danger); color: var(--danger); }
-.clearbtn:hover { background: var(--danger-soft); }
+/* 解除は破壊的な操作ではないので中立色。赤は破損の意味に取っておく */
+.clearbtn { border-color: var(--line-strong); color: var(--ink-2); }
+.clearbtn:hover { border-color: var(--accent); color: var(--accent-ink); background: var(--accent-soft); }
+.clearbtn::before { content: "×"; margin-right: .25rem; opacity: .7; }
 
 /* ── 右：ファセット ──────────────────────────────── */
 .facets-row { display: flex; align-items: flex-start; gap: .9rem; padding: 0 1.6rem .7rem; border-bottom: 1px solid var(--line); background: var(--bg); }
@@ -157,7 +160,7 @@ mark { background: transparent; color: inherit; font-weight: 700; box-shadow: in
 .chip[aria-pressed="true"] .n { color: var(--on-accent-2); }
 .chip.more { border-style: dashed; color: var(--ink-3); }
 .chip.rel { border-style: dashed; border-color: var(--accent); color: var(--accent-ink); background: var(--accent-soft); }
-.chip.clear { border-color: var(--danger); color: var(--danger); }
+.chip.clear { border-color: var(--line-strong); color: var(--ink-2); }
 .facet-sep { width: 1px; align-self: stretch; background: var(--line); margin: .1rem .45rem; }
 
 /* ── 右：一覧 ────────────────────────────────────── */
@@ -205,7 +208,9 @@ button.tag:hover { color: var(--accent-ink); text-decoration: underline; }
 .doc.broken { color: var(--danger); }
 .doc.broken .ttl, .doc.broken:hover .ttl, .doc.broken[data-cursor="1"] .ttl { color: var(--danger); }
 .doc.broken .kind { border-color: var(--danger); color: var(--danger); background: var(--danger-soft); }
-@media (max-width: 1200px) { .doc { grid-template-columns: 4.2rem minmax(0, 1fr); } .doc .tags { display: none; } }
+/* 1360px 未満はタグを畳む。1200〜1360px では列は入るがタグ1つあたりが狭すぎて
+   「提…」のように意味を失う（ellipsis グリフだけで 10px 食う） */
+@media (max-width: 1360px) { .doc { grid-template-columns: 4.2rem minmax(0, 1fr); } .doc .tags { display: none; } }
 .empty { padding: 3.5rem 0; text-align: center; color: var(--ink-3); }
 .empty b { display: block; font-size: 15px; color: var(--ink-2); margin-bottom: .3rem; }
 .empty button { margin-top: .8rem; border: 1px solid var(--line-strong); border-radius: 999px; padding: .25rem .9rem; font-size: 12px; color: var(--ink-2); }

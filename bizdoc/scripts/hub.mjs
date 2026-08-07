@@ -8,6 +8,19 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { projectIdFromPath, resolveMainWorktreeRoot, slugify } from './project-id.mjs';
+import { renderIndex } from './render-index.mjs';
+import {
+  applyOverrides,
+  createGroup,
+  deleteGroup,
+  loadOverrides,
+  pruneOrphans,
+  renameGroup,
+  resolveGroupKey,
+  saveOverrides,
+  setProjectOverride,
+  suggestGroups,
+} from './overrides.mjs';
 
 const HUB = process.env.DOC_HUB_DIR || path.join(os.homedir(), 'Documents', 'doc-hub');
 const PROJECTS = path.join(HUB, 'projects');
@@ -209,6 +222,7 @@ function collectIndex() {
       id: proj.id ?? dir,
       dir,
       label: proj.label ?? dir,
+      abs_path: proj.abs_path ?? null,
       accent: proj.accent ?? null,
       broken: !!proj.broken,
       docs,
@@ -218,85 +232,15 @@ function collectIndex() {
   return projects;
 }
 
-function escapeHtml(s) {
-  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-function renderIndex(data) {
-  const json = JSON.stringify(data).replace(/</g, '\\u003c');
-  const sections = data
-    .map((p) => {
-      const rows = p.docs
-        .map((d) => {
-          const date = d.dir.slice(0, 8).replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3');
-          const cls = d.broken ? ' class="broken"' : '';
-          const link = d.broken
-            ? escapeHtml(d.title)
-            : `<a href="projects/${encodeURIComponent(p.dir)}/docs/${encodeURIComponent(d.dir)}/index.html">${escapeHtml(d.title)}</a>`;
-          return `<tr${cls} data-search="${escapeHtml([d.title, d.type, ...(d.tags || [])].join(' ').toLowerCase())}"><td>${date}</td><td><span class="type">${escapeHtml(d.type)}</span></td><td>${link}</td><td>${escapeHtml((d.tags || []).join(', '))}</td></tr>`;
-        })
-        .join('\n');
-      return `<section id="p-${escapeHtml(p.id)}">
-<h2>${escapeHtml(p.label)}${p.broken ? ' <span class="broken-badge">project.json 破損</span>' : ''} <span class="count">${p.docs.length}件</span></h2>
-<table><thead><tr><th>日付</th><th>種別</th><th>タイトル</th><th>タグ</th></tr></thead><tbody>
-${rows}
-</tbody></table>
-</section>`;
-    })
-    .join('\n');
-
-  return `<!doctype html>
-<html lang="ja">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>doc-hub</title>
-<style>
-:root { --accent: #2563eb; --ink: #1f2937; --ink-2: #6b7280; --line: #e5e7eb; --bg: #ffffff; --bg-soft: #f8fafc; }
-* { box-sizing: border-box; }
-body { margin: 0; padding: 2rem 1.5rem 4rem; background: var(--bg); color: var(--ink);
-  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
-  max-width: 60rem; margin-inline: auto; line-height: 1.6; }
-h1 { font-size: 1.4rem; border-bottom: 3px solid var(--accent); padding-bottom: .5rem; }
-h2 { font-size: 1.05rem; margin: 2rem 0 .5rem; }
-.count { color: var(--ink-2); font-weight: normal; font-size: .85rem; }
-input[type="search"] { width: 100%; padding: .55rem .8rem; font-size: .95rem; border: 1px solid var(--line); border-radius: 8px; }
-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
-th { text-align: left; color: var(--ink-2); font-weight: 600; border-bottom: 2px solid var(--line); padding: .4rem .5rem; }
-td { border-bottom: 1px solid var(--line); padding: .45rem .5rem; }
-a { color: var(--accent); text-decoration: none; }
-a:hover { text-decoration: underline; }
-.type { background: var(--bg-soft); border: 1px solid var(--line); border-radius: 999px; padding: .05rem .55rem; font-size: .78rem; }
-.broken td, .broken-badge { color: #b91c1c; }
-.broken-badge { font-size: .75rem; border: 1px solid #fecaca; background: #fef2f2; border-radius: 999px; padding: .05rem .5rem; }
-.hidden { display: none; }
-</style>
-</head>
-<body>
-<h1>doc-hub</h1>
-<p><input type="search" id="q" placeholder="タイトル・種別・タグで絞り込み" autocomplete="off"></p>
-${sections}
-<script>
-const DATA = ${json};
-const q = document.getElementById('q');
-q.addEventListener('input', () => {
-  const needle = q.value.trim().toLowerCase();
-  document.querySelectorAll('tbody tr').forEach((tr) => {
-    tr.classList.toggle('hidden', needle !== '' && !tr.dataset.search.includes(needle));
-  });
-  document.querySelectorAll('section').forEach((sec) => {
-    sec.classList.toggle('hidden', needle !== '' && sec.querySelectorAll('tbody tr:not(.hidden)').length === 0);
-  });
-});
-</script>
-</body>
-</html>
-`;
+// index / list 用のデータ。collectIndex（SSOT 由来）に overrides を後段適用した結果を返す。
+function buildIndexData() {
+  const ov = loadOverrides(HUB, (msg) => console.warn(`warn: ${msg}`));
+  return applyOverrides(collectIndex(), ov);
 }
 
 function cmdReindex() {
   ensureHub();
-  const html = renderIndex(collectIndex());
+  const html = renderIndex(buildIndexData());
   const tmp = path.join(HUB, `.index-${process.pid}.tmp`);
   fs.writeFileSync(tmp, html);
   fs.renameSync(tmp, path.join(HUB, 'index.html')); // 原子書き込み（iCloud 同期・並行実行への防御）
@@ -304,7 +248,8 @@ function cmdReindex() {
 
 function cmdList(opts) {
   ensureHub();
-  let data = collectIndex();
+  const { projects, groups } = buildIndexData();
+  let data = projects;
   if (opts.project) {
     const p = findProject(opts.project);
     data = p ? data.filter((x) => x.id === p.id) : [];
@@ -314,16 +259,136 @@ function cmdList(opts) {
     return;
   }
   for (const p of data) {
-    console.log(`${p.label} (${p.id}) — ${p.docs.length}件`);
+    const g = groups.find((x) => x.key === p.group);
+    const marks = [g ? `${g.label}/` : '', p.hidden ? '[非表示] ' : ''].join('');
+    console.log(`${marks}${p.label} (${p.id}) — ${p.docs.length}件`);
     for (const d of p.docs) console.log(`  ${d.dir}  [${d.type}] ${d.title}`);
   }
+}
+
+// ref（project id または パス）を登録済みプロジェクトへ解決する。未登録なら中止する（発番しない）。
+function requireProject(ref) {
+  const p = findProject(ref);
+  if (!p) die(`プロジェクトが見つかりません: ${ref}\n登録済みの id かパスを指定してください（一覧: hub.mjs list）`);
+  return p;
+}
+
+// overrides を更新して保存し、index を貼り直す。存在しないプロジェクトのエントリはここで掃除する。
+function updateOverrides(fn) {
+  ensureHub();
+  const ov = loadOverrides(HUB, (msg) => console.warn(`warn: ${msg}`));
+  const next = pruneOrphans(fn(ov), loadProjects().map((p) => p.id));
+  saveOverrides(HUB, next);
+  cmdReindex();
+  return next;
+}
+
+function requireGroupKey(ov, ref) {
+  const key = resolveGroupKey(ov, ref);
+  if (!key) die(`グループが見つかりません: ${ref}（一覧: hub.mjs group list）`);
+  return key;
+}
+
+function cmdGroup(sub, rest, opts) {
+  ensureHub();
+  if (sub === 'list') {
+    const { projects, groups } = buildIndexData();
+    if (opts.json) {
+      console.log(JSON.stringify({ groups, projects: projects.map((p) => ({ id: p.id, label: p.label, group: p.group, hidden: p.hidden })) }, null, 2));
+      return;
+    }
+    for (const g of [...groups, { key: null, label: '(未分類)' }]) {
+      const members = projects.filter((p) => p.group === g.key);
+      console.log(`${g.label}${g.key ? ` (${g.key})` : ''} — ${members.length}プロジェクト`);
+      for (const m of members) console.log(`  ${m.hidden ? '[非表示] ' : ''}${m.label} (${m.id}) — ${m.docs.length}件`);
+    }
+    return;
+  }
+  if (sub === 'add') {
+    const label = rest[0];
+    const refs = rest.slice(1);
+    if (!label || refs.length === 0) die('使い方: hub.mjs group add <ラベル> <project...>');
+    const targets = refs.map(requireProject);
+    updateOverrides((ov) => {
+      let next = ov;
+      let key = resolveGroupKey(ov, label);
+      if (!key) ({ key, next } = createGroup(ov, label));
+      for (const t of targets) next = setProjectOverride(next, t.id, { group: key });
+      return next;
+    });
+    console.log(`${label} に ${targets.length}件を割り当てました: ${targets.map((t) => t.label).join(', ')}`);
+    return;
+  }
+  if (sub === 'remove') {
+    if (rest.length === 0) die('使い方: hub.mjs group remove <project...>');
+    const targets = rest.map(requireProject);
+    updateOverrides((ov) => targets.reduce((acc, t) => setProjectOverride(acc, t.id, { group: null }), ov));
+    console.log(`グループ割当を解除しました: ${targets.map((t) => t.label).join(', ')}`);
+    return;
+  }
+  if (sub === 'rename') {
+    const [ref, label] = rest;
+    if (!ref || !label) die('使い方: hub.mjs group rename <グループ> <新しいラベル>');
+    updateOverrides((ov) => renameGroup(ov, requireGroupKey(ov, ref), label));
+    console.log(`グループ名を ${label} に変更しました`);
+    return;
+  }
+  if (sub === 'delete') {
+    const ref = rest[0];
+    if (!ref) die('使い方: hub.mjs group delete <グループ>');
+    updateOverrides((ov) => deleteGroup(ov, requireGroupKey(ov, ref)));
+    console.log(`グループを削除しました（所属プロジェクトは未分類に戻ります）: ${ref}`);
+    return;
+  }
+  if (sub === 'suggest') {
+    const { projects } = buildIndexData();
+    const suggestions = suggestGroups(projects);
+    if (suggestions.length === 0) {
+      console.log('パス階層からのグループ候補はありません。');
+      return;
+    }
+    console.log('パス階層からのグループ候補（自動適用はしません。下のコマンドで反映）:');
+    for (const s of suggestions) {
+      console.log(`\n  ${s.label} — ${s.members.length}プロジェクト`);
+      for (const m of s.members) console.log(`    ${m.label} (${m.id})`);
+      console.log(`    → hub.mjs group add "${s.label}" ${s.members.map((m) => m.id).join(' ')}`);
+    }
+    return;
+  }
+  die(`不明なサブコマンド: group ${sub ?? '(なし)'}（list|add|remove|rename|delete|suggest）`);
+}
+
+function cmdProject(sub, rest) {
+  ensureHub();
+  if (sub === 'label') {
+    const [ref, ...labelParts] = rest;
+    if (!ref) die('使い方: hub.mjs project label <project> <表示名>（表示名を省略すると上書きを解除）');
+    const target = requireProject(ref);
+    const label = labelParts.join(' ');
+    updateOverrides((ov) => setProjectOverride(ov, target.id, { label: label || null }));
+    console.log(label ? `表示名を「${label}」にしました` : `表示名の上書きを解除しました（${target.label}）`);
+    return;
+  }
+  if (sub === 'hide' || sub === 'show') {
+    if (rest.length === 0) die(`使い方: hub.mjs project ${sub} <project...>`);
+    const targets = rest.map(requireProject);
+    const hidden = sub === 'hide' ? true : null;
+    updateOverrides((ov) => targets.reduce((acc, t) => setProjectOverride(acc, t.id, { hidden }), ov));
+    console.log(`${sub === 'hide' ? '一覧から隠しました' : '一覧に戻しました'}: ${targets.map((t) => t.label).join(', ')}`);
+    return;
+  }
+  die(`不明なサブコマンド: project ${sub ?? '(なし)'}（label|hide|show）`);
 }
 
 function cmdOpen(opts) {
   ensureHub();
   if (!fs.existsSync(path.join(HUB, 'index.html'))) cmdReindex();
   let url = 'file://' + path.join(HUB, 'index.html');
-  if (opts.project) {
+  if (opts.group) {
+    const key = resolveGroupKey(loadOverrides(HUB), opts.group);
+    if (key) url += `#g-${key}`;
+    else console.warn(`warn: グループが見つかりません: ${opts.group}（全体を開きます）`);
+  } else if (opts.project) {
     const p = findProject(opts.project);
     if (p) url += `#p-${p.id}`;
   }
@@ -347,4 +412,6 @@ if (cmd === 'add') cmdAdd(args._[1], args);
 else if (cmd === 'reindex') cmdReindex();
 else if (cmd === 'list') cmdList(args);
 else if (cmd === 'open') cmdOpen(args);
-else die(`使い方: hub.mjs <add|list|reindex|open> ...（不明なコマンド: ${cmd ?? '(なし)'}）`);
+else if (cmd === 'group') cmdGroup(args._[1], args._.slice(2), args);
+else if (cmd === 'project') cmdProject(args._[1], args._.slice(2));
+else die(`使い方: hub.mjs <add|list|reindex|open|group|project> ...（不明なコマンド: ${cmd ?? '(なし)'}）`);

@@ -522,6 +522,24 @@ OKARN="arn:aws:sts::$ACCT:assumed-role/ExampleAgentReadOnly/session"
 [ "$(FAKE_AWS_FAIL=1 verify)" = "3" ] && ok "credential 取得失敗は拒否" \
   || bad "credential 取得失敗は拒否" "rc != 3"
 
+# ARN 境界: 末尾 / を欠く契約は拒否し、接頭辞を共有する別ロールも通さない
+BADC="$AWS_HARNESS_HOME/contracts/cccccccc-dddd-eeee-ffff-000011112222"
+mkdir -p "$BADC"
+jq -n --arg acct "$ACCT" \
+  '{schema:1, aws:{account_id:$acct, region:"ap-northeast-1",
+    credential:{provider:"aws-vault", profile:"example-agent"},
+    expected_principal:{arn_prefix:("arn:aws:sts::"+$acct+":assumed-role/ExampleAgentReadOnly")}},
+    authority:{mode:"read-only"}}' > "$BADC/contract.json"
+printf '[profile example-agent]\n' > "$BADC/aws-config"
+RC=$(FAKE_AWS_ACCOUNT="$ACCT" FAKE_AWS_ARN="$OKARN" \
+  bash "$PLUG/scripts/verify-identity.sh" "$BADC" >/dev/null 2>&1; echo $?)
+[ "$RC" = "3" ] && ok "arn_prefix が / で終わらない契約は拒否" \
+  || bad "arn_prefix が / で終わらない契約は拒否" "rc=$RC"
+
+SIBLING="arn:aws:sts::$ACCT:assumed-role/ExampleAgentReadOnlyAdmin/session"
+[ "$(FAKE_AWS_ACCOUNT="$ACCT" FAKE_AWS_ARN="$SIBLING" verify)" = "3" ] \
+  && ok "接頭辞を共有する別ロールは拒否" || bad "接頭辞を共有する別ロールは拒否" "rc != 3"
+
 # Account ID が生のまま出ないこと
 ERRTXT=$(FAKE_AWS_ACCOUNT=000000000001 bash "$PLUG/scripts/verify-identity.sh" \
   "$AWS_HARNESS_HOME/contracts/$CID" 2>&1 >/dev/null)
@@ -557,13 +575,20 @@ command -v aws >/dev/null 2>&1 || { harness_err "aws CLI が必要です"; exit 
 want_acct=$(jq -r '.aws.account_id' "$cdir/contract.json")
 want_arn=$(jq -r '.aws.expected_principal.arn_prefix' "$cdir/contract.json")
 
+# arn_prefix は必ずロール名の直後の / まで含める。末尾 / を欠くと
+# 接頭辞を共有する別ロール（ExampleAgentReadOnlyAdmin 等）を通してしまう
+case "$want_arn" in
+  */) : ;;
+  *) harness_err "契約の arn_prefix は / で終わる必要があります"; exit 3 ;;
+esac
+
 ident=$(aws sts get-caller-identity --output json 2>/dev/null) || {
   harness_err "AWS の認証情報を取得できません（再認証が必要です）"
   exit 3
 }
 
-got_acct=$(printf '%s' "$ident" | jq -r '.Account // empty')
-got_arn=$(printf '%s' "$ident" | jq -r '.Arn // empty')
+got_acct=$(printf '%s' "$ident" | jq -r '.Account // empty' 2>/dev/null)
+got_arn=$(printf '%s' "$ident" | jq -r '.Arn // empty' 2>/dev/null)
 
 if [ -z "$got_acct" ] || [ -z "$got_arn" ]; then
   harness_err "STS の応答を解析できません"

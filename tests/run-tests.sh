@@ -188,6 +188,70 @@ SHAREDARN="arn:aws:sts::$ACCT:assumed-role/ExampleAgentReadOnlyAdmin/session"
   && ok "接頭辞を共有する別ロールは拒否される" \
   || bad "接頭辞を共有する別ロールは拒否される" "rc != 3"
 
+# --- Task 4: 合流点 shim ---
+chmod +x "$TESTS_DIR/fakes/aws-vault" "$TESTS_DIR/fakes/claude" 2>/dev/null
+export AWS_HARNESS_REAL_CLI="$TESTS_DIR/fakes/claude"
+
+launch() { # $1: repo, 残り: 引数
+  r="$1"; shift
+  ( cd "$r" && FAKE_CLI_ENV_OUT="$WORK/env.json" \
+      bash "$PLUG/scripts/harness-launch.sh" "$@" >/dev/null 2>&1; echo $? )
+}
+envget() { jq -r ".$1 // empty" "$WORK/env.json" 2>/dev/null; }
+
+R=$(make_repo repo-launch-none "")
+[ "$(launch "$R" --flag)" = "0" ] && ok "マーカーなしは素通しで起動する" \
+  || bad "マーカーなしは素通しで起動する" "rc != 0"
+[ "$(envget contract_id)" = "" ] && ok "素通し時は契約 ID を立てない" \
+  || bad "素通し時は契約 ID を立てない" "id=$(envget contract_id)"
+[ "$(envget args)" = "--flag" ] && ok "素通し時も引数を実 CLI へ渡す" \
+  || bad "素通し時も引数を実 CLI へ渡す" "args=$(envget args)"
+
+R=$(make_repo repo-launch-ok "contract_id: $CID
+required: true
+")
+RC=$(cd "$R" && FAKE_CLI_ENV_OUT="$WORK/env.json" \
+  FAKE_AWS_ACCOUNT="$ACCT" \
+  FAKE_AWS_ARN="arn:aws:sts::$ACCT:assumed-role/ExampleAgentReadOnly/session" \
+  AWS_PROFILE=leaked AWS_ENDPOINT_URL=http://evil.example \
+  bash "$PLUG/scripts/harness-launch.sh" >/dev/null 2>&1; echo $?)
+[ "$RC" = "0" ] && ok "契約ありは検証を通って起動する" || bad "契約ありは検証を通って起動する" "rc=$RC"
+[ "$(envget contract_id)" = "$CID" ] && ok "契約セッションは契約 ID を立てる" \
+  || bad "契約セッションは契約 ID を立てる" "id=$(envget contract_id)"
+[ "$(envget profile)" = "" ] && ok "AWS_PROFILE が消毒される" \
+  || bad "AWS_PROFILE が消毒される" "profile=$(envget profile)"
+[ "$(envget endpoint)" = "" ] && ok "AWS_ENDPOINT_URL が消毒される" \
+  || bad "AWS_ENDPOINT_URL が消毒される" "endpoint=$(envget endpoint)"
+case "$(envget config_file)" in
+  *"/runtime/$CID/config") ok "AWS_CONFIG_FILE がスコープ config を指す" ;;
+  *) bad "AWS_CONFIG_FILE がスコープ config を指す" "got=$(envget config_file)" ;;
+esac
+[ "$(envget vault_profile)" = "example-agent" ] && ok "契約の profile で credential を取る" \
+  || bad "契約の profile で credential を取る" "p=$(envget vault_profile)"
+
+R=$(make_repo repo-launch-deny "contract_id: 11111111-2222-3333-4444-555555555555
+required: true
+")
+[ "$(launch "$R")" = "3" ] && ok "契約が壊れていれば起動を拒否する" \
+  || bad "契約が壊れていれば起動を拒否する" "rc != 3"
+
+R=$(make_repo repo-launch-mismatch "contract_id: $CID
+required: true
+")
+RC=$(cd "$R" && FAKE_AWS_ACCOUNT=000000000001 \
+  FAKE_AWS_ARN="arn:aws:sts::000000000001:assumed-role/ExampleAgentReadOnly/session" \
+  bash "$PLUG/scripts/harness-launch.sh" >/dev/null 2>&1; echo $?)
+[ "$RC" = "3" ] && ok "STS 不一致なら起動を拒否する" || bad "STS 不一致なら起動を拒否する" "rc=$RC"
+
+RC=$(cd "$R" && FAKE_VAULT_FAIL=1 bash "$PLUG/scripts/harness-launch.sh" >/dev/null 2>&1; echo $?)
+[ "$RC" = "3" ] && ok "credential 取得失敗なら起動を拒否する" \
+  || bad "credential 取得失敗なら起動を拒否する" "rc=$RC"
+
+RC=$(cd "$R" && FAKE_CLI_ENV_OUT="$WORK/env2.json" AWS_HARNESS_LAUNCHED=1 \
+  bash "$PLUG/scripts/harness-launch.sh" >/dev/null 2>&1; echo $?)
+[ "$RC" = "0" ] && ok "既に shim 経由なら再検証せず素通しする（再帰防止）" \
+  || bad "既に shim 経由なら再検証せず素通しする（再帰防止）" "rc=$RC"
+
 echo "----"
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

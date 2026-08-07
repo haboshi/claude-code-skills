@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# fake claude — 起動時の環境を JSON で書き出して終了する
+out="${FAKE_CLI_ENV_OUT:-/dev/stdout}"
+{
+  printf '{'
+  printf '"contract_id":"%s",' "${AWS_HARNESS_CONTRACT_ID:-}"
+  printf '"launched":"%s",' "${AWS_HARNESS_LAUNCHED:-}"
+  printf '"config_file":"%s",' "${AWS_CONFIG_FILE:-}"
+  printf '"creds_file":"%s",' "${AWS_SHARED_CREDENTIALS_FILE:-}"
+  printf '"profile":"%s",' "${AWS_PROFILE:-}"
+  printf '"endpoint":"%s",' "${AWS_ENDPOINT_URL:-}"
+  printf '"vault_profile":"%s",' "${FAKE_VAULT_PROFILE:-}"
+  printf '"args":"%s"' "$*"
+  printf '}\n'
+} > "$out"
+exit 0

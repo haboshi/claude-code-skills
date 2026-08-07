@@ -91,6 +91,43 @@ R=$(make_repo repo-nokey "required: true
 [ "$(resolve_rc "$R")" = "3" ] && ok "マーカーに契約IDがなければ拒否(exit 3)" \
   || bad "マーカーに契約IDがなければ拒否(exit 3)" "rc: $(resolve_rc "$R")"
 
+# --- Task 2: 環境消毒とスコープ config ---
+UNSETS=$(bash -c '. '"$PLUG"'/scripts/build-scoped-config.sh --list-unset')
+for v in AWS_PROFILE AWS_ACCESS_KEY_ID AWS_ENDPOINT_URL AWS_ENDPOINT_URL_STS \
+         AWS_CA_BUNDLE AWS_CONFIG_FILE AWS_SHARED_CREDENTIALS_FILE \
+         AWS_CONTAINER_CREDENTIALS_FULL_URI AWS_WEB_IDENTITY_TOKEN_FILE; do
+  echo "$UNSETS" | grep -qx "$v" && ok "消毒リストに $v が含まれる" \
+    || bad "消毒リストに $v が含まれる" "リストにない"
+done
+
+CDIR="$AWS_HARNESS_HOME/contracts/$CID"
+SCOPED=$(bash "$PLUG/scripts/build-scoped-config.sh" "$CDIR" "$CID")
+[ -f "$SCOPED" ] && ok "スコープ config が生成される" \
+  || bad "スコープ config が生成される" "not found: $SCOPED"
+
+diff -q "$SCOPED" "$CDIR/aws-config" >/dev/null 2>&1 \
+  && ok "契約の aws-config がそのまま配置される" \
+  || bad "契約の aws-config がそのまま配置される" "内容が一致しない"
+
+# 共有 credentials を参照させないための空ファイルが用意されること
+CREDF="$(dirname "$SCOPED")/credentials"
+[ -f "$CREDF" ] && [ ! -s "$CREDF" ] && ok "空の credentials プレースホルダが作られる" \
+  || bad "空の credentials プレースホルダが作られる" "not empty or missing"
+
+PERM=$(ls -l "$SCOPED" | cut -c2-10)
+[ "$PERM" = "rw-------" ] && ok "スコープ config の権限は 600" \
+  || bad "スコープ config の権限は 600" "perm=$PERM"
+
+# 消毒が実際に効くこと（SDK が契約以外の profile を名前解決できない）
+if command -v python3 >/dev/null 2>&1 && python3 -c "import boto3" >/dev/null 2>&1; then
+  SEEN=$(AWS_CONFIG_FILE="$SCOPED" AWS_SHARED_CREDENTIALS_FILE=/dev/null \
+    python3 -c "import boto3;print(','.join(sorted(boto3.Session().available_profiles)))" 2>/dev/null)
+  [ "$SEEN" = "example-agent" ] && ok "SDK から見える profile は契約の1つだけ" \
+    || bad "SDK から見える profile は契約の1つだけ" "seen=$SEEN"
+else
+  echo "SKIP: boto3 未導入のため SDK 可視性テストを省略"
+fi
+
 echo "----"
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

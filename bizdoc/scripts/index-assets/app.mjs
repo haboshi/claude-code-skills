@@ -303,7 +303,7 @@ export const APP_JS = `
   }
 
   // 軸ごとに 1 行。ラベル位置を縦に揃える（混ざると境界が読めない）
-  function facetLine(label, hint, items, limit, isOpen, openAll, active, onPick, prefix) {
+  function facetLine(label, hint, items, limit, isOpen, setOpen, active, onPick, prefix) {
     var line = el('div', 'facet-line');
     var lb = el('span', 'facet-label', label);
     lb.title = hint;
@@ -313,8 +313,11 @@ export const APP_JS = `
     shown.forEach(function (t) {
       box.appendChild(chip(t.v, t.n, active.indexOf(t.v) >= 0, function () { onPick(t.v); }, null, prefix + t.v));
     });
-    if (items.length > shown.length) {
-      box.appendChild(chip('他 ' + (items.length - shown.length), null, false, openAll, 'more', prefix + '__more'));
+    // 展開したら畳めること（片道にしない）。キーは開閉で同じにしてフォーカスを同じ位置に残す
+    if (items.length > limit) {
+      box.appendChild(isOpen
+        ? chip('閉じる', null, false, function () { setOpen(false); }, 'more', prefix + '__more')
+        : chip('他 ' + (items.length - limit), null, false, function () { setOpen(true); }, 'more', prefix + '__more'));
     }
     line.appendChild(box);
     return line;
@@ -331,12 +334,14 @@ export const APP_JS = `
     var forTags = base.filter(passFacets);
     if (!base.length && !narrowed()) return;
 
+    // 母数をほとんど削れない期間は選択肢として意味がない（全部が直近の hub では
+    // 「今週 73 / 今月 74」のように並ぶだけで邪魔になる）ので、実際に絞れるものだけ出す
     var periods = PERIODS.map(function (p) {
       return {
         v: p.label, days: p.days,
         n: forPeriod.filter(function (d) { return inPeriod(d, p.days); }).length,
       };
-    }).filter(function (p) { return p.n > 0 || state.period === p.days; });
+    }).filter(function (p) { return state.period === p.days || (p.n > 0 && p.n <= forPeriod.length * 0.8); });
     if (periods.length) {
       var pl = el('div', 'facet-line');
       var plb = el('span', 'facet-label', '期間');
@@ -356,7 +361,7 @@ export const APP_JS = `
     var types = withSelected(tally(forTypes, function (d) { return [d.type]; }), state.types);
     if (types.length) {
       facets.appendChild(facetLine('種別', '選んだ種別のいずれかに当てはまる文書', types, TYPE_LIMIT, state.typesOpen,
-        function () { state.typesOpen = true; renderFacets(); }, state.types,
+        function (v) { state.typesOpen = v; renderFacets(); }, state.types,
         function (v) {
           var i = state.types.indexOf(v);
           if (i >= 0) state.types.splice(i, 1); else state.types.push(v);
@@ -366,10 +371,10 @@ export const APP_JS = `
 
     var tags = withSelected(tally(forTags, function (d) { return d.tags; }), state.tags);
     if (tags.length) {
-      var line = facetLine('タグ', '選んだタグをすべて持つ文書', tags, TAG_LIMIT, state.tagsOpen,
-        function () { state.tagsOpen = true; renderFacets(); }, state.tags, toggleTag, 'tag:');
-      facets.appendChild(line);
+      facets.appendChild(facetLine('タグ', '選んだタグをすべて持つ文書', tags, TAG_LIMIT, state.tagsOpen,
+        function (v) { state.tagsOpen = v; renderFacets(); }, state.tags, toggleTag, 'tag:'));
     }
+    facets.classList.toggle('expanded', state.typesOpen || state.tagsOpen);
 
     if (narrowed()) {
       var last = el('div', 'facet-line');
@@ -388,16 +393,21 @@ export const APP_JS = `
     state.cursor = -1; renderAll();
   }
 
+  // 行は div。リンクはタイトルだけが持つ（行全体を <a> にすると、中のタグボタンが
+  // 対話要素の入れ子になり、フォーカス位置と「Enter で開く対象」もずれる）。
   function docRow(d, idx) {
-    var a = el('a', 'doc' + (d.broken ? ' broken' : ''));
-    if (!d.broken) a.href = d.href;
+    var a = el('div', 'doc' + (d.broken ? ' broken' : ''));
     a.dataset.i = idx;
     var when = el('div', 'when');
     when.appendChild(el('b', null, fmtDay(d.t)));
     when.appendChild(document.createTextNode(fmtAgo(d.t)));
     a.appendChild(when);
     var body = el('div', 'body');
-    var t = el('div', 'ttl');
+    var t = el(d.broken ? 'div' : 'a', 'ttl');
+    if (!d.broken) {
+      t.href = d.href;
+      a.addEventListener('click', function (ev) { if (!ev.defaultPrevented) t.click(); });
+    }
     t.title = d.title;
     highlight(t, d.title);
     body.appendChild(t);
@@ -466,24 +476,34 @@ export const APP_JS = `
     hint.appendChild(el('kbd', null, 'Enter'));
     hint.appendChild(document.createTextNode('。'));
     list.appendChild(hint);
-    applyCursor();
+    markCursor();
   }
 
   function rows() { return list.querySelectorAll('.doc'); }
-  function applyCursor() {
+  function markCursor() {
     var rs = rows();
     for (var i = 0; i < rs.length; i++) rs[i].removeAttribute('data-cursor');
-    if (state.cursor >= 0 && rs[state.cursor]) {
-      rs[state.cursor].setAttribute('data-cursor', '1');
-      rs[state.cursor].scrollIntoView({ block: 'nearest' });
-    }
+    if (state.cursor >= 0 && rs[state.cursor]) rs[state.cursor].setAttribute('data-cursor', '1');
   }
+  // 選択の実体は DOM フォーカス。カーソル表示はそれに追従させ、2 つの選択状態を持たない
   function moveCursor(delta) {
-    var n = rows().length;
-    if (!n) return;
-    state.cursor = state.cursor < 0 ? (delta > 0 ? 0 : n - 1) : Math.min(n - 1, Math.max(0, state.cursor + delta));
-    applyCursor();
+    var rs = rows();
+    if (!rs.length) return;
+    state.cursor = state.cursor < 0 ? (delta > 0 ? 0 : rs.length - 1)
+      : Math.min(rs.length - 1, Math.max(0, state.cursor + delta));
+    markCursor();
+    var row = rs[state.cursor];
+    var link = row.querySelector('.ttl[href]');
+    if (link) link.focus({ preventScroll: true });
+    row.scrollIntoView({ block: 'nearest' });
   }
+  // Tab で移動したときもカーソル表示を合わせる
+  list.addEventListener('focusin', function (ev) {
+    var rs = rows();
+    for (var i = 0; i < rs.length; i++) {
+      if (rs[i].contains(ev.target)) { state.cursor = i; markCursor(); return; }
+    }
+  });
 
   function renderAll() { renderSide(); renderHead(); renderFacets(); renderList(); }
 
@@ -529,10 +549,7 @@ export const APP_JS = `
     }
     if (ev.key === 'ArrowDown' || (ev.key === 'n' && ev.ctrlKey)) { ev.preventDefault(); moveCursor(1); return; }
     if (ev.key === 'ArrowUp' || (ev.key === 'p' && ev.ctrlKey)) { ev.preventDefault(); moveCursor(-1); return; }
-    if (ev.key === 'Enter' && state.cursor >= 0) {
-      var r = rows()[state.cursor];
-      if (r && r.href) { ev.preventDefault(); window.location.href = r.href; }
-    }
+    // Enter は握らない。カーソル行のタイトルにフォーカスが乗っているので、リンクの既定動作で開く
   });
 
   function fromHash() {

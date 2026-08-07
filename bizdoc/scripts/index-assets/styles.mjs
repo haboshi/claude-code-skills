@@ -108,8 +108,10 @@ mark { background: transparent; color: var(--accent-ink); font-weight: 700; box-
 
 /* ── 右：ファセット ──────────────────────────────── */
 .facets-row { display: flex; align-items: flex-start; gap: .9rem; padding: 0 1.6rem .7rem; border-bottom: 1px solid var(--line); background: var(--bg); }
-/* 「他 58」を開くとチップが大量に並ぶので、ここだけ独立してスクロールさせ一覧の面積を守る */
+/* 「他 58」を開くとチップが大量に並ぶので、ここだけ独立してスクロールさせ一覧の面積を守る。
+   閉じているときは 2〜3 行、開いたときは画面の 4 割までに伸ばす */
 .facets { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: .28rem; max-height: 7.5rem; overflow-y: auto; }
+.facets.expanded { max-height: 40vh; }
 /* ラベル列を固定し、チップが折り返してもラベルの右端で揃うようにする */
 .facet-line { display: grid; grid-template-columns: 2.6rem minmax(0, 1fr); align-items: start; gap: .3rem; }
 .facet-chips { display: flex; flex-wrap: wrap; gap: .28rem; }
@@ -142,8 +144,11 @@ mark { background: transparent; color: var(--accent-ink); font-weight: 700; box-
   padding: .42rem .7rem .46rem; border-radius: 9px; border: 1px solid transparent; align-items: center;
   border-bottom: 1px solid var(--line);
 }
+.doc { cursor: pointer; }
+.doc.broken { cursor: default; }
 .doc:hover { background: var(--bg-soft); border-color: var(--line); }
 .doc[data-cursor="1"] { background: var(--accent-soft); border-color: var(--accent); }
+.doc .ttl:focus-visible { outline-offset: 3px; }
 .doc .when { font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; line-height: 1.45; }
 .doc .when b { display: block; font-size: 12.5px; font-weight: 700; color: var(--ink-2); letter-spacing: -.01em; }
 .doc .body { min-width: 0; }

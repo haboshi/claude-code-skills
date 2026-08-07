@@ -223,8 +223,9 @@ export const APP_JS = `
 
     buckets.forEach(function (b) {
       var wrap = el('div', 'grp');
-      var open = !state.collapsed[b.key];
       var n = sum(b.members);
+      // 絞り込みの結果 1 件も残らないグループは自動で畳む（プロジェクトが増えても縦に伸びない）
+      var open = !state.collapsed[b.key] && !(dim && n === 0);
       // 見出し行は「開閉（caret）」と「グループ全体を絞り込む（ラベル）」の 2 つの操作に分かれる
       var h = el('div', 'grp-h');
       h.setAttribute('aria-expanded', open ? 'true' : 'false');
@@ -304,6 +305,28 @@ export const APP_JS = `
       if (all[i].dataset.key === key) { all[i].focus(); return; }
     }
   }
+  // 2 つの文字列が共有する最長の連続部分の長さ
+  function commonRun(a, b) {
+    var best = 0;
+    for (var i = 0; i < a.length; i++) {
+      for (var len = a.length - i; len > best; len--) {
+        if (b.indexOf(a.substr(i, len)) >= 0) { best = len; break; }
+      }
+    }
+    return best;
+  }
+  // この hub の種別は表記が揺れる（報告書 / ご報告 / 内部報告、資料 / 説明資料 / 要件確認資料）。
+  // 選んだ種別と 2 文字以上を共有する未選択の種別を「同じ系統」として拾い出し、
+  // 「他 8」の中に埋もれていても 1 クリックで足せるようにする。
+  function relatedTypes(items, selected) {
+    if (!selected.length) return [];
+    return items.filter(function (t) {
+      if (selected.indexOf(t.v) >= 0 || !t.n) return false;
+      for (var i = 0; i < selected.length; i++) if (commonRun(selected[i], t.v) >= 2) return true;
+      return false;
+    });
+  }
+
   // 選択中の値は件数 0 でも残す（解除できなくなるため）。並びは「選択中 → 件数の多い順」
   function withSelected(items, selected) {
     var have = Object.create(null);
@@ -380,15 +403,25 @@ export const APP_JS = `
       facets.appendChild(pl);
     }
 
-    var types = withSelected(tally(forTypes, function (d) { return [d.type]; }), state.types);
+    var typeTally = tally(forTypes, function (d) { return [d.type]; });
+    var types = withSelected(typeTally, state.types);
+    var pickType = function (v) {
+      var i = state.types.indexOf(v);
+      if (i >= 0) state.types.splice(i, 1); else state.types.push(v);
+      state.cursor = -1; renderAll();
+    };
     if (types.length) {
-      facets.appendChild(facetLine('種別', '選んだ種別のいずれかに当てはまる文書', types, TYPE_LIMIT, state.typesOpen,
-        function (v) { state.typesOpen = v; renderFacets(); }, state.types,
-        function (v) {
-          var i = state.types.indexOf(v);
-          if (i >= 0) state.types.splice(i, 1); else state.types.push(v);
-          state.cursor = -1; renderAll();
-        }, 'type:'));
+      var typeLine = facetLine('種別', '選んだ種別のいずれかに当てはまる文書', types, TYPE_LIMIT, state.typesOpen,
+        function (v) { state.typesOpen = v; renderFacets(); }, state.types, pickType, 'type:');
+      var related = relatedTypes(typeTally, state.types);
+      if (related.length) {
+        var box = typeLine.querySelector('.facet-chips');
+        box.appendChild(el('span', 'facet-note', '同じ系統'));
+        related.forEach(function (t) {
+          box.appendChild(chip('＋' + t.v, t.n, false, function () { pickType(t.v); }, 'rel', 'rel:' + t.v));
+        });
+      }
+      facets.appendChild(typeLine);
     }
 
     var tags = withSelected(tally(forTags, function (d) { return d.tags; }), state.tags);

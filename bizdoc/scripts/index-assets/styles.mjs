@@ -128,6 +128,7 @@ mark { background: transparent; color: var(--accent-ink); font-weight: 700; box-
 .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
 .chip[aria-pressed="true"] .n { color: rgba(255,255,255,.75); }
 .chip.more { border-style: dashed; color: var(--ink-3); }
+.chip.rel { border-style: dashed; border-color: var(--accent); color: var(--accent-ink); background: var(--accent-soft); }
 .chip.clear { border-color: var(--danger); color: var(--danger); }
 .facet-sep { width: 1px; align-self: stretch; background: var(--line); margin: .1rem .45rem; }
 

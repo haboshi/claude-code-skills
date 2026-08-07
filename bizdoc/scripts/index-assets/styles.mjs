@@ -41,15 +41,18 @@ body {
 button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
 a { color: inherit; text-decoration: none; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
-/* padding を入れると日本語の途中で語が割れて見えるので、色と下線だけで示す */
-mark { background: transparent; color: var(--accent-ink); font-weight: 700; box-shadow: inset 0 -.35em var(--accent-soft); }
+/* padding を入れると日本語の途中で語が割れて見えるので、色と下線だけで示す。
+   色は行の色を引き継ぐ（破損行の赤を青で上書きしない） */
+mark { background: transparent; color: inherit; font-weight: 700; box-shadow: inset 0 -.35em var(--accent-soft); }
+.ttl mark, .kind mark, .of mark, .tag mark { color: var(--accent-ink); }
+.doc.broken mark { color: inherit; box-shadow: inset 0 -.35em var(--danger-soft); }
 
 /* ── 左：スコープ（グループ > プロジェクト）─────────────── */
 .side {
   background: var(--bg-soft); border-right: 1px solid var(--line);
   display: flex; flex-direction: column; min-height: 0;
 }
-.brand { padding: 1.15rem 1.1rem .85rem; border-bottom: 1px solid var(--line); }
+.brand { display: block; width: 100%; text-align: left; padding: 1.15rem 1.1rem .85rem; border-bottom: 1px solid var(--line); cursor: default; }
 .brand b { display: block; font-size: 15px; letter-spacing: .02em; }
 .brand span { display: block; margin-top: .1rem; font-size: 10.5px; letter-spacing: .16em; color: var(--ink-3); font-weight: 700; }
 .brand i { display: block; width: 2.2rem; height: 3px; background: var(--accent); border-radius: 2px; margin-top: .5rem; }
@@ -61,13 +64,13 @@ mark { background: transparent; color: var(--accent-ink); font-weight: 700; box-
 }
 .grp-h .caret { flex: none; width: 1.1rem; transition: transform .15s; font-size: 9px; color: var(--ink-3); border-radius: 4px; }
 .grp-h .caret:hover { color: var(--ink); background: var(--bg-sink); }
-.grp-h[aria-expanded="false"] .caret { transform: rotate(-90deg); }
+.grp-h[data-expanded="false"] .caret { transform: rotate(-90deg); }
 .grp-h .gl { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: .1rem .25rem; border-radius: 5px; }
 .grp-h button.gl:hover { color: var(--ink); background: var(--bg-sink); }
 .grp-h .gl[aria-current="true"] { color: var(--accent-ink); background: var(--accent-soft); }
 .grp-h .gn { flex: none; font-weight: 600; letter-spacing: 0; padding-left: .3rem; }
 .grp-b { overflow: hidden; }
-.grp-h[aria-expanded="false"] + .grp-b { display: none; }
+.grp-h[data-expanded="false"] + .grp-b { display: none; }
 .scope {
   display: flex; align-items: baseline; gap: .5rem; width: 100%; text-align: left;
   padding: .34rem .55rem; border-radius: 7px; color: var(--ink-2); line-height: 1.5;
@@ -96,9 +99,9 @@ mark { background: transparent; color: var(--accent-ink); font-weight: 700; box-
 .crumb .cnt { flex: none; font-size: 12px; font-weight: 400; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .crumb .cnt b { font-size: 14px; font-weight: 700; color: var(--accent); }
 /* 幅が足りないときに削るのはパスの方（プロジェクト名を潰さない）。
-   flex:none だと長いパスが名前を押し出す */
+   両方を同じ縮み率にすると比例配分になるので、パス側の shrink を大きく取る */
 .crumb .nm { flex: 0 1 auto; }
-.crumb .path { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+.crumb .path { flex: 0 100 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-size: 11px; font-weight: 400; color: var(--ink-3); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .search { margin-left: auto; position: relative; flex: none; }
 .search input {
@@ -163,9 +166,10 @@ mark { background: transparent; color: var(--accent-ink); font-weight: 700; box-
 }
 .month::before { content: ""; width: .95rem; height: 2px; background: var(--accent); border-radius: 2px; }
 .month::after { content: ""; flex: 1; height: 1px; background: var(--line); }
-/* タイトル列に上限を置き、右端のタグ列を本文に寄せる（1fr のままだと広い画面で間が空洞になる） */
+/* タイトル列に上限を置き、右端のタグ列を本文に寄せる（1fr のままだと広い画面で間が空洞になる）。
+   タグ列は幅に追従させる（固定幅だと 1100px 台でタイトルを潰す） */
 .doc {
-  display: grid; grid-template-columns: 4.2rem minmax(0, 44rem) minmax(0, 19rem); gap: 0 1.2rem;
+  display: grid; grid-template-columns: 4.2rem minmax(0, 44rem) minmax(0, 19vw); gap: 0 1.2rem;
   padding: .42rem .7rem .46rem; border-radius: 9px; border: 1px solid transparent; align-items: center;
   border-bottom: 1px solid var(--line);
 }
@@ -195,7 +199,7 @@ button.tag:hover { color: var(--accent-ink); text-decoration: underline; }
 .doc.broken { color: var(--danger); }
 .doc.broken .ttl, .doc.broken:hover .ttl, .doc.broken[data-cursor="1"] .ttl { color: var(--danger); }
 .doc.broken .kind { border-color: var(--danger); color: var(--danger); background: var(--danger-soft); }
-@media (max-width: 1080px) { .doc { grid-template-columns: 4.2rem minmax(0, 1fr); } .doc .tags { display: none; } }
+@media (max-width: 1200px) { .doc { grid-template-columns: 4.2rem minmax(0, 1fr); } .doc .tags { display: none; } }
 .empty { padding: 3.5rem 0; text-align: center; color: var(--ink-3); }
 .empty b { display: block; font-size: 15px; color: var(--ink-2); margin-bottom: .3rem; }
 .empty button { margin-top: .8rem; border: 1px solid var(--line-strong); border-radius: 999px; padding: .25rem .9rem; font-size: 12px; color: var(--ink-2); }
@@ -207,8 +211,10 @@ button.tag:hover { color: var(--accent-ink); text-decoration: underline; }
 @media (max-width: 1100px) { .search input { width: 13rem; } .crumb .path { display: none; } }
 @media (max-width: 820px) {
   body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
-  .side { border-right: none; border-bottom: 1px solid var(--line); max-height: 42vh; }
-  .side.collapsed .scopes, .side.collapsed .side-foot { display: none; }
+  /* 開いたときはプロジェクトを選ぶ面として十分な高さを取る（畳んでいる間は見出しだけ） */
+  .side { border-right: none; border-bottom: 1px solid var(--line); max-height: 75vh; }
+  .side.collapsed { max-height: none; }
+  .side.collapsed .scopes, .side.collapsed .side-foot, .side.collapsed .side-filter { display: none; }
   .brand { display: flex; align-items: center; gap: .6rem; padding: .7rem 1rem; cursor: pointer; }
   .brand i { display: none; }
   .brand span { margin-left: auto; margin-top: 0; }

@@ -24,7 +24,9 @@ export const APP_JS = `
   function save() {
     try {
       localStorage.setItem(LS_KEY, JSON.stringify({
-        scope: state.scope, sort: state.sort, showHidden: state.showHidden, collapsed: state.collapsed
+        scope: state.scope, sort: state.sort,
+        showHidden: state.showHiddenIsTemporary ? false : state.showHidden,
+        collapsed: state.collapsed
       }));
     } catch (e) { /* 保存できなくても動作は変わらない */ }
   }
@@ -161,12 +163,14 @@ export const APP_JS = `
   var hiddenToggle = document.querySelector('.side-foot input');
   clearBtn.addEventListener('click', clearFilters);
 
-  // hidden 指定のプロジェクトを名指しで開いたときは、隠したままだと空振りするので表示に切り替える
+  // hidden 指定のプロジェクトを名指しで開いたときは、隠したままだと空振りするので表示に切り替える。
+  // ただしこれは「今開くための一時的な解除」なので保存しない（次に開いたときは隠れたまま）
   function ensureVisible(scope) {
     if (scope.indexOf('p:') !== 0) return;
     var target = D.projects.filter(function (p) { return p.id === scope.slice(2); })[0];
     if (target && target.hidden) {
       state.showHidden = true;
+      state.showHiddenIsTemporary = true;
       hiddenToggle.checked = true;
     }
   }
@@ -183,7 +187,7 @@ export const APP_JS = `
     } catch (e) { /* file:// で replaceState が拒否されても表示には影響しない */ }
     save(); renderAll();
     if (list) list.scrollTop = 0;
-    if (narrowMq.matches) sideEl.classList.add('collapsed');
+    if (narrowMq.matches) { sideEl.classList.add('collapsed'); syncBrand(); }
   }
 
   function scopeButton(label, key, n, extraCls) {
@@ -217,28 +221,36 @@ export const APP_JS = `
     var dim = narrowed();
     side.appendChild(scopeButton('すべて', 'all', sum(vis)));
 
-    // プロジェクトが多いときだけ出す名前フィルタ（少数なら目で追えるので邪魔にしない）
+    // プロジェクトが多いときだけ出す名前フィルタ（少数なら目で追えるので邪魔にしない）。
+    // 件数（n）は名前フィルタ前の全メンバーで数える — 「JBR 全体」を押したときに
+    // 実際に出る件数と一致させるため（フィルタ後で数えると見出しの数字が嘘になる）
     var sq = state.sideQuery;
     var named = function (p) { return !sq || p.label.toLowerCase().indexOf(sq) >= 0; };
+    var bucket = function (key, label, all) {
+      return { key: key, label: label, all: all, members: all.filter(named) };
+    };
     var buckets = D.groups.map(function (g) {
-      return { key: g.key, label: g.label, members: vis.filter(function (p) { return p.group === g.key && named(p); }) };
+      return bucket(g.key, g.label, vis.filter(function (p) { return p.group === g.key; }));
     }).filter(function (b) { return b.members.length > 0; });
-    var loose = vis.filter(function (p) { return isLoose(p) && named(p); });
-    if (loose.length) buckets.push({ key: NONE, label: '未分類', members: loose });
+    var loose = vis.filter(isLoose);
+    if (loose.filter(named).length) buckets.push(bucket(NONE, '未分類', loose));
 
     buckets.forEach(function (b) {
       var wrap = el('div', 'grp');
-      var n = sum(b.members);
+      var n = sum(b.all);
       // 絞り込みの結果 1 件も残らないグループは既定で畳む（プロジェクトが増えても縦に伸びない）。
       // ただし手で開いたら開いたままにする（自動判定で上書きすると caret が効かなくなる）
       var manual = state.collapsed[b.key];
       var open = manual === undefined ? !(dim && n === 0) : !manual;
-      // 見出し行は「開閉（caret）」と「グループ全体を絞り込む（ラベル）」の 2 つの操作に分かれる
+      // 見出し行は「開閉（caret）」と「グループ全体を絞り込む（ラベル）」の 2 つの操作に分かれる。
+      // aria-expanded は操作要素である caret 自身に付ける（div に付けても読まれない）
       var h = el('div', 'grp-h');
-      h.setAttribute('aria-expanded', open ? 'true' : 'false');
+      h.dataset.expanded = open ? 'true' : 'false';
       var caret = el('button', 'caret', '▾');
       caret.type = 'button';
       caret.dataset.key = 'caret:' + b.key;
+      caret.setAttribute('aria-expanded', open ? 'true' : 'false');
+      caret.setAttribute('aria-controls', 'grp-' + b.key);
       caret.setAttribute('aria-label', (open ? '畳む' : '開く') + '：' + b.label);
       caret.addEventListener('click', function () {
         state.collapsed[b.key] = open;
@@ -255,6 +267,7 @@ export const APP_JS = `
       h.appendChild(el('span', 'gn', n));
       wrap.appendChild(h);
       var body = el('div', 'grp-b');
+      body.id = 'grp-' + b.key;
       b.members.forEach(function (p) {
         body.appendChild(scopeButton(p.label, 'p:' + p.id, num(p),
           (p.broken ? 'is-broken ' : '') + (p.hidden ? 'is-hidden ' : '') + (dim && !num(p) ? 'is-zero' : '')));
@@ -273,7 +286,8 @@ export const APP_JS = `
       proj = D.projects.filter(function (p) { return p.id === state.scope.slice(2); })[0] || null;
       if (proj && proj.group) grp = groupOf(proj.group);
     } else if (state.scope.indexOf('g:') === 0) grp = groupOf(state.scope.slice(2));
-    if (grp) crumb.appendChild(el('span', 'grp-of', grp.label));
+    // グループ自体を選んでいるときは前置きを付けない（「JBR / JBR 全体」になる）
+    if (grp && proj) crumb.appendChild(el('span', 'grp-of', grp.label));
     crumb.appendChild(el('span', 'nm', proj ? proj.label : grp ? grp.label + ' 全体' : 'すべてのドキュメント'));
 
     var shown = filtered().length, base = inScopeDocs().length;
@@ -647,7 +661,9 @@ export const APP_JS = `
     if (list) list.scrollTop = 0;
   });
   hiddenToggle.addEventListener('change', function (ev) {
-    state.showHidden = ev.target.checked; save(); renderAll();
+    state.showHidden = ev.target.checked;
+    state.showHiddenIsTemporary = false; // 手で切り替えたら以後それを保存する
+    save(); renderAll();
   });
   var sideFilter = document.querySelector('.side-filter');
   var sideFilterInput = sideFilter.querySelector('input');
@@ -657,8 +673,21 @@ export const APP_JS = `
     renderSide();
   });
   if (narrowMq.matches) sideEl.classList.add('collapsed'); // 狭い画面では一覧を優先し、最初は畳んでおく
-  document.querySelector('.brand').addEventListener('click', function () {
-    if (narrowMq.matches) sideEl.classList.toggle('collapsed');
+  var brand = document.querySelector('.brand');
+  brand.setAttribute('aria-controls', 'scopes');
+  var syncBrand = function () {
+    brand.setAttribute('aria-expanded', narrowMq.matches ? String(!sideEl.classList.contains('collapsed')) : 'true');
+  };
+  syncBrand();
+  brand.addEventListener('click', function () {
+    if (!narrowMq.matches) return;
+    sideEl.classList.toggle('collapsed');
+    syncBrand();
+    // 開いた直後はそのままキーボードでプロジェクトを選べる位置へ送る
+    if (!sideEl.classList.contains('collapsed')) {
+      var first = side.querySelector('.scope');
+      if (first) first.focus();
+    }
   });
 
   document.addEventListener('keydown', function (ev) {

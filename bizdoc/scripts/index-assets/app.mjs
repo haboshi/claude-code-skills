@@ -149,9 +149,21 @@ export const APP_JS = `
   var list = document.querySelector('.list');
   var input = document.querySelector('.search input');
   var sortBtn = document.querySelector('.sortbtn');
+  var hiddenToggle = document.querySelector('.side-foot input');
+
+  // hidden 指定のプロジェクトを名指しで開いたときは、隠したままだと空振りするので表示に切り替える
+  function ensureVisible(scope) {
+    if (scope.indexOf('p:') !== 0) return;
+    var target = D.projects.filter(function (p) { return p.id === scope.slice(2); })[0];
+    if (target && target.hidden) {
+      state.showHidden = true;
+      hiddenToggle.checked = true;
+    }
+  }
 
   function setScope(next) {
     state.scope = next; state.cursor = -1;
+    ensureVisible(next);
     state.types = []; state.tags = []; state.period = null;
     state.typesOpen = false; state.tagsOpen = false; state.focusKey = null;
     state.sideFocusKey = 'scope:' + next;
@@ -499,7 +511,7 @@ export const APP_JS = `
     state.cursor = -1; save(); renderHead(); renderList();
     if (list) list.scrollTop = 0;
   });
-  document.querySelector('.side-foot input').addEventListener('change', function (ev) {
+  hiddenToggle.addEventListener('change', function (ev) {
     state.showHidden = ev.target.checked; save(); renderAll();
   });
   if (narrowMq.matches) sideEl.classList.add('collapsed'); // 狭い画面では一覧を優先し、最初は畳んでおく
@@ -535,18 +547,16 @@ export const APP_JS = `
     if (s.indexOf('p:') === 0) return D.projects.some(function (p) { return p.id === s.slice(2); }) ? s : null;
     return groupOf(s.slice(2)) ? s : null;
   }
+  // ページ内でのハッシュ移動も、左の一覧を押したときと同じ状態リセットを通す
+  // （ここだけ別処理にすると期間や展開状態が前の画面のまま残る）
   window.addEventListener('hashchange', function () {
     var s = validScope(fromHash());
-    if (s && s !== state.scope) { state.scope = s; state.types = []; state.tags = []; state.cursor = -1; save(); renderAll(); }
+    if (s && s !== state.scope) setScope(s);
   });
 
-  // hidden 指定のプロジェクトを名指しで開いたときは、隠したままだと空振りするので表示に切り替える
   state.scope = validScope(fromHash()) || validScope(state.scope) || 'all';
-  if (state.scope.indexOf('p:') === 0) {
-    var target = D.projects.filter(function (p) { return p.id === state.scope.slice(2); })[0];
-    if (target && target.hidden) state.showHidden = true;
-  }
-  document.querySelector('.side-foot input').checked = state.showHidden;
+  ensureVisible(state.scope);
+  hiddenToggle.checked = state.showHidden;
   renderAll();
 })();
 `;

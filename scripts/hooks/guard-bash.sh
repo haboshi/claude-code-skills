@@ -12,7 +12,10 @@ set -u
 # 読み込めるようにするため。cd/pwd はどちらもシェル組込みで PATH に依存しない）。
 case "$0" in
   */*) HOOK_DIR=$(cd "${0%/*}" && pwd) ;;
-  *)   HOOK_DIR=$(pwd) ;;
+  # $0 にスラッシュが無い（PATH 経由で名前解決された等）場合、自身の場所を
+  # 特定できない。$PWD へ推測で倒すと fail-open になるため deny する。
+  # hook-lib.sh を読み込む前なので deny() はまだ使えず、同等の処理をインラインで書く。
+  *)   printf 'aws-harness: フックの自身のディレクトリを解決できません\n' >&2; exit 2 ;;
 esac
 . "$HOOK_DIR/hook-lib.sh"
 

@@ -372,9 +372,27 @@ filehook() { # $1: file_path, $2: cwd
   && ok "マーカーのないリポジトリには干渉しない（ファイル）" \
   || bad "マーカーのないリポジトリには干渉しない（ファイル）" "rc != 0"
 
+# fix round 1: 相対パスの .aws/ が *"/.aws/"* パターンに拾われず素通ししていた指摘への回帰テスト
+for rel in ".aws/credentials" "./.aws/credentials" "../.aws/credentials"; do
+  [ "$(filehook "$rel" "$GUARDED")" = "2" ] && ok "deny: 相対パス $rel" \
+    || bad "deny: 相対パス $rel" "rc != 2"
+done
+
 RC=$(printf 'not json' | CLAUDE_PROJECT_DIR="$GUARDED" \
   bash "$PLUG/scripts/hooks/guard-files.sh" >/dev/null 2>&1; echo $?)
 [ "$RC" = "2" ] && ok "ファイルフックの JSON 破損は deny" || bad "ファイルフックの JSON 破損は deny" "rc=$RC"
+
+# fix round 1: guard-bash.sh には既にある PATH=/nonexistent の fail-closed テストを
+# guard-files.sh にも追加する（レビュー指摘: 依存不在時の deny を全フックで揃える）
+RC=$(printf '{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"x"}}' \
+  | PATH="/nonexistent" CLAUDE_PROJECT_DIR="$GUARDED" /bin/bash "$PLUG/scripts/hooks/guard-files.sh" >/dev/null 2>&1; echo $?)
+[ "$RC" = "2" ] && ok "guard-files: 保護対象で依存不在なら deny(exit 2)" \
+  || bad "guard-files: 保護対象で依存不在なら deny(exit 2)" "rc=$RC"
+
+RC=$(printf '{}' | PATH="/nonexistent" CLAUDE_PROJECT_DIR="$UNGUARDED" \
+  /bin/bash "$PLUG/scripts/hooks/guard-files.sh" >/dev/null 2>&1; echo $?)
+[ "$RC" = "0" ] && ok "guard-files: 非保護対象は依存不在でも素通し" \
+  || bad "guard-files: 非保護対象は依存不在でも素通し" "rc=$RC"
 
 prompthook() { # $1: cwd, $2: 契約 ID（空 = shim を経ていない起動）
   printf '{"hook_event_name":"UserPromptSubmit","prompt":"x"}' \
@@ -395,6 +413,21 @@ prompthook() { # $1: cwd, $2: 契約 ID（空 = shim を経ていない起動）
 # shim バイパスの検出: 保護対象なのに shim を経ていなければ止める
 [ "$(prompthook "$GUARDED" "")" = "2" ] \
   && ok "shim を経ない起動を検出して止める" || bad "shim を経ない起動を検出して止める" "rc != 2"
+
+# fix round 1: guard-bash.sh には既にある PATH=/nonexistent の fail-closed テストを
+# guard-prompt.sh にも追加する（レビュー指摘: 依存不在時の deny を全フックで揃える）
+RC=$(printf '{"hook_event_name":"UserPromptSubmit","prompt":"x"}' \
+  | PATH="/nonexistent" CLAUDE_PROJECT_DIR="$GUARDED" AWS_HARNESS_CONTRACT_ID="$CID" \
+    AWS_HARNESS_CONTRACT_DIR="$AWS_HARNESS_HOME/contracts/$CID" AWS_HARNESS_SCRIPT_DIR="$PLUG/scripts" \
+    /bin/bash "$PLUG/scripts/hooks/guard-prompt.sh" >/dev/null 2>&1; echo $?)
+[ "$RC" = "2" ] && ok "guard-prompt: 保護対象で依存不在なら deny(exit 2)" \
+  || bad "guard-prompt: 保護対象で依存不在なら deny(exit 2)" "rc=$RC"
+
+RC=$(printf '{"hook_event_name":"UserPromptSubmit","prompt":"x"}' \
+  | PATH="/nonexistent" CLAUDE_PROJECT_DIR="$UNGUARDED" \
+    /bin/bash "$PLUG/scripts/hooks/guard-prompt.sh" >/dev/null 2>&1; echo $?)
+[ "$RC" = "0" ] && ok "guard-prompt: 非保護対象は依存不在でも素通し" \
+  || bad "guard-prompt: 非保護対象は依存不在でも素通し" "rc=$RC"
 
 echo "----"
 echo "PASS=$PASS FAIL=$FAIL"

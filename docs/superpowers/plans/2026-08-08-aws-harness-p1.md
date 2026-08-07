@@ -1141,9 +1141,11 @@ set -u
 # ライブラリを読み込めず、bash の exit 1（非ブロッキング）に退化して素通りする
 case "$0" in
   */*) HOOK_DIR=$(cd "${0%/*}" && pwd) ;;
-  *)   HOOK_DIR=$(pwd) ;;
+  # 自分の場所が分からない状態を cwd で推測しない（推測すると
+  # ライブラリ読み込みに失敗して exit 1 に退化し、素通りする）
+  *)   printf 'aws-harness: フックの位置を特定できません\n' >&2; exit 2 ;;
 esac
-. "$HOOK_DIR/hook-lib.sh"
+. "$HOOK_DIR/hook-lib.sh" || { printf 'aws-harness: フックの共通ライブラリを読み込めません\n' >&2; exit 2; }
 
 hook_read_input                 # HOOK_INPUT に代入（サブシェルにしない）
 hook_project_dir                # HOOK_PROJECT_DIR に代入
@@ -1162,7 +1164,9 @@ harness_root="${AWS_HARNESS_HOME:-$HOME/.claude/aws-harness}"
 plugin_root="${AWS_HARNESS_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-}}"
 
 case "$path" in
-  "$HOME/.aws/"*|*"/.aws/"*)  deny "AWS 認証設定への直接アクセスを禁止しています" ;;
+  # 絶対パス・チルダ未展開・相対パスのいずれでも塞ぐ
+  "$HOME/.aws/"*|*"/.aws/"*|".aws/"*|"./.aws/"*)
+                              deny "AWS 認証設定への直接アクセスを禁止しています" ;;
   "$harness_root"/*)          deny "契約およびハーネスの内部ファイルへのアクセスを禁止しています" ;;
 esac
 
@@ -1193,9 +1197,11 @@ set -u
 # ライブラリを読み込めず、bash の exit 1（非ブロッキング）に退化して素通りする
 case "$0" in
   */*) HOOK_DIR=$(cd "${0%/*}" && pwd) ;;
-  *)   HOOK_DIR=$(pwd) ;;
+  # 自分の場所が分からない状態を cwd で推測しない（推測すると
+  # ライブラリ読み込みに失敗して exit 1 に退化し、素通りする）
+  *)   printf 'aws-harness: フックの位置を特定できません\n' >&2; exit 2 ;;
 esac
-. "$HOOK_DIR/hook-lib.sh"
+. "$HOOK_DIR/hook-lib.sh" || { printf 'aws-harness: フックの共通ライブラリを読み込めません\n' >&2; exit 2; }
 
 hook_read_input                 # HOOK_INPUT に代入（サブシェルにしない）
 hook_project_dir                # HOOK_PROJECT_DIR に代入

@@ -229,8 +229,10 @@ export const APP_JS = `
     buckets.forEach(function (b) {
       var wrap = el('div', 'grp');
       var n = sum(b.members);
-      // 絞り込みの結果 1 件も残らないグループは自動で畳む（プロジェクトが増えても縦に伸びない）
-      var open = !state.collapsed[b.key] && !(dim && n === 0);
+      // 絞り込みの結果 1 件も残らないグループは既定で畳む（プロジェクトが増えても縦に伸びない）。
+      // ただし手で開いたら開いたままにする（自動判定で上書きすると caret が効かなくなる）
+      var manual = state.collapsed[b.key];
+      var open = manual === undefined ? !(dim && n === 0) : !manual;
       // 見出し行は「開閉（caret）」と「グループ全体を絞り込む（ラベル）」の 2 つの操作に分かれる
       var h = el('div', 'grp-h');
       h.setAttribute('aria-expanded', open ? 'true' : 'false');
@@ -359,18 +361,29 @@ export const APP_JS = `
       var f = el('input', 'facet-filter');
       f.type = 'search';
       f.placeholder = label + 'を絞る';
+      var none = el('span', 'facet-none hidden');
       f.addEventListener('input', function () {
         var q = f.value.trim().toLowerCase();
         var chips = box.querySelectorAll('.chip');
+        var shownCount = 0;
         for (var i = 0; i < chips.length; i++) {
           if (chips[i].classList.contains('more') || chips[i].classList.contains('clear')) continue;
-          var v = (chips[i].dataset.key || '').slice(prefix.length).toLowerCase();
-          chips[i].classList.toggle('hidden', q !== '' && v.indexOf(q) < 0);
+          // dataset.key は「prefix + 値」。rel チップは prefix が違うので : 以降を取る
+          var key = chips[i].dataset.key || '';
+          var v = key.slice(key.indexOf(':') + 1).toLowerCase();
+          var hide = q !== '' && v.indexOf(q) < 0;
+          chips[i].classList.toggle('hidden', hide);
+          if (!hide) shownCount++;
         }
         var notes = box.querySelectorAll('.facet-note');
         for (var j = 0; j < notes.length; j++) notes[j].classList.toggle('hidden', q !== '');
+        // 全部消えたときに黙って空にしない
+        clear(none);
+        none.appendChild(document.createTextNode('「' + f.value.trim() + '」に一致する' + label + 'はありません'));
+        none.classList.toggle('hidden', !(q !== '' && shownCount === 0));
       });
       box.appendChild(f);
+      box.appendChild(none);
     }
     // 全部開くと 1 件だけのタグが壁になるので、そこから先は区切って「探す対象」だと分かるようにする
     var hasMulti = shown.some(function (t) { return t.n > 1; });

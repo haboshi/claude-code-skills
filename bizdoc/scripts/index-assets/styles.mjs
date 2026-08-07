@@ -95,7 +95,11 @@ mark { background: transparent; color: var(--accent-ink); font-weight: 700; box-
 .crumb .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .crumb .cnt { flex: none; font-size: 12px; font-weight: 400; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .crumb .cnt b { font-size: 14px; font-weight: 700; color: var(--accent); }
-.crumb .path { flex: none; font-size: 11px; font-weight: 400; color: var(--ink-3); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+/* 幅が足りないときに削るのはパスの方（プロジェクト名を潰さない）。
+   flex:none だと長いパスが名前を押し出す */
+.crumb .nm { flex: 0 1 auto; }
+.crumb .path { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 11px; font-weight: 400; color: var(--ink-3); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .search { margin-left: auto; position: relative; flex: none; }
 .search input {
   width: 20rem; padding: .42rem 2.1rem .42rem .8rem; font: inherit; font-size: 13px;
@@ -131,6 +135,7 @@ mark { background: transparent; color: var(--accent-ink); font-weight: 700; box-
 .facet-filter { width: 7.5rem; padding: .1rem .6rem; font: inherit; font-size: 11.5px; color: var(--ink);
   background: var(--bg-soft); border: 1px solid var(--line-strong); border-radius: 999px; }
 .facet-filter:focus { outline: none; border-color: var(--accent); background: var(--bg); box-shadow: 0 0 0 3px var(--accent-soft); }
+.facet-none { align-self: center; font-size: 11px; color: var(--ink-3); }
 .side-filter { padding: .55rem .8rem .1rem; }
 .side-filter input { width: 100%; padding: .28rem .7rem; font: inherit; font-size: 12px; color: var(--ink);
   background: var(--bg); border: 1px solid var(--line-strong); border-radius: 999px; }

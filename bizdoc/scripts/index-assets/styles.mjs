@@ -175,7 +175,7 @@ mark { background: transparent; color: inherit; font-weight: 700; box-shadow: in
 /* タイトル列に上限を置き、右端のタグ列を本文に寄せる（1fr のままだと広い画面で間が空洞になる）。
    タグ列は幅に追従させる（固定幅だと 1100px 台でタイトルを潰す） */
 .doc {
-  display: grid; grid-template-columns: 4.2rem minmax(0, 44rem) minmax(0, 19vw); gap: 0 1.2rem;
+  display: grid; grid-template-columns: 4.2rem minmax(0, 44rem) minmax(0, 19vw) 1.6rem; gap: 0 1.2rem;
   padding: .42rem .7rem .46rem; border-radius: 9px; border: 1px solid transparent; align-items: center;
   border-bottom: 1px solid var(--line);
 }
@@ -193,13 +193,16 @@ mark { background: transparent; color: inherit; font-weight: 700; box-shadow: in
 .doc .meta { display: flex; flex-wrap: nowrap; align-items: baseline; gap: .35rem; font-size: 11.5px; color: var(--ink-3); overflow: hidden; }
 .doc .kind { flex: none; padding: 0 .4rem; border: 1px solid var(--line-strong); border-radius: 999px; font-size: 10px; color: var(--ink-2); background: var(--bg-soft); }
 .doc .of { flex: none; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* 溢れたときに消えるのはタグ本体（左から縮む）。+N は最後まで残す —
-   全部 flex:none だと行末の +N が最初に切り落とされ、件数が読めなくなる */
-.doc .tags { display: flex; gap: .35rem; overflow: hidden; font-size: 11px; }
-.doc .tag { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
-  color: var(--ink-3); white-space: nowrap; border-radius: 4px; }
+/* タグは縮めない。幅に入らないものはフェードして消える（ellipsis で1文字だけ残ると
+   「提…」のように意味を失うため、途中で切らずに減衰させる）。
+   件数の +N は別の列に置き、何本隠れているかは常に読める */
+.doc .tags { display: flex; gap: .35rem; overflow: hidden; font-size: 11px;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 1.6rem), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 1.6rem), transparent); }
+.doc .tags.fits { -webkit-mask-image: none; mask-image: none; }
+.doc .tag { flex: none; color: var(--ink-3); white-space: nowrap; border-radius: 4px; }
 .doc .tag::before { content: "#"; opacity: .55; }
-.doc .tag.more { flex: none; color: var(--ink-3); }
+.doc .more { color: var(--ink-3); font-size: 11px; text-align: right; }
 .doc .tag.more::before { content: ""; }
 button.tag:hover { color: var(--accent-ink); text-decoration: underline; }
 .doc .tag[data-on] { color: var(--accent-ink); font-weight: 700; }
@@ -208,13 +211,13 @@ button.tag:hover { color: var(--accent-ink); text-decoration: underline; }
 .doc.broken { color: var(--danger); }
 .doc.broken .ttl, .doc.broken:hover .ttl, .doc.broken[data-cursor="1"] .ttl { color: var(--danger); }
 .doc.broken .kind { border-color: var(--danger); color: var(--danger); background: var(--danger-soft); }
-/* 1360px 未満はタグを畳む。1200〜1360px では列は入るがタグ1つあたりが狭すぎて
-   「提…」のように意味を失う（ellipsis グリフだけで 10px 食う） */
-@media (max-width: 1360px) { .doc { grid-template-columns: 4.2rem minmax(0, 1fr); } .doc .tags { display: none; } }
+/* 狭いところではタグ列ごと畳む。1080〜1360px はタグを出せる下限に満たない */
+@media (max-width: 1180px) { .doc { grid-template-columns: 4.2rem minmax(0, 1fr); } .doc .tags, .doc .more { display: none; } }
 .empty { padding: 3.5rem 0; text-align: center; color: var(--ink-3); }
 .empty b { display: block; font-size: 15px; color: var(--ink-2); margin-bottom: .3rem; }
 .empty button { margin-top: .8rem; border: 1px solid var(--line-strong); border-radius: 999px; padding: .25rem .9rem; font-size: 12px; color: var(--ink-2); }
 .empty button:hover { border-color: var(--accent); color: var(--accent-ink); }
+.sentinel { padding: .8rem 0; text-align: center; color: var(--ink-3); font-size: 12px; letter-spacing: .3em; }
 .hint { padding: 1.4rem 0 0; font-size: 11px; color: var(--ink-3); }
 .hint kbd { border: 1px solid var(--line-strong); border-radius: 4px; padding: 0 .3rem; font-size: 10.5px; font-family: inherit; }
 

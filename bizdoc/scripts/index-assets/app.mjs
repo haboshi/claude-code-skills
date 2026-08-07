@@ -7,7 +7,7 @@ export const APP_JS = `
 (function () {
   var D = window.__DOC_HUB__ || { projects: [], groups: [] };
   var LS_KEY = 'doc-hub:view:1';
-  var TYPE_LIMIT = 8, TAG_LIMIT = 10, TAGS_IN_ROW = 3, SIDE_FILTER_FROM = 20;
+  var TYPE_LIMIT = 8, TAG_LIMIT = 10, TAGS_IN_ROW = 3, SIDE_FILTER_FROM = 20, PAGE = 60;
   var PERIODS = [{ label: '今週', days: 7 }, { label: '今月', days: 30 }, { label: '3か月', days: 90 }];
 
   var state = {
@@ -552,13 +552,11 @@ export const APP_JS = `
       if (state.tags.indexOf(tag) >= 0) s.setAttribute('data-on', '1');
       tw.appendChild(s);
     });
-    if (d.tags.length > TAGS_IN_ROW) {
-      var rest = d.tags.slice(TAGS_IN_ROW);
-      var more = el('span', 'tag more', '+' + rest.length);
-      more.title = rest.join('、');
-      tw.appendChild(more);
-    }
     a.appendChild(tw);
+    var hidden = d.tags.length - TAGS_IN_ROW;
+    var more = el('div', 'more', hidden > 0 ? '+' + hidden : '');
+    if (hidden > 0) more.title = d.tags.slice(TAGS_IN_ROW).join('、');
+    a.appendChild(more);
     return a;
   }
 
@@ -588,14 +586,39 @@ export const APP_JS = `
       return;
     }
 
+    // 画面に入る分だけ先に描き、残りはスクロール（と ↓ 移動）に合わせて足す。
+    // 1000 文書を一度に組み立てると打鍵ごとに 150ms 超のロングタスクになる
     var lastMonth = null;
-    docs.forEach(function (d, i) {
-      if (state.sort === 'updated') {
-        var m = fmtMonth(d.t);
-        if (m !== lastMonth) { list.appendChild(el('div', 'month', m)); lastMonth = m; }
+    var drawn = 0;
+    function drawMore(count) {
+      var frag = document.createDocumentFragment();
+      var end = Math.min(docs.length, drawn + count);
+      for (; drawn < end; drawn++) {
+        var d = docs[drawn];
+        if (state.sort === 'updated') {
+          var m = fmtMonth(d.t);
+          if (m !== lastMonth) { frag.appendChild(el('div', 'month', m)); lastMonth = m; }
+        }
+        frag.appendChild(docRow(d, drawn));
       }
-      list.appendChild(docRow(d, i));
+      list.insertBefore(frag, sentinel);
+      sentinel.hidden = drawn >= docs.length;
+    }
+    var sentinel = el('div', 'sentinel');
+    sentinel.textContent = '…';
+    list.appendChild(sentinel);
+    drawMore(PAGE);
+    // 収まっているタグ列はフェードを外す（切れていないのに霞ませない）
+    requestAnimationFrame(function () {
+      list.querySelectorAll('.tags').forEach(function (t) {
+        t.classList.toggle('fits', t.scrollWidth <= t.clientWidth + 1);
+      });
     });
+    ensureRows = function (n) { if (drawn < n && drawn < docs.length) drawMore(n - drawn + PAGE); };
+    list.onscroll = function () {
+      if (sentinel.hidden) return;
+      if (list.scrollTop + list.clientHeight >= list.scrollHeight - 600) drawMore(PAGE);
+    };
     var hint = el('div', 'hint');
     hint.appendChild(document.createTextNode('検索は '));
     hint.appendChild(el('kbd', null, '/'));
@@ -608,6 +631,8 @@ export const APP_JS = `
     list.appendChild(hint);
     markCursor();
   }
+  // 未描画の行へカーソルを進めたときに、そこまで描き足すためのフック（renderList が差し替える）
+  var ensureRows = function () {};
 
   function rows() { return list.querySelectorAll('.doc'); }
   function markCursor() {
@@ -617,10 +642,11 @@ export const APP_JS = `
   }
   // 選択の実体は DOM フォーカス。カーソル表示はそれに追従させ、2 つの選択状態を持たない
   function moveCursor(delta) {
+    var next = state.cursor < 0 ? (delta > 0 ? 0 : rows().length - 1) : state.cursor + delta;
+    ensureRows(next + 1); // 未描画の先へ進むときは、そこまで描き足す
     var rs = rows();
     if (!rs.length) return;
-    state.cursor = state.cursor < 0 ? (delta > 0 ? 0 : rs.length - 1)
-      : Math.min(rs.length - 1, Math.max(0, state.cursor + delta));
+    state.cursor = Math.min(rs.length - 1, Math.max(0, next));
     markCursor();
     var row = rs[state.cursor];
     var link = row.querySelector('.ttl');

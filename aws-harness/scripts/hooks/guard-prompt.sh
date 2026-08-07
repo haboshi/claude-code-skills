@@ -17,7 +17,14 @@ case "$0" in
   # hook-lib.sh を読み込む前なので deny() はまだ使えず、同等の処理をインラインで書く。
   *)   printf 'aws-harness: フックの自身のディレクトリを解決できません\n' >&2; exit 2 ;;
 esac
-. "$HOOK_DIR/hook-lib.sh"
+# hook-lib.sh 自体が読めない（欠落・権限不備）場合も deny() はまだ使えないため、
+# 同じくインラインで stderr メッセージと exit 2 を書く。読み込み失敗を無視すると
+# 後続の hook_read_input 等が未定義関数呼び出しとなり、set -u の未束縛変数参照経由で
+# bash が exit 1（非ブロッキング）に退化して素通りしてしまう（$0 バグと同じ経路）。
+. "$HOOK_DIR/hook-lib.sh" || {
+  printf 'aws-harness: hook-lib.sh を読み込めません\n' >&2
+  exit 2
+}
 
 hook_read_input                 # HOOK_INPUT に代入（サブシェルにしない）
 hook_project_dir                # HOOK_PROJECT_DIR に代入

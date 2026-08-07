@@ -467,6 +467,30 @@ ACCTLEAK=$(grep -rEn '(^|[^0-9a-zA-Z-])[0-9]{12}([^0-9a-zA-Z-]|$)' \
 [ -z "$ACCTLEAK" ] && ok "例示以外の Account ID がコミット対象に無い" \
   || bad "例示以外の Account ID がコミット対象に無い" "$ACCTLEAK"
 
+# fix round 2: hook-lib.sh 自体が読めない（欠落・権限不備）場合の deny(exit 2) 確認。
+# リポジトリ本体のファイル権限は変更せず、$WORK 配下の一時ディレクトリへコピーした上で
+# そのコピーだけ chmod 000 する（$WORK は先頭の trap で EXIT 時に丸ごと削除される）。
+HOOKCOPY="$WORK/hook-lib-unreadable"
+mkdir -p "$HOOKCOPY"
+cp "$PLUG/scripts/hooks/"*.sh "$HOOKCOPY/"
+chmod 000 "$HOOKCOPY/hook-lib.sh"
+
+RC=$(printf '{}' | CLAUDE_PROJECT_DIR="$GUARDED" bash "$HOOKCOPY/guard-bash.sh" >/dev/null 2>&1; echo $?)
+[ "$RC" = "2" ] && ok "guard-bash: hook-lib.sh を読めなければ deny(exit 2)" \
+  || bad "guard-bash: hook-lib.sh を読めなければ deny(exit 2)" "rc=$RC"
+
+RC=$(printf '{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"x"}}' \
+  | CLAUDE_PROJECT_DIR="$GUARDED" bash "$HOOKCOPY/guard-files.sh" >/dev/null 2>&1; echo $?)
+[ "$RC" = "2" ] && ok "guard-files: hook-lib.sh を読めなければ deny(exit 2)" \
+  || bad "guard-files: hook-lib.sh を読めなければ deny(exit 2)" "rc=$RC"
+
+RC=$(printf '{"hook_event_name":"UserPromptSubmit","prompt":"x"}' \
+  | CLAUDE_PROJECT_DIR="$GUARDED" bash "$HOOKCOPY/guard-prompt.sh" >/dev/null 2>&1; echo $?)
+[ "$RC" = "2" ] && ok "guard-prompt: hook-lib.sh を読めなければ deny(exit 2)" \
+  || bad "guard-prompt: hook-lib.sh を読めなければ deny(exit 2)" "rc=$RC"
+
+chmod 755 "$HOOKCOPY/hook-lib.sh"  # trap の rm -rf が確実に効くよう明示的に戻す（保険）
+
 echo "----"
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

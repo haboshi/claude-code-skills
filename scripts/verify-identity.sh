@@ -15,13 +15,23 @@ command -v aws >/dev/null 2>&1 || { harness_err "aws CLI が必要です"; exit 
 want_acct=$(jq -r '.aws.account_id' "$cdir/contract.json")
 want_arn=$(jq -r '.aws.expected_principal.arn_prefix' "$cdir/contract.json")
 
+# arn_prefix は必ず "/" で終わっていること。欠けていると前方一致の境界が崩れ、
+# 接頭辞を共有する別ロール（例: ExampleAgentReadOnlyAdmin）まで一致してしまう。
+case "$want_arn" in
+  */) : ;;
+  *)
+    harness_err "契約の arn_prefix が不正です（末尾に / が必要です）"
+    exit 3
+    ;;
+esac
+
 ident=$(aws sts get-caller-identity --output json 2>/dev/null) || {
   harness_err "AWS の認証情報を取得できません（再認証が必要です）"
   exit 3
 }
 
-got_acct=$(printf '%s' "$ident" | jq -r '.Account // empty')
-got_arn=$(printf '%s' "$ident" | jq -r '.Arn // empty')
+got_acct=$(printf '%s' "$ident" | jq -r '.Account // empty' 2>/dev/null)
+got_arn=$(printf '%s' "$ident" | jq -r '.Arn // empty' 2>/dev/null)
 
 if [ -z "$got_acct" ] || [ -z "$got_arn" ]; then
   harness_err "STS の応答を解析できません"

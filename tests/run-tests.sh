@@ -165,6 +165,29 @@ echo "$ERRTXT" | grep -q "000000000001" \
   && bad "エラー出力に Account ID を出さない" "生の ID が出力された" \
   || ok "エラー出力に Account ID を出さない"
 
+# arn_prefix の末尾に / がない契約は拒否される（境界が契約の書き方に依存しないこと）
+NOSLASH_CID="c2b4a139-1111-2222-3333-444455556666"
+NOSLASH_DIR="$AWS_HARNESS_HOME/contracts/$NOSLASH_CID"
+mkdir -p "$NOSLASH_DIR"
+jq -n --arg id "$NOSLASH_CID" --arg acct "$ACCT" \
+  '{schema:1, contract_id:$id, project:"example-project",
+    aws:{account_id:$acct, region:"ap-northeast-1",
+         credential:{provider:"aws-vault", profile:"example-agent"},
+         expected_principal:{arn_prefix:("arn:aws:sts::"+$acct+":assumed-role/ExampleAgentReadOnly")}},
+    authority:{mode:"read-only"}}' > "$NOSLASH_DIR/contract.json"
+printf '[profile example-agent]\nregion = ap-northeast-1\n' > "$NOSLASH_DIR/aws-config"
+
+verify_noslash() { bash "$PLUG/scripts/verify-identity.sh" "$NOSLASH_DIR" >/dev/null 2>&1; echo $?; }
+[ "$(FAKE_AWS_ACCOUNT="$ACCT" FAKE_AWS_ARN="$OKARN" verify_noslash)" = "3" ] \
+  && ok "arn_prefix の末尾に / がない契約は拒否される" \
+  || bad "arn_prefix の末尾に / がない契約は拒否される" "rc != 3"
+
+# 末尾 / ありの契約でも、接頭辞を共有する別ロールは拒否される（境界の回帰テスト）
+SHAREDARN="arn:aws:sts::$ACCT:assumed-role/ExampleAgentReadOnlyAdmin/session"
+[ "$(FAKE_AWS_ACCOUNT="$ACCT" FAKE_AWS_ARN="$SHAREDARN" verify)" = "3" ] \
+  && ok "接頭辞を共有する別ロールは拒否される" \
+  || bad "接頭辞を共有する別ロールは拒否される" "rc != 3"
+
 echo "----"
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

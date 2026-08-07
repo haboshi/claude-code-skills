@@ -37,8 +37,12 @@ SDK・CLI が名前解決できない状態に固定し、契約が壊れてい�
   `000000000000`、例示 UUID は `a3f1c9d2-7b64-4e0a-9c15-2d8ef60b71a4` を使う。
 - **フックの exit code**: ブロックしたいときは必ず `exit 2`。解析不能・依存不在・
   想定外入力もすべて `exit 2` に変換する。`exit 1` は非ブロッキングとして素通りする。
-- **契約セッション判定**: フックは環境変数 `AWS_HARNESS_CONTRACT_ID` が非空のときだけ
-  発動し、それ以外では何もせず `exit 0` する。
+- **保護対象の判定**: フックは「作業ディレクトリに `.aws-harness` があるか」で判定する。
+  無ければ何もせず `exit 0`（依存が欠けていても素通しする）。環境変数の継承に依存しないため、
+  shim を経ない起動でもフックは作動する。作業ディレクトリは `CLAUDE_PROJECT_DIR` →
+  フック入力の `cwd` → `$PWD` の順に解決する。
+- **shim バイパスの検出**: 保護対象なのに `AWS_HARNESS_CONTRACT_ID` が立っていなければ、
+  shim を経ていない起動として `UserPromptSubmit` で止める。
 - **secret を出力しない**: credential 値・トークンを stdout / stderr / ログに出さない。
   Account ID をエラー表示するときは末尾4桁のみ（`****7890` 形式）。
 - **テストは実 AWS を呼ばない**: `aws` / `aws-vault` は `tests/fakes/` の fake を PATH 前段に置く。
@@ -493,9 +497,8 @@ export PATH="$TESTS_DIR/fakes:$PATH"
 
 verify() { bash "$PLUG/scripts/verify-identity.sh" "$AWS_HARNESS_HOME/contracts/$CID" >/dev/null 2>&1; echo $?; }
 
-FAKE_AWS_ACCOUNT="$ACCT" \
-FAKE_AWS_ARN="arn:aws:sts::$ACCT:assumed-role/ExampleAgentReadOnly/session" \
-  ; [ "$(FAKE_AWS_ACCOUNT=$ACCT FAKE_AWS_ARN="arn:aws:sts::$ACCT:assumed-role/ExampleAgentReadOnly/session" verify)" = "0" ] \
+OKARN="arn:aws:sts::$ACCT:assumed-role/ExampleAgentReadOnly/session"
+[ "$(FAKE_AWS_ACCOUNT="$ACCT" FAKE_AWS_ARN="$OKARN" verify)" = "0" ] \
   && ok "Account と ARN が一致すれば通過" || bad "Account と ARN が一致すれば通過" "rc != 0"
 
 [ "$(FAKE_AWS_ACCOUNT=000000000001 FAKE_AWS_ARN="arn:aws:sts::000000000001:assumed-role/ExampleAgentReadOnly/session" verify)" = "3" ] \
@@ -848,9 +851,15 @@ git commit -m "feat(aws-harness): 合流点 shim（消毒・config固定・STS�
 
 ```bash
 # --- Task 5: PreToolUse(Bash) ---
-bashhook() { # $1: command 文字列, $2: 契約 ID（空なら非契約セッション）
-  printf '%s' "$1" | jq -Rs --arg n Bash '{hook_event_name:"PreToolUse", tool_name:$n, tool_input:{command:.}}' \
-    | AWS_HARNESS_CONTRACT_ID="${2:-}" bash "$PLUG/scripts/hooks/guard-bash.sh" >/dev/null 2>&1
+# 保護対象かどうかは cwd のマーカーで判定する（環境変数の継承に依存しない）
+GUARDED="$WORK/repo-ok"          # .aws-harness を持つ（Task 1 で作成済み）
+UNGUARDED="$WORK/repo-nomarker"  # マーカーなし
+
+bashhook() { # $1: command 文字列, $2: cwd
+  printf '%s' "$1" \
+    | jq -Rs --arg n Bash --arg d "$2" \
+        '{hook_event_name:"PreToolUse", tool_name:$n, cwd:$d, tool_input:{command:.}}' \
+    | bash "$PLUG/scripts/hooks/guard-bash.sh" >/dev/null 2>&1
   echo $?
 }
 
@@ -862,27 +871,33 @@ for c in "aws --profile other s3 ls" \
          "echo x > ~/.aws/credentials" \
          "cat ~/.aws/sso/cache/x.json" \
          "claude --dangerously-skip-permissions"; do
-  [ "$(bashhook "$c" "$CID")" = "2" ] && ok "deny: $c" || bad "deny: $c" "rc != 2"
+  [ "$(bashhook "$c" "$GUARDED")" = "2" ] && ok "deny: $c" || bad "deny: $c" "rc != 2"
 done
 
 for c in "aws s3 ls" \
          "aws sts get-caller-identity" \
          "git status" \
          "PGPASSWORD=\"\$DB_PASS\" psql -c 'select 1'"; do
-  [ "$(bashhook "$c" "$CID")" = "0" ] && ok "allow: $c" || bad "allow: $c" "rc != 0"
+  [ "$(bashhook "$c" "$GUARDED")" = "0" ] && ok "allow: $c" || bad "allow: $c" "rc != 0"
 done
 
-[ "$(bashhook "aws --profile other s3 ls" "")" = "0" ] \
-  && ok "非契約セッションには干渉しない" || bad "非契約セッションには干渉しない" "rc != 0"
+[ "$(bashhook "aws --profile other s3 ls" "$UNGUARDED")" = "0" ] \
+  && ok "マーカーのないリポジトリには干渉しない" \
+  || bad "マーカーのないリポジトリには干渉しない" "rc != 0"
 
-# fail-closed: 壊れた入力・依存不在は deny
-RC=$(printf 'not json' | AWS_HARNESS_CONTRACT_ID="$CID" \
-  bash "$PLUG/scripts/hooks/guard-bash.sh" >/dev/null 2>&1; echo $?)
+# fail-closed: 壊れた入力・依存不在は deny（cwd が読めない場合も含む）
+RC=$(printf 'not json' | bash "$PLUG/scripts/hooks/guard-bash.sh" >/dev/null 2>&1; echo $?)
 [ "$RC" = "2" ] && ok "JSON 破損は deny(exit 2)" || bad "JSON 破損は deny(exit 2)" "rc=$RC"
 
-RC=$(printf '{}' | AWS_HARNESS_CONTRACT_ID="$CID" PATH="/nonexistent" \
-  bash "$PLUG/scripts/hooks/guard-bash.sh" >/dev/null 2>&1; echo $?)
-[ "$RC" = "2" ] && ok "依存不在は deny(exit 2)" || bad "依存不在は deny(exit 2)" "rc=$RC"
+# jq 不在（PATH を潰す。bash 自体は絶対パスで起動する）
+RC=$(jq -n --arg d "$GUARDED" '{hook_event_name:"PreToolUse", tool_name:"Bash", cwd:$d, tool_input:{command:"aws s3 ls"}}' \
+  | PATH="/nonexistent" CLAUDE_PROJECT_DIR="$GUARDED" /bin/bash "$PLUG/scripts/hooks/guard-bash.sh" >/dev/null 2>&1; echo $?)
+[ "$RC" = "2" ] && ok "保護対象で依存不在なら deny(exit 2)" || bad "保護対象で依存不在なら deny(exit 2)" "rc=$RC"
+
+# 保護対象でなければ jq 不在でも素通し（非 AWS プロジェクトを巻き込まない）
+RC=$(printf '{}' | PATH="/nonexistent" CLAUDE_PROJECT_DIR="$UNGUARDED" \
+  /bin/bash "$PLUG/scripts/hooks/guard-bash.sh" >/dev/null 2>&1; echo $?)
+[ "$RC" = "0" ] && ok "非保護対象は依存不在でも素通し" || bad "非保護対象は依存不在でも素通し" "rc=$RC"
 ```
 
 - [ ] **Step 2: テストを実行して失敗を確認**
@@ -896,22 +911,33 @@ Expected: FAIL（`guard-bash.sh` が存在しない）
 
 ```bash
 #!/usr/bin/env bash
-# PreToolUse(Bash): 契約セッションでの Identity 変更操作を deny する
+# PreToolUse(Bash): 保護対象リポジトリでの Identity 変更操作を deny する
 # 検出であって境界ではない（境界は IAM と実行環境の隔離が担う）
+#
+# 保護対象かどうかは「cwd に .aws-harness があるか」で判定する。
+# shim が export する環境変数に依存しないため、shim を経ない起動でも作動する。
 set -u
 
-# 非契約セッションには一切干渉しない
-[ -n "${AWS_HARNESS_CONTRACT_ID:-}" ] || exit 0
-
-# ここから先は契約セッション。判断できない状態はすべて deny に倒す
 deny() { printf 'aws-harness: %s\n' "$1" >&2; exit 2; }
 
+input=$(cat) || deny "フック入力を読めません"
+
+# 作業ディレクトリの決定（jq を使わずに済む経路を先に試す）
+proj="${CLAUDE_PROJECT_DIR:-}"
+if [ -z "$proj" ] && command -v jq >/dev/null 2>&1; then
+  proj=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
+fi
+[ -n "$proj" ] || proj="$PWD"
+
+# 保護対象でなければ一切干渉しない（依存が無くてもここで抜ける）
+[ -f "$proj/.aws-harness" ] || exit 0
+
+# ここから先は保護対象。判断できない状態はすべて deny に倒す
 command -v jq >/dev/null 2>&1 || deny "jq が無いため Bash の検査ができません"
 
-input=$(cat) || deny "フック入力を読めません"
+printf '%s' "$input" | jq -e . >/dev/null 2>&1 || deny "フック入力が JSON ではありません"
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null) \
   || deny "フック入力を解析できません"
-printf '%s' "$input" | jq -e . >/dev/null 2>&1 || deny "フック入力が JSON ではありません"
 
 # コマンドが空なら検査対象なし
 [ -n "$cmd" ] || exit 0
@@ -967,44 +993,51 @@ git commit -m "feat(aws-harness): PreToolUse(Bash) の deny フックを実装�
 
 ```bash
 # --- Task 6: ファイル deny と prompt enforcement ---
-filehook() { # $1: file_path, $2: 契約 ID
-  jq -n --arg p "$1" '{hook_event_name:"PreToolUse", tool_name:"Read", tool_input:{file_path:$p}}' \
-    | AWS_HARNESS_CONTRACT_ID="${2:-}" AWS_HARNESS_PLUGIN_ROOT="$PLUG" \
+filehook() { # $1: file_path, $2: cwd
+  jq -n --arg p "$1" --arg d "$2" \
+      '{hook_event_name:"PreToolUse", tool_name:"Read", cwd:$d, tool_input:{file_path:$p}}' \
+    | AWS_HARNESS_PLUGIN_ROOT="$PLUG" \
       bash "$PLUG/scripts/hooks/guard-files.sh" >/dev/null 2>&1
   echo $?
 }
 
-[ "$(filehook "$HOME/.aws/credentials" "$CID")" = "2" ] && ok "deny: ~/.aws/credentials の読み取り" \
+[ "$(filehook "$HOME/.aws/credentials" "$GUARDED")" = "2" ] && ok "deny: ~/.aws/credentials の読み取り" \
   || bad "deny: ~/.aws/credentials の読み取り" "rc != 2"
-[ "$(filehook "$HOME/.aws/sso/cache/x.json" "$CID")" = "2" ] && ok "deny: SSO キャッシュの読み取り" \
+[ "$(filehook "$HOME/.aws/sso/cache/x.json" "$GUARDED")" = "2" ] && ok "deny: SSO キャッシュの読み取り" \
   || bad "deny: SSO キャッシュの読み取り" "rc != 2"
-[ "$(filehook "$AWS_HARNESS_HOME/contracts/$CID/contract.json" "$CID")" = "2" ] \
+[ "$(filehook "$AWS_HARNESS_HOME/contracts/$CID/contract.json" "$GUARDED")" = "2" ] \
   && ok "deny: 契約ファイルへのアクセス" || bad "deny: 契約ファイルへのアクセス" "rc != 2"
-[ "$(filehook "$PLUG/scripts/harness-launch.sh" "$CID")" = "2" ] && ok "deny: shim 自身へのアクセス" \
+[ "$(filehook "$PLUG/scripts/harness-launch.sh" "$GUARDED")" = "2" ] && ok "deny: shim 自身へのアクセス" \
   || bad "deny: shim 自身へのアクセス" "rc != 2"
-[ "$(filehook "$WORK/repo-ok/README.md" "$CID")" = "0" ] && ok "allow: 通常のリポジトリファイル" \
+[ "$(filehook "$GUARDED/README.md" "$GUARDED")" = "0" ] && ok "allow: 通常のリポジトリファイル" \
   || bad "allow: 通常のリポジトリファイル" "rc != 0"
-[ "$(filehook "$HOME/.aws/credentials" "")" = "0" ] && ok "非契約セッションには干渉しない（ファイル）" \
-  || bad "非契約セッションには干渉しない（ファイル）" "rc != 0"
+[ "$(filehook "$HOME/.aws/credentials" "$UNGUARDED")" = "0" ] \
+  && ok "マーカーのないリポジトリには干渉しない（ファイル）" \
+  || bad "マーカーのないリポジトリには干渉しない（ファイル）" "rc != 0"
 
-RC=$(printf 'not json' | AWS_HARNESS_CONTRACT_ID="$CID" \
+RC=$(printf 'not json' | CLAUDE_PROJECT_DIR="$GUARDED" \
   bash "$PLUG/scripts/hooks/guard-files.sh" >/dev/null 2>&1; echo $?)
 [ "$RC" = "2" ] && ok "ファイルフックの JSON 破損は deny" || bad "ファイルフックの JSON 破損は deny" "rc=$RC"
 
-prompthook() { # $1: 契約 ID
+prompthook() { # $1: cwd, $2: 契約 ID（空 = shim を経ていない起動）
   printf '{"hook_event_name":"UserPromptSubmit","prompt":"x"}' \
-    | AWS_HARNESS_CONTRACT_ID="${1:-}" AWS_HARNESS_CONTRACT_DIR="$AWS_HARNESS_HOME/contracts/$CID" \
+    | CLAUDE_PROJECT_DIR="$1" AWS_HARNESS_CONTRACT_ID="${2:-}" \
+      AWS_HARNESS_CONTRACT_DIR="$AWS_HARNESS_HOME/contracts/$CID" \
       AWS_HARNESS_SCRIPT_DIR="$PLUG/scripts" \
       bash "$PLUG/scripts/hooks/guard-prompt.sh" >/dev/null 2>&1
   echo $?
 }
 
-[ "$(FAKE_AWS_ACCOUNT=$ACCT FAKE_AWS_ARN="arn:aws:sts::$ACCT:assumed-role/ExampleAgentReadOnly/s" prompthook "$CID")" = "0" ] \
+[ "$(FAKE_AWS_ACCOUNT=$ACCT FAKE_AWS_ARN="arn:aws:sts::$ACCT:assumed-role/ExampleAgentReadOnly/s" prompthook "$GUARDED" "$CID")" = "0" ] \
   && ok "照合が通ればプロンプトを通す" || bad "照合が通ればプロンプトを通す" "rc != 0"
-[ "$(FAKE_AWS_ACCOUNT=000000000001 FAKE_AWS_ARN="arn:aws:sts::000000000001:assumed-role/X/s" prompthook "$CID")" = "2" ] \
+[ "$(FAKE_AWS_ACCOUNT=000000000001 FAKE_AWS_ARN="arn:aws:sts::000000000001:assumed-role/X/s" prompthook "$GUARDED" "$CID")" = "2" ] \
   && ok "照合が崩れたらプロンプトを止める" || bad "照合が崩れたらプロンプトを止める" "rc != 2"
-[ "$(prompthook "")" = "0" ] && ok "非契約セッションには干渉しない（プロンプト）" \
-  || bad "非契約セッションには干渉しない（プロンプト）" "rc != 0"
+[ "$(prompthook "$UNGUARDED" "")" = "0" ] && ok "マーカーのないリポジトリには干渉しない（プロンプト）" \
+  || bad "マーカーのないリポジトリには干渉しない（プロンプト）" "rc != 0"
+
+# shim バイパスの検出: 保護対象なのに shim を経ていなければ止める
+[ "$(prompthook "$GUARDED" "")" = "2" ] \
+  && ok "shim を経ない起動を検出して止める" || bad "shim を経ない起動を検出して止める" "rc != 2"
 ```
 
 - [ ] **Step 2: テストを実行して失敗を確認**
@@ -1019,15 +1052,23 @@ Expected: FAIL（2つのフックが存在しない）
 ```bash
 #!/usr/bin/env bash
 # PreToolUse(Read/Edit/Write): AWS 認証設定・契約・ハーネス自身への直接アクセスを deny する
+# 保護対象の判定は guard-bash.sh と同じくマーカーの有無で行う
 set -u
-
-[ -n "${AWS_HARNESS_CONTRACT_ID:-}" ] || exit 0
 
 deny() { printf 'aws-harness: %s\n' "$1" >&2; exit 2; }
 
+input=$(cat) || deny "フック入力を読めません"
+
+proj="${CLAUDE_PROJECT_DIR:-}"
+if [ -z "$proj" ] && command -v jq >/dev/null 2>&1; then
+  proj=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
+fi
+[ -n "$proj" ] || proj="$PWD"
+
+[ -f "$proj/.aws-harness" ] || exit 0
+
 command -v jq >/dev/null 2>&1 || deny "jq が無いためファイル操作の検査ができません"
 
-input=$(cat) || deny "フック入力を読めません"
 printf '%s' "$input" | jq -e . >/dev/null 2>&1 || deny "フック入力が JSON ではありません"
 path=$(printf '%s' "$input" | jq -r '.tool_input.file_path // empty' 2>/dev/null) \
   || deny "フック入力を解析できません"
@@ -1057,22 +1098,41 @@ exit 0
 
 ```bash
 #!/usr/bin/env bash
-# UserPromptSubmit: 契約セッションで Identity が契約と食い違っていたらプロンプトを止める
+# UserPromptSubmit: 保護対象で Identity が契約と食い違っていたらプロンプトを止める
 # SessionStart はブロックできないため、実効的な停止はここで行う
+#
+# 2つのことを検出する:
+#   1. shim を経ずに起動された（保護対象なのに契約 ID が立っていない）
+#   2. セッション中に Identity が契約と食い違った
 set -u
-
-[ -n "${AWS_HARNESS_CONTRACT_ID:-}" ] || exit 0
 
 deny() { printf 'aws-harness: %s\n' "$1" >&2; exit 2; }
 
-script_dir="${AWS_HARNESS_SCRIPT_DIR:-${CLAUDE_PLUGIN_ROOT:-}/scripts}"
+input=$(cat) || deny "フック入力を読めません"
+
+proj="${CLAUDE_PROJECT_DIR:-}"
+if [ -z "$proj" ] && command -v jq >/dev/null 2>&1; then
+  proj=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
+fi
+[ -n "$proj" ] || proj="$PWD"
+
+# 保護対象でなければ干渉しない
+[ -f "$proj/.aws-harness" ] || exit 0
+
+# 検出1: 保護対象なのに shim を経ていない
+[ -n "${AWS_HARNESS_CONTRACT_ID:-}" ] \
+  || deny "このリポジトリは契約を必須としていますが、aws-harness の shim を経ずに起動されています。セッションを終了し、shim 経由で起動し直してください"
+
+# 検出2: Identity が契約と食い違っていないか
+script_dir="${AWS_HARNESS_SCRIPT_DIR:-}"
+[ -n "$script_dir" ] || script_dir="${CLAUDE_PLUGIN_ROOT:-}/scripts"
 cdir="${AWS_HARNESS_CONTRACT_DIR:-}"
 
-[ -n "$cdir" ] || deny "契約の場所が分かりません（セッションを再起動してください）"
+[ -n "$cdir" ] || deny "契約の場所が分かりません（セッションを終了して起動し直してください）"
 [ -x "$script_dir/verify-identity.sh" ] || deny "照合スクリプトが見つかりません"
 
 "$script_dir/verify-identity.sh" "$cdir" >/dev/null 2>&1 \
-  || deny "現在の AWS Identity が契約と一致しません。セッションを終了して再起動してください"
+  || deny "現在の AWS Identity が契約と一致しません。セッションを終了して起動し直してください"
 
 exit 0
 ```
@@ -1184,7 +1244,7 @@ Expected: FAIL（マニフェスト・hooks.json が存在しない）
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c '\"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/guard-bash.sh\"'",
+            "command": "bash -c 'AWS_HARNESS_PLUGIN_ROOT=\"${CLAUDE_PLUGIN_ROOT}\" \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/guard-bash.sh\"'",
             "timeout": 10
           }
         ]
@@ -1194,7 +1254,7 @@ Expected: FAIL（マニフェスト・hooks.json が存在しない）
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c '\"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/guard-files.sh\"'",
+            "command": "bash -c 'AWS_HARNESS_PLUGIN_ROOT=\"${CLAUDE_PLUGIN_ROOT}\" \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/guard-files.sh\"'",
             "timeout": 10
           }
         ]
@@ -1205,7 +1265,7 @@ Expected: FAIL（マニフェスト・hooks.json が存在しない）
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c '\"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/guard-prompt.sh\"'",
+            "command": "bash -c 'AWS_HARNESS_PLUGIN_ROOT=\"${CLAUDE_PLUGIN_ROOT}\" \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/guard-prompt.sh\"'",
             "timeout": 15
           }
         ]
@@ -1432,6 +1492,20 @@ enforcement = Task 5・6 / 公開非公開分割と marketplace 登録 = Task 7 
 **設計書との差分（意図的な変更）**: 契約実体を YAML から JSON に変更した。
 既存プラグインが jq に依存済みで、bash から YAML を安全に解析する追加依存
 （yq）を避けるため。追跡マーカーは1行の `key: value` なので awk で読む。
+
+**着手前スキャンで直した欠陥（2026-08-08）**:
+
+1. Task 3 のテストに構文エラー（行継続の直後にセミコロン）があったので書き直した。
+2. フックの保護対象判定を `AWS_HARNESS_CONTRACT_ID` の有無から `.aws-harness` の有無に
+   変更した。フックが shim の環境変数を継承する保証がなく、継承されない場合に
+   フックが黙って無効化される（fail-open）ため。この変更で副次的に
+   **shim を経ない起動を検出して止められる**ようになった（`UserPromptSubmit`）。
+3. `PATH` を潰す依存不在テストで `bash` 自体が起動できなくなっていたので、
+   絶対パスの `/bin/bash` に変えた。あわせて「非保護対象は依存不在でも素通しする」
+   ケースを追加した（jq の無い環境で無関係なプロジェクトを巻き込まないため）。
+4. `hooks.json` で `CLAUDE_PLUGIN_ROOT` を環境変数として明示的に渡すようにした。
+   公式仕様ではコマンド文字列のプレースホルダであり、スクリプト内で環境変数として
+   参照できる保証がないため。
 
 **型・名前の整合**: `harness_home()` / `mask_account()` / `valid_contract_id()`（Task 1 定義）が
 Task 2・3 で同名で使われること、`AWS_HARNESS_CONTRACT_ID` / `AWS_HARNESS_LAUNCHED` /

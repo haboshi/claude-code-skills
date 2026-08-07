@@ -30,6 +30,9 @@ export const STYLES = `
 }
 * { box-sizing: border-box; }
 .hidden { display: none !important; }
+/* 画面には出さず、読み上げには残す */
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap; border: 0; }
 html, body { height: 100%; }
 body {
   margin: 0; background: var(--bg); color: var(--ink);
@@ -187,8 +190,11 @@ mark { background: transparent; color: inherit; font-weight: 700; box-shadow: in
 .doc .meta { display: flex; flex-wrap: nowrap; align-items: baseline; gap: .35rem; font-size: 11.5px; color: var(--ink-3); overflow: hidden; }
 .doc .kind { flex: none; padding: 0 .4rem; border: 1px solid var(--line-strong); border-radius: 999px; font-size: 10px; color: var(--ink-2); background: var(--bg-soft); }
 .doc .of { flex: none; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 溢れたときに消えるのはタグ本体（左から縮む）。+N は最後まで残す —
+   全部 flex:none だと行末の +N が最初に切り落とされ、件数が読めなくなる */
 .doc .tags { display: flex; gap: .35rem; overflow: hidden; font-size: 11px; }
-.doc .tag { flex: none; color: var(--ink-3); white-space: nowrap; border-radius: 4px; }
+.doc .tag { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  color: var(--ink-3); white-space: nowrap; border-radius: 4px; }
 .doc .tag::before { content: "#"; opacity: .55; }
 .doc .tag.more { flex: none; color: var(--ink-3); }
 .doc .tag.more::before { content: ""; }
@@ -211,8 +217,10 @@ button.tag:hover { color: var(--accent-ink); text-decoration: underline; }
 @media (max-width: 1100px) { .search input { width: 13rem; } .crumb .path { display: none; } }
 @media (max-width: 820px) {
   body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
-  /* 開いたときはプロジェクトを選ぶ面として十分な高さを取る（畳んでいる間は見出しだけ） */
-  .side { border-right: none; border-bottom: 1px solid var(--line); max-height: 75vh; }
+  /* 開いている間は左ナビが画面を占めるので、一覧は下に隠す（48px の帯を残さない）。
+     選び終えると自動で畳まれ、一覧が全面に戻る */
+  .side { border-right: none; border-bottom: 1px solid var(--line); }
+  .side:not(.collapsed) { position: fixed; inset: 0; z-index: 10; background: var(--bg-soft); max-height: none; }
   .side.collapsed { max-height: none; }
   .side.collapsed .scopes, .side.collapsed .side-foot, .side.collapsed .side-filter { display: none; }
   .brand { display: flex; align-items: center; gap: .6rem; padding: .7rem 1rem; cursor: pointer; }

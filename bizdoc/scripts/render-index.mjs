@@ -75,24 +75,26 @@ export function renderIndex({ projects, groups }) {
 <style>${STYLES}</style>
 </head>
 <body>
-<aside class="side">
+<h1 class="sr-only">doc-hub — 生成ドキュメントの一覧</h1>
+<aside class="side" aria-label="プロジェクトの絞り込み">
   <button type="button" class="brand"><b>doc-hub</b><span>${total} DOCUMENTS</span><i></i></button>
-  <div class="side-filter" hidden><input type="search" placeholder="プロジェクトを絞る" autocomplete="off" spellcheck="false"></div>
-  <nav class="scopes" id="scopes"></nav>
+  <div class="side-filter" hidden><input type="search" placeholder="プロジェクトを絞る" aria-label="プロジェクト名で絞り込む" autocomplete="off" spellcheck="false"></div>
+  <nav class="scopes" id="scopes" aria-label="プロジェクト"></nav>
   <div class="side-foot"><label><input type="checkbox">非表示のプロジェクトも出す</label></div>
 </aside>
 <div class="main">
   <header class="head">
-    <div class="crumb"></div>
-    <div class="search"><input type="search" placeholder="タイトル・タグ・種別・プロジェクトで探す" autocomplete="off" spellcheck="false"><kbd>/</kbd></div>
+    <h2 class="crumb"></h2>
+    <div class="search"><input type="search" placeholder="タイトル・タグ・種別・プロジェクトで探す" aria-label="ドキュメントを探す（空白区切りで絞り込み）" autocomplete="off" spellcheck="false"><kbd>/</kbd></div>
   </header>
   <div class="facets-row">
-    <div class="facets"></div>
+    <div class="facets" aria-label="種別とタグの絞り込み"></div>
     <div class="facet-actions">
       <button type="button" class="clearbtn" hidden>絞り込みを解除</button>
       <button type="button" class="sortbtn">更新日順 ⇄ タイトル順</button>
     </div>
   </div>
+  <p class="sr-only" role="status" aria-live="polite"></p>
   <main class="list"></main>
 </div>
 <noscript>

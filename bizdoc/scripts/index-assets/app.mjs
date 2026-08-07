@@ -161,6 +161,7 @@ export const APP_JS = `
   var sortBtn = document.querySelector('.sortbtn');
   var clearBtn = document.querySelector('.clearbtn');
   var hiddenToggle = document.querySelector('.side-foot input');
+  var live = document.querySelector('[aria-live]');
   clearBtn.addEventListener('click', clearFilters);
 
   // hidden 指定のプロジェクトを名指しで開いたときは、隠したままだと空振りするので表示に切り替える。
@@ -375,6 +376,7 @@ export const APP_JS = `
       var f = el('input', 'facet-filter');
       f.type = 'search';
       f.placeholder = label + 'を絞る';
+      f.setAttribute('aria-label', label + 'を名前で絞り込む');
       var none = el('span', 'facet-none hidden');
       f.addEventListener('input', function () {
         var q = f.value.trim().toLowerCase();
@@ -633,7 +635,13 @@ export const APP_JS = `
   });
 
   // 解除ボタンはスクロールする facets の外に置く（中に入れると切れて押せなくなる）
-  function renderAll() { renderSide(); renderHead(); renderFacets(); renderList(); clearBtn.hidden = !narrowed(); }
+  function renderAll() {
+    renderSide(); renderHead(); renderFacets(); renderList();
+    clearBtn.hidden = !narrowed();
+    // 絞り込みの結果は視覚以外にも伝える（件数が画面のどこかで変わるだけでは気づけない）
+    var n = filtered().length;
+    live.textContent = crumb.querySelector('.nm').textContent + '：' + n + '件';
+  }
 
   function clearFilters() {
     state.q = ''; state.qRaw = ''; state.qTokens = []; state.types = []; state.tags = []; state.period = null;

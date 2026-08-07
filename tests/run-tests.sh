@@ -236,13 +236,25 @@ case "$(envget config_file)" in
   *"/runtime/$CID/config") ok "AWS_CONFIG_FILE がスコープ config を指す" ;;
   *) bad "AWS_CONFIG_FILE がスコープ config を指す" "got=$(envget config_file)" ;;
 esac
+case "$(envget creds_file)" in
+  *"/runtime/$CID/credentials") ok "AWS_SHARED_CREDENTIALS_FILE がスコープ credentials を指す" ;;
+  *) bad "AWS_SHARED_CREDENTIALS_FILE がスコープ credentials を指す" "got=$(envget creds_file)" ;;
+esac
 [ "$(envget vault_profile)" = "example-agent" ] && ok "契約の profile で credential を取る" \
   || bad "契約の profile で credential を取る" "p=$(envget vault_profile)"
 
-# 消毒対象の全変数（19件）で ambient 値が実 CLI まで漏れていないことを確認する
+# 消毒対象の全変数のうち、AWS_CONFIG_FILE / AWS_SHARED_CREDENTIALS_FILE の2つは
+# 消毒後に契約専用の値へ意図的に再設定されるため __UNSET__ にはならない（上の2つの
+# 個別チェックで検証済みなのでここでは除外する）。残りは起動時に必ず __UNSET__
+# （未設定）になっていることを検査する。「leaked-$v でないこと」ではなく番兵
+# __UNSET__ そのものを要求することで、「unset が空文字設定に退化する」回帰も
+# 検出できるようにする（fix round 2 対応）。
 for v in $UNSETS; do
-  [ "$(envget "san_$v")" != "leaked-$v" ] && ok "起動時に $v の ambient 値が漏れない" \
-    || bad "起動時に $v の ambient 値が漏れない" "leaked value が残っている"
+  case "$v" in
+    AWS_CONFIG_FILE|AWS_SHARED_CREDENTIALS_FILE) continue ;;
+  esac
+  [ "$(envget "san_$v")" = "__UNSET__" ] && ok "起動時に $v が未設定になる" \
+    || bad "起動時に $v が未設定になる" "got=$(envget "san_$v")"
 done
 
 R=$(make_repo repo-launch-deny "contract_id: 11111111-2222-3333-4444-555555555555

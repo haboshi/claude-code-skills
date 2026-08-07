@@ -49,12 +49,20 @@ export const APP_JS = `
     });
   });
 
-  function groupOf(key) { for (var i = 0; i < D.groups.length; i++) if (D.groups[i].key === key) return D.groups[i]; return null; }
+  // グループに属さないプロジェクトの束も、他のグループと同じように選べる擬似グループにする
+  var NONE = '__none';
+  function groupOf(key) {
+    if (key === NONE) return { key: NONE, label: '未分類' };
+    for (var i = 0; i < D.groups.length; i++) if (D.groups[i].key === key) return D.groups[i];
+    return null;
+  }
+  function isLoose(p) { return !p.group || !groupOf(p.group); }
   function visibleProjects() { return D.projects.filter(function (p) { return state.showHidden || !p.hidden; }); }
   function visible(doc) { return state.showHidden || !doc.proj.hidden; }
   function inScope(doc) {
     if (state.scope === 'all') return true;
     if (state.scope.indexOf('p:') === 0) return doc.proj.id === state.scope.slice(2);
+    if (state.scope === 'g:' + NONE) return isLoose(doc.proj);
     if (state.scope.indexOf('g:') === 0) return doc.proj.group === state.scope.slice(2);
     return true;
   }
@@ -186,12 +194,14 @@ export const APP_JS = `
     b.addEventListener('click', function () { setScope(key); });
     return b;
   }
-  // 左の一覧も作り直すので、直前に押していたボタンへフォーカスを戻す
+  // 左の一覧も作り直すので、直前に押していたボタンへフォーカスを戻す（同じく1回だけ）
   function restoreSideFocus() {
-    if (!state.sideFocusKey) return;
+    var key = state.sideFocusKey;
+    if (!key) return;
+    state.sideFocusKey = null;
     var all = side.querySelectorAll('[data-key]');
     for (var i = 0; i < all.length; i++) {
-      if (all[i].dataset.key === state.sideFocusKey) { all[i].focus(); return; }
+      if (all[i].dataset.key === key) { all[i].focus(); return; }
     }
   }
 
@@ -208,35 +218,32 @@ export const APP_JS = `
     var buckets = D.groups.map(function (g) {
       return { key: g.key, label: g.label, members: vis.filter(function (p) { return p.group === g.key; }) };
     }).filter(function (b) { return b.members.length > 0; });
-    var loose = vis.filter(function (p) { return !p.group || !groupOf(p.group); });
-    if (loose.length) buckets.push({ key: null, label: '未分類', members: loose });
+    var loose = vis.filter(isLoose);
+    if (loose.length) buckets.push({ key: NONE, label: '未分類', members: loose });
 
     buckets.forEach(function (b) {
       var wrap = el('div', 'grp');
-      var open = !state.collapsed[b.key || '_'];
+      var open = !state.collapsed[b.key];
       var n = sum(b.members);
       // 見出し行は「開閉（caret）」と「グループ全体を絞り込む（ラベル）」の 2 つの操作に分かれる
       var h = el('div', 'grp-h');
       h.setAttribute('aria-expanded', open ? 'true' : 'false');
       var caret = el('button', 'caret', '▾');
       caret.type = 'button';
-      caret.dataset.key = 'caret:' + (b.key || '_');
+      caret.dataset.key = 'caret:' + b.key;
       caret.setAttribute('aria-label', (open ? '畳む' : '開く') + '：' + b.label);
       caret.addEventListener('click', function () {
-        state.collapsed[b.key || '_'] = open;
-        state.sideFocusKey = 'caret:' + (b.key || '_');
+        state.collapsed[b.key] = open;
+        state.sideFocusKey = 'caret:' + b.key;
         save(); renderSide();
       });
       h.appendChild(caret);
-      if (b.key) {
-        var gl = el('button', 'gl', b.label);
-        gl.type = 'button';
-        if (state.scope === 'g:' + b.key) gl.setAttribute('aria-current', 'true');
-        gl.addEventListener('click', function () { setScope('g:' + b.key); });
-        h.appendChild(gl);
-      } else {
-        h.appendChild(el('span', 'gl', b.label));
-      }
+      var gl = el('button', 'gl', b.label);
+      gl.type = 'button';
+      gl.dataset.key = 'scope:g:' + b.key;
+      if (state.scope === 'g:' + b.key) gl.setAttribute('aria-current', 'true');
+      gl.addEventListener('click', function () { setScope('g:' + b.key); });
+      h.appendChild(gl);
       h.appendChild(el('span', 'gn', n));
       wrap.appendChild(h);
       var body = el('div', 'grp-b');
@@ -267,7 +274,9 @@ export const APP_JS = `
     cnt.appendChild(document.createTextNode(shown === base ? '件' : ' / ' + base + '件'));
     crumb.appendChild(cnt);
     if (proj && proj.path) crumb.appendChild(el('span', 'path', proj.path));
-    sortBtn.textContent = state.sort === 'updated' ? '更新日順 ▾' : 'タイトル順 ▾';
+    // メニューではなく 2 状態の切り替えなので、次に何になるかを見せる
+    sortBtn.textContent = state.sort === 'updated' ? '更新日順 ⇄ タイトル順' : 'タイトル順 ⇄ 更新日順';
+    sortBtn.title = '並び順を切り替える';
   }
 
   function chip(label, n, active, onClick, cls, key) {
@@ -284,11 +293,15 @@ export const APP_JS = `
     });
     return b;
   }
+  // 復帰は「直前の操作の1回だけ」。残したままにすると、検索の打鍵など無関係な再描画でも
+  // フォーカスを奪い、入力中の文字が消える
   function restoreFocus(root) {
-    if (!state.focusKey) return;
+    var key = state.focusKey;
+    if (!key) return;
+    state.focusKey = null;
     var all = root.querySelectorAll('.chip');
     for (var i = 0; i < all.length; i++) {
-      if (all[i].dataset.key === state.focusKey) { all[i].focus(); return; }
+      if (all[i].dataset.key === key) { all[i].focus(); return; }
     }
   }
   // 選択中の値は件数 0 でも残す（解除できなくなるため）。並びは「選択中 → 件数の多い順」
@@ -312,7 +325,14 @@ export const APP_JS = `
     line.appendChild(lb);
     var box = el('div', 'facet-chips');
     var shown = isOpen ? items : items.slice(0, limit);
+    // 全部開くと 1 件だけのタグが壁になるので、そこから先は区切って「探す対象」だと分かるようにする
+    var hasMulti = shown.some(function (t) { return t.n > 1; });
+    var marked = false;
     shown.forEach(function (t) {
+      if (isOpen && hasMulti && !marked && t.n === 1 && active.indexOf(t.v) < 0) {
+        marked = true;
+        box.appendChild(el('span', 'facet-note', '1件のみ'));
+      }
       box.appendChild(chip(t.v, t.n, active.indexOf(t.v) >= 0, function () { onPick(t.v); }, null, prefix + t.v));
     });
     // 展開したら畳めること（片道にしない）。キーは開閉で同じにしてフォーカスを同じ位置に残す
@@ -408,7 +428,14 @@ export const APP_JS = `
     var t = el(d.broken ? 'div' : 'a', 'ttl');
     if (!d.broken) {
       t.href = d.href;
-      a.addEventListener('click', function (ev) { if (!ev.defaultPrevented) t.click(); });
+      // 行のどこを押しても開くための補助。リンク自身の上や、修飾キー付き・中クリックのときは
+      // ブラウザに任せる（合成クリックを重ねると新規タブと現在タブの両方が飛ぶ）
+      a.addEventListener('click', function (ev) {
+        if (ev.defaultPrevented || ev.button !== 0) return;
+        if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+        if (t.contains(ev.target)) return;
+        t.click();
+      });
     }
     t.title = d.title;
     highlight(t, d.title);
@@ -449,13 +476,19 @@ export const APP_JS = `
 
     if (!docs.length) {
       var e = el('div', 'empty');
-      e.appendChild(el('b', null, '該当するドキュメントがありません'));
-      e.appendChild(el('div', null,
-        state.q ? '「' + state.q + '」に一致する文書は、この範囲にありません。' : '絞り込み条件を外すか、範囲を「すべて」に広げてください。'));
-      var btn = el('button', null, '条件をすべて解除');
-      btn.type = 'button';
-      btn.addEventListener('click', clearFilters);
-      e.appendChild(btn);
+      if (!narrowed()) {
+        // 絞り込みが掛かっていないのに 0 件 = そのプロジェクトにまだ文書が無い
+        e.appendChild(el('b', null, 'まだドキュメントがありません'));
+        e.appendChild(el('div', null, 'この範囲に登録された文書はまだありません。'));
+      } else {
+        e.appendChild(el('b', null, '該当するドキュメントがありません'));
+        e.appendChild(el('div', null,
+          state.q ? '「' + state.q + '」に一致する文書は、この範囲にありません。' : '絞り込み条件を外すか、範囲を「すべて」に広げてください。'));
+        var btn = el('button', null, '条件をすべて解除');
+        btn.type = 'button';
+        btn.addEventListener('click', clearFilters);
+        e.appendChild(btn);
+      }
       list.appendChild(e);
       return;
     }
@@ -542,6 +575,8 @@ export const APP_JS = `
   });
 
   document.addEventListener('keydown', function (ev) {
+    // 日本語変換中のキーは横取りしない（変換中の Esc で入力ごと消える・↓ で候補選択を奪う）
+    if (ev.isComposing || ev.keyCode === 229) return;
     var typing = document.activeElement === input;
     if (ev.key === '/' && !typing) { ev.preventDefault(); input.focus(); input.select(); return; }
     if (ev.key === 'Escape') {
@@ -564,6 +599,7 @@ export const APP_JS = `
   function validScope(s) {
     if (!s || s === 'all') return s;
     if (s.indexOf('p:') === 0) return D.projects.some(function (p) { return p.id === s.slice(2); }) ? s : null;
+    if (s === 'g:' + NONE) return D.projects.some(isLoose) ? s : null;
     return groupOf(s.slice(2)) ? s : null;
   }
   // ページ内でのハッシュ移動も、左の一覧を押したときと同じ状態リセットを通す

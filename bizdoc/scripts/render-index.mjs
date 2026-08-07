@@ -83,11 +83,11 @@ export function renderIndex({ projects, groups }) {
 <div class="main">
   <header class="head">
     <div class="crumb"></div>
-    <div class="search"><input type="search" placeholder="タイトル・タグ・種別で探す" autocomplete="off" spellcheck="false"><kbd>/</kbd></div>
+    <div class="search"><input type="search" placeholder="タイトル・タグ・種別・プロジェクトで探す" autocomplete="off" spellcheck="false"><kbd>/</kbd></div>
   </header>
   <div class="facets-row">
     <div class="facets"></div>
-    <button type="button" class="sortbtn">更新日順 ▾</button>
+    <button type="button" class="sortbtn">更新日順 ⇄ タイトル順</button>
   </div>
   <main class="list"></main>
 </div>

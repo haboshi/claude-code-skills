@@ -117,6 +117,7 @@ mark { background: transparent; color: var(--accent-ink); font-weight: 700; box-
 .facet-chips { display: flex; flex-wrap: wrap; gap: .28rem; }
 .facet-label { font-size: 10px; font-weight: 700; letter-spacing: .1em; color: var(--ink-3); padding-top: .22rem; }
 .facet-label i { display: block; font-style: normal; font-weight: 600; font-size: 9px; letter-spacing: 0; color: var(--accent); }
+.facet-note { align-self: center; margin-left: .35rem; padding-left: .55rem; border-left: 1px solid var(--line-strong); font-size: 9.5px; color: var(--ink-3); }
 .chip {
   display: inline-flex; align-items: baseline; gap: .3rem; padding: .12rem .55rem;
   border: 1px solid var(--line); border-radius: 999px; font-size: 11.5px; color: var(--ink-2);
@@ -153,7 +154,8 @@ mark { background: transparent; color: var(--accent-ink); font-weight: 700; box-
 .doc .when { font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; line-height: 1.45; }
 .doc .when b { display: block; font-size: 12.5px; font-weight: 700; color: var(--ink-2); letter-spacing: -.01em; }
 .doc .body { min-width: 0; }
-.doc .ttl { font-size: 14px; font-weight: 600; line-height: 1.5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* block でないと（タイトルは <a> なので既定は inline）overflow が効かず ellipsis が死ぬ */
+.doc .ttl { display: block; font-size: 14px; font-weight: 600; line-height: 1.5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .doc:hover .ttl, .doc[data-cursor="1"] .ttl { color: var(--accent-ink); }
 .doc .meta { display: flex; flex-wrap: nowrap; align-items: baseline; gap: .35rem; font-size: 11.5px; color: var(--ink-3); overflow: hidden; }
 .doc .kind { flex: none; padding: 0 .4rem; border: 1px solid var(--line-strong); border-radius: 999px; font-size: 10px; color: var(--ink-2); background: var(--bg-soft); }

@@ -1,0 +1,1054 @@
+- generic [ref=e1]:
+  - complementary [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]: doc-hub
+      - generic [ref=e5]: 74 DOCUMENTS
+    - navigation [ref=e7]:
+      - button "すべて 74" [active] [ref=e548] [cursor=pointer]:
+        - generic [ref=e549]: すべて
+        - generic [ref=e550]: "74"
+      - generic [ref=e551]:
+        - generic [ref=e552]:
+          - button "畳む：AllAmbitious" [ref=e553] [cursor=pointer]: ▾
+          - button "AllAmbitious" [ref=e554] [cursor=pointer]
+          - generic [ref=e555]: "2"
+        - generic [ref=e556]:
+          - button "ai-os 1" [ref=e557] [cursor=pointer]:
+            - generic [ref=e558]: ai-os
+            - generic [ref=e559]: "1"
+          - button "roleaicall 1" [ref=e560] [cursor=pointer]:
+            - generic [ref=e561]: roleaicall
+            - generic [ref=e562]: "1"
+      - generic [ref=e563]:
+        - generic [ref=e564]:
+          - button "畳む：JBR" [ref=e565] [cursor=pointer]: ▾
+          - button "JBR" [ref=e566] [cursor=pointer]
+          - generic [ref=e567]: "26"
+        - generic [ref=e568]:
+          - button "analytics 16" [ref=e569] [cursor=pointer]:
+            - generic [ref=e570]: analytics
+            - generic [ref=e571]: "16"
+          - button "partner-agent 6" [ref=e572] [cursor=pointer]:
+            - generic [ref=e573]: partner-agent
+            - generic [ref=e574]: "6"
+          - button "jbr 1" [ref=e575] [cursor=pointer]:
+            - generic [ref=e576]: jbr
+            - generic [ref=e577]: "1"
+          - button "connect-nextgen-pricing 2" [ref=e578] [cursor=pointer]:
+            - generic [ref=e579]: connect-nextgen-pricing
+            - generic [ref=e580]: "2"
+          - button "connect-call-analyzer 1" [ref=e581] [cursor=pointer]:
+            - generic [ref=e582]: connect-call-analyzer
+            - generic [ref=e583]: "1"
+      - generic [ref=e584]:
+        - generic [ref=e585]:
+          - button "畳む：Octus" [ref=e586] [cursor=pointer]: ▾
+          - button "Octus" [ref=e587] [cursor=pointer]
+          - generic [ref=e588]: "16"
+        - generic [ref=e589]:
+          - button "Kata 11" [ref=e590] [cursor=pointer]:
+            - generic [ref=e591]: Kata
+            - generic [ref=e592]: "11"
+          - button "Jiku 5" [ref=e593] [cursor=pointer]:
+            - generic [ref=e594]: Jiku
+            - generic [ref=e595]: "5"
+      - generic [ref=e596]:
+        - generic [ref=e597]:
+          - button "畳む：未分類" [ref=e598] [cursor=pointer]: ▾
+          - button "未分類" [ref=e599] [cursor=pointer]
+          - generic [ref=e600]: "30"
+        - generic [ref=e601]:
+          - button "Claude Code 設定 3" [ref=e602] [cursor=pointer]:
+            - generic [ref=e603]: Claude Code 設定
+            - generic [ref=e604]: "3"
+          - button "vegeexpress 4" [ref=e605] [cursor=pointer]:
+            - generic [ref=e606]: vegeexpress
+            - generic [ref=e607]: "4"
+          - button "smarep 6" [ref=e608] [cursor=pointer]:
+            - generic [ref=e609]: smarep
+            - generic [ref=e610]: "6"
+          - button "ma-shindanshi.com 11" [ref=e611] [cursor=pointer]:
+            - generic [ref=e612]: ma-shindanshi.com
+            - generic [ref=e613]: "11"
+          - button "claude-code-skills 6" [ref=e614] [cursor=pointer]:
+            - generic [ref=e615]: claude-code-skills
+            - generic [ref=e616]: "6"
+          - button "d49afda2-9576-4721-ad1a-5dca95ae6447 0" [ref=e617] [cursor=pointer]:
+            - generic [ref=e618]: d49afda2-9576-4721-ad1a-5dca95ae6447
+            - generic [ref=e619]: "0"
+    - generic [ref=e78] [cursor=pointer]:
+      - checkbox "非表示のプロジェクトも出す" [checked] [ref=e79]
+      - text: 非表示のプロジェクトも出す
+  - generic [ref=e80]:
+    - banner [ref=e81]:
+      - generic [ref=e82]:
+        - generic [ref=e620]: すべてのドキュメント
+        - generic [ref=e621]: 74件
+      - generic [ref=e86]:
+        - searchbox "タイトル・タグ・種別・プロジェクトで探す" [ref=e87]
+        - generic: /
+    - generic [ref=e88]:
+      - generic [ref=e89]:
+        - generic [ref=e622]:
+          - generic "選んだ種別のいずれかに当てはまる文書" [ref=e623]: 種別
+          - generic [ref=e624]:
+            - button "解説 26" [ref=e625] [cursor=pointer]:
+              - text: 解説
+              - generic [ref=e626]: "26"
+            - button "報告書 13" [ref=e627] [cursor=pointer]:
+              - text: 報告書
+              - generic [ref=e628]: "13"
+            - button "資料 10" [ref=e629] [cursor=pointer]:
+              - text: 資料
+              - generic [ref=e630]: "10"
+            - button "仕様書 5" [ref=e631] [cursor=pointer]:
+              - text: 仕様書
+              - generic [ref=e632]: "5"
+            - button "提案書 4" [ref=e633] [cursor=pointer]:
+              - text: 提案書
+              - generic [ref=e634]: "4"
+            - button "設計書 3" [ref=e635] [cursor=pointer]:
+              - text: 設計書
+              - generic [ref=e636]: "3"
+            - button "調査 3" [ref=e637] [cursor=pointer]:
+              - text: 調査
+              - generic [ref=e638]: "3"
+            - button "企画書 2" [ref=e639] [cursor=pointer]:
+              - text: 企画書
+              - generic [ref=e640]: "2"
+            - button "他 8" [ref=e641] [cursor=pointer]
+        - generic [ref=e642]:
+          - generic "選んだタグをすべて持つ文書" [ref=e643]: タグ
+          - generic [ref=e644]:
+            - button "imported 48" [ref=e645] [cursor=pointer]:
+              - text: imported
+              - generic [ref=e646]: "48"
+            - button "vegeexpress 4" [ref=e647] [cursor=pointer]:
+              - text: vegeexpress
+              - generic [ref=e648]: "4"
+            - button "harness 3" [ref=e649] [cursor=pointer]:
+              - text: harness
+              - generic [ref=e650]: "3"
+            - button "sr1191 3" [ref=e651] [cursor=pointer]:
+              - text: sr1191
+              - generic [ref=e652]: "3"
+            - button "認定試験 3" [ref=e653] [cursor=pointer]:
+              - text: 認定試験
+              - generic [ref=e654]: "3"
+            - button "architecture 2" [ref=e655] [cursor=pointer]:
+              - text: architecture
+              - generic [ref=e656]: "2"
+            - button "billing 2" [ref=e657] [cursor=pointer]:
+              - text: billing
+              - generic [ref=e658]: "2"
+            - button "claude-code 2" [ref=e659] [cursor=pointer]:
+              - text: claude-code
+              - generic [ref=e660]: "2"
+            - button "proposal 2" [ref=e661] [cursor=pointer]:
+              - text: proposal
+              - generic [ref=e662]: "2"
+            - button "transfer 2" [ref=e663] [cursor=pointer]:
+              - text: transfer
+              - generic [ref=e664]: "2"
+            - button "他 58" [ref=e665] [cursor=pointer]
+      - button "更新日順 ⇄ タイトル順" [ref=e134] [cursor=pointer]
+    - main [ref=e135]:
+      - generic [ref=e666]: 2026年8月
+      - generic [ref=e667] [cursor=pointer]:
+        - generic [ref=e668]:
+          - generic [ref=e669]: 8/8
+          - text: 今日
+        - generic [ref=e670]:
+          - link "2軸診断によるハーネス改善提案（7件・優先度つき）" [ref=e671]:
+            - /url: projects/claude-635cbd43/docs/20260808-claude-code-harness-improvements/index.html
+          - generic [ref=e672]:
+            - generic [ref=e673]: 提案書
+            - generic [ref=e674]: Claude Code 設定
+        - generic [ref=e675]:
+          - button "#harness" [ref=e676]
+          - button "#improvement" [ref=e677]
+          - button "#proposal" [ref=e678]
+      - generic [ref=e679] [cursor=pointer]:
+        - generic [ref=e680]:
+          - generic [ref=e681]: 8/8
+          - text: 今日
+        - generic [ref=e682]:
+          - link "請求書機能 — 業務の流れをこの形で固めさせてください" [ref=e683]:
+            - /url: projects/vegeexpress-73cb6762/docs/20260807-invoice-requirements-agreement/index.html
+          - generic [ref=e684]:
+            - generic [ref=e685]: 要件確認資料
+            - generic [ref=e686]: vegeexpress
+        - generic [ref=e687]:
+          - button "#vegeexpress" [ref=e688]
+          - button "#請求書" [ref=e689]
+          - button "#要件定義" [ref=e690]
+          - generic "クライアント合意" [ref=e691]: "+1"
+      - generic [ref=e692] [cursor=pointer]:
+        - generic [ref=e693]:
+          - generic [ref=e694]: 8/7
+          - text: 昨日
+        - generic [ref=e695]:
+          - link "受付通知を Slack へ — 通知の中身は確定し、着手を止める論点が入れ替わった" [ref=e696]:
+            - /url: projects/smarep-6cbf93cc/docs/20260807-chat-notification-slack-lineworks/index.html
+          - generic [ref=e697]:
+            - generic [ref=e698]: 報告書
+            - generic [ref=e699]: smarep
+        - generic [ref=e700]:
+          - button "#slack" [ref=e701]
+          - button "#line-works" [ref=e702]
+          - button "#notification" [ref=e703]
+      - generic [ref=e704] [cursor=pointer]:
+        - generic [ref=e705]:
+          - generic [ref=e706]: 8/7
+          - text: 昨日
+        - generic [ref=e707]:
+          - link "企業専用AI構築代行 — 商材・価格・進め方（初回すり合わせ）" [ref=e708]:
+            - /url: projects/ai-os-d5f57e54/docs/20260807-ai-os-agency-proposal/index.html
+          - generic [ref=e709]:
+            - generic [ref=e710]: 提案書
+            - generic [ref=e711]: ai-os
+        - generic [ref=e712]:
+          - button "#ai-os" [ref=e713]
+          - button "#proposal" [ref=e714]
+          - button "#partner" [ref=e715]
+      - generic [ref=e716] [cursor=pointer]:
+        - generic [ref=e717]:
+          - generic [ref=e718]: 8/7
+          - text: 昨日
+        - generic [ref=e719]:
+          - link "チャット受付は既存Web受付の拡張として出せる — 難所は開発ではなく「自己解決」の値付け" [ref=e720]:
+            - /url: projects/smarep-6cbf93cc/docs/20260807-chat-contact-reception-concept/index.html
+          - generic [ref=e721]:
+            - generic [ref=e722]: 企画書
+            - generic [ref=e723]: smarep
+        - generic [ref=e724]:
+          - button "#chat-reception" [ref=e725]
+          - button "#planning" [ref=e726]
+          - button "#billing" [ref=e727]
+      - generic [ref=e728] [cursor=pointer]:
+        - generic [ref=e729]:
+          - generic [ref=e730]: 8/7
+          - text: 昨日
+        - generic [ref=e731]:
+          - link "M&A手残り比較シミュレーション 成長企画" [ref=e732]:
+            - /url: projects/ma-shindanshi-com-a70868a8/docs/20260807-m-a/index.html
+          - generic [ref=e733]:
+            - generic [ref=e734]: 企画書
+            - generic [ref=e735]: ma-shindanshi.com
+        - generic [ref=e736]:
+          - button "#プロモーション" [ref=e737]
+          - button "#プロダクト改善" [ref=e738]
+          - button "#診断士" [ref=e739]
+          - generic "手残り比較" [ref=e740]: "+1"
+      - generic [ref=e741] [cursor=pointer]:
+        - generic [ref=e742]:
+          - generic [ref=e743]: 8/7
+          - text: 昨日
+        - generic [ref=e744]:
+          - link "ハーネスの2軸整理 — 時間スケール×強制メカニズム（改訂版）" [ref=e745]:
+            - /url: projects/claude-635cbd43/docs/20260807-claude-code-harness-two-axis/index.html
+          - generic [ref=e746]:
+            - generic [ref=e747]: 解説
+            - generic [ref=e748]: Claude Code 設定
+        - generic [ref=e749]:
+          - button "#harness" [ref=e750]
+          - button "#claude-code" [ref=e751]
+          - button "#architecture" [ref=e752]
+          - generic "revision" [ref=e753]: "+1"
+      - generic [ref=e754] [cursor=pointer]:
+        - generic [ref=e755]:
+          - generic [ref=e756]: 8/7
+          - text: 昨日
+        - generic [ref=e757]:
+          - link "Claude Code ハーネスの三層設計（ミクロ・マクロ・メタ）" [ref=e758]:
+            - /url: projects/claude-635cbd43/docs/20260807-claude-code-harness-three-layers/index.html
+          - generic [ref=e759]:
+            - generic [ref=e760]: 解説
+            - generic [ref=e761]: Claude Code 設定
+        - generic [ref=e762]:
+          - button "#harness" [ref=e763]
+          - button "#claude-code" [ref=e764]
+          - button "#architecture" [ref=e765]
+      - generic [ref=e766] [cursor=pointer]:
+        - generic [ref=e767]:
+          - generic [ref=e768]: 8/7
+          - text: 昨日
+        - generic [ref=e769]:
+          - link "ご指摘いただいた8項目、すべて反映しました — 手残り比較シミュレーション改善報告" [ref=e770]:
+            - /url: projects/ma-shindanshi-com-a70868a8/docs/20260807-tedori-simulation-feedback-8items/index.html
+          - generic [ref=e771]:
+            - generic [ref=e772]: 報告書
+            - generic [ref=e773]: ma-shindanshi.com
+        - generic [ref=e774]:
+          - button "#シミュレーション" [ref=e775]
+          - button "#理事フィードバック" [ref=e776]
+          - button "#提案書" [ref=e777]
+          - generic "UI改善" [ref=e778]: "+1"
+      - generic [ref=e779] [cursor=pointer]:
+        - generic [ref=e780]:
+          - generic [ref=e781]: 8/7
+          - text: 昨日
+        - generic [ref=e782]:
+          - link "課題 21 件の対応状況報告（項番 86〜106 / 2026-08-06）" [ref=e783]:
+            - /url: projects/vegeexpress-73cb6762/docs/20260806-issue-status-report-86-106/index.html
+          - generic [ref=e784]:
+            - generic [ref=e785]: 報告書
+            - generic [ref=e786]: vegeexpress
+        - generic [ref=e787]:
+          - button "#vegeexpress" [ref=e788]
+          - button "#課題対応" [ref=e789]
+          - button "#クライアント報告" [ref=e790]
+          - generic "STG証跡" [ref=e791]: "+1"
+      - generic [ref=e792] [cursor=pointer]:
+        - generic [ref=e793]:
+          - generic [ref=e794]: 8/5
+          - text: 3日前
+        - generic [ref=e795]:
+          - link "商談後の確認体験・第1段は着手できる。承認済み方針を4点変える（全項決着）" [ref=e796]:
+            - /url: projects/kata-c08d6205/docs/20260805-post-meeting-confirm-stage1-proposal/index.html
+          - generic [ref=e797]:
+            - generic [ref=e798]: 提案書
+            - generic [ref=e799]: Kata
+        - generic [ref=e800]:
+          - button "#Issue394" [ref=e801]
+          - button "#商談後" [ref=e802]
+          - button "#実装計画" [ref=e803]
+      - generic [ref=e804] [cursor=pointer]:
+        - generic [ref=e805]:
+          - generic [ref=e806]: 8/5
+          - text: 3日前
+        - generic [ref=e807]:
+          - link "ワークスペースは新しい表ではない — 既にある organizations の読み替えで足りる" [ref=e808]:
+            - /url: projects/kata-c08d6205/docs/20260805-kata-workspace-concept/index.html
+          - generic [ref=e809]:
+            - generic [ref=e810]: 解説
+            - generic [ref=e811]: Kata
+        - generic [ref=e812]:
+          - button "#ワークスペース" [ref=e813]
+          - button "#SaaS" [ref=e814]
+          - button "#テナント分離" [ref=e815]
+      - generic [ref=e816] [cursor=pointer]:
+        - generic [ref=e817]:
+          - generic [ref=e818]: 8/5
+          - text: 3日前
+        - generic [ref=e819]:
+          - link "転送受付・逆転送課金のメカニズム — イベントから請求書まで、流れと状態遷移の全体像" [ref=e820]:
+            - /url: projects/smarep-6cbf93cc/docs/20260805-transfer-billing-mechanism/index.html
+          - generic [ref=e821]:
+            - generic [ref=e822]: 解説
+            - generic [ref=e823]: smarep
+        - generic [ref=e824]:
+          - button "#sr1191" [ref=e825]
+          - button "#billing" [ref=e826]
+          - button "#transfer" [ref=e827]
+      - generic [ref=e828] [cursor=pointer]:
+        - generic [ref=e829]:
+          - generic [ref=e830]: 8/4
+          - text: 4日前
+        - generic [ref=e831]:
+          - link "録音は「マイクが動いた」で始めない — KATA デスクトップの開始・終了メカニズム" [ref=e832]:
+            - /url: projects/kata-c08d6205/docs/20260804-desktop-recording-start-stop-mechanism/index.html
+          - generic [ref=e833]:
+            - generic [ref=e834]: 解説
+            - generic [ref=e835]: Kata
+        - generic [ref=e836]:
+          - button "#デスクトップ" [ref=e837]
+          - button "#検知" [ref=e838]
+          - button "#録音" [ref=e839]
+      - generic [ref=e840] [cursor=pointer]:
+        - generic [ref=e841]:
+          - generic [ref=e842]: 8/3
+          - text: 5日前
+        - generic [ref=e843]:
+          - link "転送受付 本番化前 総点検 — 中核連携の未実装を含む45件のリスクを確定した" [ref=e844]:
+            - /url: projects/smarep-6cbf93cc/docs/20260803-sr1191-transfer-reception-production-risk-review/index.html
+          - generic [ref=e845]:
+            - generic [ref=e846]: 報告書
+            - generic [ref=e847]: smarep
+        - generic [ref=e848]:
+          - button "#sr1191" [ref=e849]
+          - button "#transfer" [ref=e850]
+          - button "#risk-review" [ref=e851]
+      - generic [ref=e852] [cursor=pointer]:
+        - generic [ref=e853]:
+          - generic [ref=e854]: 8/3
+          - text: 5日前
+        - generic [ref=e855]:
+          - link "SR-1238 Webhook 送信元 IP 固定化の可否と構成変更手順" [ref=e856]:
+            - /url: projects/smarep-6cbf93cc/docs/20260803-sr1238-webhook-egress-ip-fixation/index.html
+          - generic [ref=e857]:
+            - generic [ref=e858]: 報告書
+            - generic [ref=e859]: smarep
+        - generic [ref=e860]:
+          - button "#sr1238" [ref=e861]
+          - button "#webhook" [ref=e862]
+          - button "#infra" [ref=e863]
+      - generic [ref=e864] [cursor=pointer]:
+        - generic [ref=e865]:
+          - generic [ref=e866]: 8/3
+          - text: 5日前
+        - generic [ref=e867]:
+          - link "タグ絞り込み機能 要件定義書（通常シナリオ画面への追加）" [ref=e868]:
+            - /url: projects/roleaicall-0e550fa3/docs/20260803-scenario-tag-filter-requirements/index.html
+          - generic [ref=e869]:
+            - generic [ref=e870]: 要件定義書
+            - generic [ref=e871]: roleaicall
+        - generic [ref=e872]:
+          - button "#要件定義" [ref=e873]
+          - button "#シナリオ選択" [ref=e874]
+          - button "#タグ" [ref=e875]
+          - generic "UI" [ref=e876]: "+1"
+      - generic [ref=e877] [cursor=pointer]:
+        - generic [ref=e878]:
+          - generic [ref=e879]: 8/3
+          - text: 5日前
+        - generic [ref=e880]:
+          - link "納品書作成までの業務フロー ご説明資料 | VegeExpress" [ref=e881]:
+            - /url: projects/vegeexpress-73cb6762/docs/20260802-delivery-note-workflow-briefing/index.html
+          - generic [ref=e882]:
+            - generic [ref=e883]: 説明資料
+            - generic [ref=e884]: vegeexpress
+        - generic [ref=e885]:
+          - button "#vegeexpress" [ref=e886]
+          - button "#納品書" [ref=e887]
+          - button "#クライアント説明" [ref=e888]
+          - generic "STG実画面" [ref=e889]: "+1"
+      - generic [ref=e890] [cursor=pointer]:
+        - generic [ref=e891]:
+          - generic [ref=e892]: 8/3
+          - text: 5日前
+        - generic [ref=e893]:
+          - link "納品書フロー 運用ギャップ洗い出し（内部検討用）" [ref=e894]:
+            - /url: projects/vegeexpress-73cb6762/docs/20260802-delivery-note-ops-gap-audit/index.html
+          - generic [ref=e895]:
+            - generic [ref=e896]: 内部報告
+            - generic [ref=e897]: vegeexpress
+        - generic [ref=e898]:
+          - button "#vegeexpress" [ref=e899]
+          - button "#納品書" [ref=e900]
+          - button "#運用監査" [ref=e901]
+          - generic "内部向け" [ref=e902]: "+1"
+      - generic [ref=e903] [cursor=pointer]:
+        - generic [ref=e904]:
+          - generic [ref=e905]: 8/3
+          - text: 5日前
+        - generic [ref=e906]:
+          - link "スイッチを入れれば、会員の画面に届く — 認定試験の受験導線、修正前後の実機比較" [ref=e907]:
+            - /url: projects/ma-shindanshi-com-a70868a8/docs/20260803-exam-switch-screen-evidence/index.html
+          - generic [ref=e908]:
+            - generic [ref=e909]: 報告書
+            - generic [ref=e910]: ma-shindanshi.com
+        - generic [ref=e911]:
+          - button "#認定試験" [ref=e912]
+          - button "#会費ペイ" [ref=e913]
+          - button "#実機確認" [ref=e914]
+          - generic "スクリーンショット" [ref=e915]: "+1"
+      - generic [ref=e916] [cursor=pointer]:
+        - generic [ref=e917]:
+          - generic [ref=e918]: 8/3
+          - text: 5日前
+        - generic [ref=e919]:
+          - link "認定試験が受けられなかった原因と、本日からの操作手順のご案内" [ref=e920]:
+            - /url: projects/ma-shindanshi-com-a70868a8/docs/20260803-exam-office-guide/index.html
+          - generic [ref=e921]:
+            - generic [ref=e922]: ご報告
+            - generic [ref=e923]: ma-shindanshi.com
+        - generic [ref=e924]:
+          - button "#認定試験" [ref=e925]
+          - button "#事務局向け" [ref=e926]
+          - button "#運用手順" [ref=e927]
+      - generic [ref=e928] [cursor=pointer]:
+        - generic [ref=e929]:
+          - generic [ref=e930]: 8/3
+          - text: 5日前
+        - generic [ref=e931]:
+          - link "bellSalesAI 特許調査報告 — KATA は抵触するか" [ref=e932]:
+            - /url: projects/kata-c08d6205/docs/20260803-bellsalesai-patent-risk-assessment/index.html
+          - generic [ref=e933]:
+            - generic [ref=e934]: 報告書
+            - generic [ref=e935]: Kata
+        - generic [ref=e936]:
+          - button "#特許" [ref=e937]
+          - button "#競合" [ref=e938]
+          - button "#リスク" [ref=e939]
+      - generic [ref=e940] [cursor=pointer]:
+        - generic [ref=e941]:
+          - generic [ref=e942]: 8/3
+          - text: 5日前
+        - generic [ref=e943]:
+          - link "SR-1191 性能改善の品質検証（リリース判定サマリ）" [ref=e944]:
+            - /url: projects/smarep-6cbf93cc/docs/20260803-sr1191-performance-qa-summary/index.html
+          - generic [ref=e945]:
+            - generic [ref=e946]: 報告書
+            - generic [ref=e947]: smarep
+        - generic [ref=e948]:
+          - button "#sr1191" [ref=e949]
+          - button "#qa" [ref=e950]
+      - generic [ref=e951]:
+        - generic [ref=e952]:
+          - generic [ref=e953]: 8/3
+          - text: 5日前
+        - generic [ref=e954]:
+          - generic "20260803-status-model-audit" [ref=e955]
+          - generic [ref=e956]:
+            - generic [ref=e957]: 破損
+            - generic [ref=e958]: ma-shindanshi.com
+      - generic [ref=e959] [cursor=pointer]:
+        - generic [ref=e960]:
+          - generic [ref=e961]: 8/2
+          - text: 6日前
+        - generic [ref=e962]:
+          - link "3つの入口すべてで、受験から認定証まで到達できるか — 認定試験フロー健全性の検証報告" [ref=e963]:
+            - /url: projects/ma-shindanshi-com-a70868a8/docs/20260802-exam-path-integrity-audit/index.html
+          - generic [ref=e964]:
+            - generic [ref=e965]: 報告書
+            - generic [ref=e966]: ma-shindanshi.com
+        - generic [ref=e967]:
+          - button "#認定試験" [ref=e968]
+          - button "#会費ペイ" [ref=e969]
+          - button "#決済" [ref=e970]
+          - generic "検証" [ref=e971]: "+1"
+      - generic [ref=e972] [cursor=pointer]:
+        - generic [ref=e973]:
+          - generic [ref=e974]: 8/1
+          - text: 7日前
+        - generic [ref=e975]:
+          - link "Claude Code フック大全 — 約30イベントの地図とループ・評価器への写像" [ref=e976]:
+            - /url: projects/claude-code-skills-ef186db6/docs/20260801-claude-code-hooks-map/index.html
+          - generic [ref=e977]:
+            - generic [ref=e978]: 解説
+            - generic [ref=e979]: claude-code-skills
+        - button "#imported" [ref=e981]
+      - generic [ref=e982] [cursor=pointer]:
+        - generic [ref=e983]:
+          - generic [ref=e984]: 8/1
+          - text: 7日前
+        - generic [ref=e985]:
+          - link "Evaluator ハーネス設計 — 証拠生成の遷移関数をどの層に置くか" [ref=e986]:
+            - /url: projects/claude-code-skills-ef186db6/docs/20260801-evaluator-harness-design/index.html
+          - generic [ref=e987]:
+            - generic [ref=e988]: 解説
+            - generic [ref=e989]: claude-code-skills
+        - button "#imported" [ref=e991]
+      - generic [ref=e992] [cursor=pointer]:
+        - generic [ref=e993]:
+          - generic [ref=e994]: 8/1
+          - text: 7日前
+        - generic [ref=e995]:
+          - link "長期記憶とEvaluator Control Plane" [ref=e996]:
+            - /url: projects/claude-code-skills-ef186db6/docs/20260801-long-term-memory-evaluator-control-plane/index.html
+          - generic [ref=e997]:
+            - generic [ref=e998]: 解説
+            - generic [ref=e999]: claude-code-skills
+        - button "#imported" [ref=e1001]
+      - generic [ref=e1002] [cursor=pointer]:
+        - generic [ref=e1003]:
+          - generic [ref=e1004]: 8/1
+          - text: 7日前
+        - generic [ref=e1005]:
+          - link "ループエンジニアリングとEvaluatorハーネス" [ref=e1006]:
+            - /url: projects/claude-code-skills-ef186db6/docs/20260801-loop-engineering-evaluator-harness/index.html
+          - generic [ref=e1007]:
+            - generic [ref=e1008]: 解説
+            - generic [ref=e1009]: claude-code-skills
+        - button "#imported" [ref=e1011]
+      - generic [ref=e1012] [cursor=pointer]:
+        - generic [ref=e1013]:
+          - generic [ref=e1014]: 8/1
+          - text: 7日前
+        - generic [ref=e1015]:
+          - link "ハーネスエンジニアリングとハーネスデザイン" [ref=e1016]:
+            - /url: projects/claude-code-skills-ef186db6/docs/20260801-harness-engineering-design/index.html
+          - generic [ref=e1017]:
+            - generic [ref=e1018]: 解説
+            - generic [ref=e1019]: claude-code-skills
+        - button "#imported" [ref=e1021]
+      - generic [ref=e1022] [cursor=pointer]:
+        - generic [ref=e1023]:
+          - generic [ref=e1024]: 8/1
+          - text: 7日前
+        - generic [ref=e1025]:
+          - link "明細粒度検証 — 「全部一式」は本当か" [ref=e1026]:
+            - /url: projects/analytics-811311f7/docs/20260801-meisai-kensho-2/index.html
+          - generic [ref=e1027]:
+            - generic [ref=e1028]: 解説
+            - generic [ref=e1029]: analytics
+        - button "#imported" [ref=e1031]
+      - generic [ref=e1032] [cursor=pointer]:
+        - generic [ref=e1033]:
+          - generic [ref=e1034]: 8/1
+          - text: 7日前
+        - generic [ref=e1035]:
+          - link "「案件取れない」の声を全部検証したら、選別の正体が見えた | ヤマグチラボラトリー事例検証" [ref=e1036]:
+            - /url: projects/analytics-811311f7/docs/20260801-yamaguchi-lab-case/index.html
+          - generic [ref=e1037]:
+            - generic [ref=e1038]: 解説
+            - generic [ref=e1039]: analytics
+        - button "#imported" [ref=e1041]
+      - generic [ref=e1042] [cursor=pointer]:
+        - generic [ref=e1043]:
+          - generic [ref=e1044]: 8/1
+          - text: 7日前
+        - generic [ref=e1045]:
+          - link "「予定を入れてくれますか」と聞かない質問票 — パートナーヒアリング質問票v1 解説" [ref=e1046]:
+            - /url: projects/analytics-811311f7/docs/20260801-hearing-sheet-explainer/index.html
+          - generic [ref=e1047]:
+            - generic [ref=e1048]: 解説
+            - generic [ref=e1049]: analytics
+        - button "#imported" [ref=e1051]
+      - generic [ref=e1052] [cursor=pointer]:
+        - generic [ref=e1053]:
+          - generic [ref=e1054]: 8/1
+          - text: 7日前
+        - generic [ref=e1055]:
+          - link "パートナー可動時間市場 仮説台帳 v1.2 — 賭ける前に「何が真なら勝てるか」を固定する" [ref=e1056]:
+            - /url: projects/analytics-811311f7/docs/20260801-kasetsu-daicho-v12/index.html
+          - generic [ref=e1057]:
+            - generic [ref=e1058]: 解説
+            - generic [ref=e1059]: analytics
+        - button "#imported" [ref=e1061]
+      - generic [ref=e1062] [cursor=pointer]:
+        - generic [ref=e1063]:
+          - generic [ref=e1064]: 8/1
+          - text: 7日前
+        - generic [ref=e1065]:
+          - link "「即クリックしても終わっている」を検証したら、2つのゲームが見つかった | 打診公平性分析" [ref=e1066]:
+            - /url: projects/analytics-811311f7/docs/20260801-fairness-report/index.html
+          - generic [ref=e1067]:
+            - generic [ref=e1068]: 解説
+            - generic [ref=e1069]: analytics
+        - button "#imported" [ref=e1071]
+      - generic [ref=e1072] [cursor=pointer]:
+        - generic [ref=e1073]:
+          - generic [ref=e1074]: 8/1
+          - text: 7日前
+        - generic [ref=e1075]:
+          - link "即応枠買付パイロット — ツールを作る前に、業者が動く条件を買ってみる" [ref=e1076]:
+            - /url: projects/analytics-811311f7/docs/20260801-sokuo-waku-pilot/index.html
+          - generic [ref=e1077]:
+            - generic [ref=e1078]: 解説
+            - generic [ref=e1079]: analytics
+        - button "#imported" [ref=e1081]
+      - generic [ref=e1082] [cursor=pointer]:
+        - generic [ref=e1083]:
+          - generic [ref=e1084]: 8/1
+          - text: 7日前
+        - generic [ref=e1085]:
+          - link "台帳戦略 — ホットペッパービューティーの発想をJBRに翻訳できるか" [ref=e1086]:
+            - /url: projects/analytics-811311f7/docs/20260801-daicho-senryaku/index.html
+          - generic [ref=e1087]:
+            - generic [ref=e1088]: 解説
+            - generic [ref=e1089]: analytics
+        - button "#imported" [ref=e1091]
+      - generic [ref=e1092] [cursor=pointer]:
+        - generic [ref=e1093]:
+          - generic [ref=e1094]: 8/1
+          - text: 7日前
+        - generic [ref=e1095]:
+          - link "通話クレーム2,878件を全部読んだら、不満の正体が確定した | クレーム・VoC分析" [ref=e1096]:
+            - /url: projects/analytics-811311f7/docs/20260801-claim-voc-report/index.html
+          - generic [ref=e1097]:
+            - generic [ref=e1098]: 解説
+            - generic [ref=e1099]: analytics
+        - button "#imported" [ref=e1101]
+      - generic [ref=e1102] [cursor=pointer]:
+        - generic [ref=e1103]:
+          - generic [ref=e1104]: 8/1
+          - text: 7日前
+        - generic [ref=e1105]:
+          - link "KIとCSOneの数字が「合わない」— その正体を伝票データで分解する" [ref=e1106]:
+            - /url: projects/analytics-811311f7/docs/20260801-ki-csone-gap/index.html
+          - generic [ref=e1107]:
+            - generic [ref=e1108]: 解説
+            - generic [ref=e1109]: analytics
+        - button "#imported" [ref=e1111]
+      - generic [ref=e1112] [cursor=pointer]:
+        - generic [ref=e1113]:
+          - generic [ref=e1114]: 8/1
+          - text: 7日前
+        - generic [ref=e1115]:
+          - link "質問票v1 敵対的レビュー — 修正後渡すべき（採否判断の解説）" [ref=e1116]:
+            - /url: projects/analytics-811311f7/docs/20260801-sheet-adversarial-review/index.html
+          - generic [ref=e1117]:
+            - generic [ref=e1118]: 解説
+            - generic [ref=e1119]: analytics
+        - button "#imported" [ref=e1121]
+      - generic [ref=e1122] [cursor=pointer]:
+        - generic [ref=e1123]:
+          - generic [ref=e1124]: 8/1
+          - text: 7日前
+        - generic [ref=e1125]:
+          - link "可動時間市場 — 5成果物レビューパッケージ（2026-07-09）" [ref=e1126]:
+            - /url: projects/analytics-811311f7/docs/20260801-sp-seika-package-review/index.html
+          - generic [ref=e1127]:
+            - generic [ref=e1128]: 解説
+            - generic [ref=e1129]: analytics
+        - button "#imported" [ref=e1131]
+      - generic [ref=e1132] [cursor=pointer]:
+        - generic [ref=e1133]:
+          - generic [ref=e1134]: 8/1
+          - text: 7日前
+        - generic [ref=e1135]:
+          - link "pricebook L2プロトタイプ — 上限保証つき即時概算の実データ解説" [ref=e1136]:
+            - /url: projects/analytics-811311f7/docs/20260801-pricebook-l2-prototype/index.html
+          - generic [ref=e1137]:
+            - generic [ref=e1138]: 解説
+            - generic [ref=e1139]: analytics
+        - button "#imported" [ref=e1141]
+      - generic [ref=e1142] [cursor=pointer]:
+        - generic [ref=e1143]:
+          - generic [ref=e1144]: 8/1
+          - text: 7日前
+        - generic [ref=e1145]:
+          - link "エリア充足と分配品質 — 2つの課題をデータで解剖する | SPビジョン検討" [ref=e1146]:
+            - /url: projects/analytics-811311f7/docs/20260801-sp-vision-two-issues/index.html
+          - generic [ref=e1147]:
+            - generic [ref=e1148]: 解説
+            - generic [ref=e1149]: analytics
+        - button "#imported" [ref=e1151]
+      - generic [ref=e1152] [cursor=pointer]:
+        - generic [ref=e1153]:
+          - generic [ref=e1154]: 8/1
+          - text: 7日前
+        - generic [ref=e1155]:
+          - link "付録｜希望と手配の速度・分布・時刻妥当性・機械的セグメント" [ref=e1156]:
+            - /url: projects/analytics-811311f7/docs/20260801-jbr-tehainan-proposal-appendix/index.html
+          - generic [ref=e1157]:
+            - generic [ref=e1158]: 資料
+            - generic [ref=e1159]: analytics
+        - button "#imported" [ref=e1161]
+      - generic [ref=e1162] [cursor=pointer]:
+        - generic [ref=e1163]:
+          - generic [ref=e1164]: 8/1
+          - text: 7日前
+        - generic [ref=e1165]:
+          - link "手配難をどう減らすか — パートナー店管理部門 ご提案" [ref=e1166]:
+            - /url: projects/analytics-811311f7/docs/20260801-jbr-tehainan-proposal/index.html
+          - generic [ref=e1167]:
+            - generic [ref=e1168]: 提案書
+            - generic [ref=e1169]: analytics
+        - button "#imported" [ref=e1171]
+      - generic [ref=e1172] [cursor=pointer]:
+        - generic [ref=e1173]:
+          - generic [ref=e1174]: 8/1
+          - text: 7日前
+        - generic [ref=e1175]:
+          - link "JBR料金システム再構築 — 全体俯瞰" [ref=e1176]:
+            - /url: projects/partner-agent-9c43261f/docs/20260801-jbr-pricing-overview/index.html
+          - generic [ref=e1177]:
+            - generic [ref=e1178]: 資料
+            - generic [ref=e1179]: partner-agent
+        - button "#imported" [ref=e1181]
+      - generic [ref=e1182] [cursor=pointer]:
+        - generic [ref=e1183]:
+          - generic [ref=e1184]: 8/1
+          - text: 7日前
+        - generic [ref=e1185]:
+          - link "JBR pricing DB 再設計戦略レポート" [ref=e1186]:
+            - /url: projects/partner-agent-9c43261f/docs/20260801-jbr-pricing-db-redesign-v2/index.html
+          - generic [ref=e1187]:
+            - generic [ref=e1188]: 報告書
+            - generic [ref=e1189]: partner-agent
+        - button "#imported" [ref=e1191]
+      - generic [ref=e1192] [cursor=pointer]:
+        - generic [ref=e1193]:
+          - generic [ref=e1194]: 8/1
+          - text: 7日前
+        - generic [ref=e1195]:
+          - link "JBR pricing DB ER図" [ref=e1196]:
+            - /url: projects/partner-agent-9c43261f/docs/20260801-jbr-pricing-db-er/index.html
+          - generic [ref=e1197]:
+            - generic [ref=e1198]: 設計書
+            - generic [ref=e1199]: partner-agent
+        - button "#imported" [ref=e1201]
+      - generic [ref=e1202] [cursor=pointer]:
+        - generic [ref=e1203]:
+          - generic [ref=e1204]: 8/1
+          - text: 7日前
+        - generic [ref=e1205]:
+          - link "JBR オペレーション分析 全体地図" [ref=e1206]:
+            - /url: projects/partner-agent-9c43261f/docs/20260801-jbr-operation-overview/index.html
+          - generic [ref=e1207]:
+            - generic [ref=e1208]: 資料
+            - generic [ref=e1209]: partner-agent
+        - button "#imported" [ref=e1211]
+      - generic [ref=e1212] [cursor=pointer]:
+        - generic [ref=e1213]:
+          - generic [ref=e1214]: 8/1
+          - text: 7日前
+        - generic [ref=e1215]:
+          - link "JBR 料金システム化 方針書 — 全軸評価 2026-06-24" [ref=e1216]:
+            - /url: projects/partner-agent-9c43261f/docs/20260801-jbr-pricing-strategy-report/index.html
+          - generic [ref=e1217]:
+            - generic [ref=e1218]: 報告書
+            - generic [ref=e1219]: partner-agent
+        - button "#imported" [ref=e1221]
+      - generic [ref=e1222] [cursor=pointer]:
+        - generic [ref=e1223]:
+          - generic [ref=e1224]: 8/1
+          - text: 7日前
+        - generic [ref=e1225]:
+          - link "JBR pricing DB 定義書" [ref=e1226]:
+            - /url: projects/partner-agent-9c43261f/docs/20260801-jbr-pricing-db-definition/index.html
+          - generic [ref=e1227]:
+            - generic [ref=e1228]: 設計書
+            - generic [ref=e1229]: partner-agent
+        - button "#imported" [ref=e1231]
+      - generic [ref=e1232] [cursor=pointer]:
+        - generic [ref=e1233]:
+          - generic [ref=e1234]: 8/1
+          - text: 7日前
+        - generic [ref=e1235]:
+          - link "git-flow ブランチ運用ガイド｜JBR" [ref=e1236]:
+            - /url: projects/jbr-ea1b9cef/docs/20260801-jbr-git-flow-guide/index.html
+          - generic [ref=e1237]:
+            - generic [ref=e1238]: 手順書
+            - generic [ref=e1239]: jbr
+        - button "#imported" [ref=e1241]
+      - generic [ref=e1242] [cursor=pointer]:
+        - generic [ref=e1243]:
+          - generic [ref=e1244]: 8/1
+          - text: 7日前
+        - generic [ref=e1245]:
+          - link "JBR SP戦略 合宿たたき台 — 体系整理" [ref=e1246]:
+            - /url: projects/analytics-811311f7/docs/20260801-jbr-sp-strategy-summary/index.html
+          - generic [ref=e1247]:
+            - generic [ref=e1248]: 資料
+            - generic [ref=e1249]: analytics
+        - button "#imported" [ref=e1251]
+      - generic [ref=e1252] [cursor=pointer]:
+        - generic [ref=e1253]:
+          - generic [ref=e1254]: 8/1
+          - text: 7日前
+        - generic [ref=e1255]:
+          - link "Amazon Connect 次世代移行 判断ブリーフ — actcall-cc" [ref=e1256]:
+            - /url: projects/connect-nextgen-pricing-461df084/docs/20260801-connect-nextgen-pricing-brief/index.html
+          - generic [ref=e1257]:
+            - generic [ref=e1258]: 報告書
+            - generic [ref=e1259]: connect-nextgen-pricing
+        - button "#imported" [ref=e1261]
+      - generic [ref=e1262] [cursor=pointer]:
+        - generic [ref=e1263]:
+          - generic [ref=e1264]: 8/1
+          - text: 7日前
+        - generic [ref=e1265]:
+          - link "Amazon Connect 次世代料金 移行判断レポート — actcall-cc" [ref=e1266]:
+            - /url: projects/connect-nextgen-pricing-461df084/docs/20260801-connect-nextgen-pricing-report/index.html
+          - generic [ref=e1267]:
+            - generic [ref=e1268]: 報告書
+            - generic [ref=e1269]: connect-nextgen-pricing
+        - button "#imported" [ref=e1271]
+      - generic [ref=e1272] [cursor=pointer]:
+        - generic [ref=e1273]:
+          - generic [ref=e1274]: 8/1
+          - text: 7日前
+        - generic [ref=e1275]:
+          - link "Bedrock コスト増加の要因調査 — 2026-07" [ref=e1276]:
+            - /url: projects/connect-call-analyzer-1f38b31f/docs/20260801-bedrock-cost-survey-202607/index.html
+          - generic [ref=e1277]:
+            - generic [ref=e1278]: 調査
+            - generic [ref=e1279]: connect-call-analyzer
+        - button "#imported" [ref=e1281]
+      - generic [ref=e1282] [cursor=pointer]:
+        - generic [ref=e1283]:
+          - generic [ref=e1284]: 8/1
+          - text: 7日前
+        - generic [ref=e1285]:
+          - link "研修決済・サブスク決済 仕様まとめ｜不動産M&A診断士協会" [ref=e1286]:
+            - /url: projects/ma-shindanshi-com-a70868a8/docs/20260801-payment-lifecycle-summary/index.html
+          - generic [ref=e1287]:
+            - generic [ref=e1288]: 仕様書
+            - generic [ref=e1289]: ma-shindanshi.com
+        - button "#imported" [ref=e1291]
+      - generic [ref=e1292] [cursor=pointer]:
+        - generic [ref=e1293]:
+          - generic [ref=e1294]: 8/1
+          - text: 7日前
+        - generic [ref=e1295]:
+          - link "法人所有不動産の出口診断システム 統合要件定義" [ref=e1296]:
+            - /url: projects/ma-shindanshi-com-a70868a8/docs/20260801-exit-shindan-requirements/index.html
+          - generic [ref=e1297]:
+            - generic [ref=e1298]: 仕様書
+            - generic [ref=e1299]: ma-shindanshi.com
+        - button "#imported" [ref=e1301]
+      - generic [ref=e1302] [cursor=pointer]:
+        - generic [ref=e1303]:
+          - generic [ref=e1304]: 8/1
+          - text: 7日前
+        - generic [ref=e1305]:
+          - link "不動産M&A診断士 ライフサイクル全フロー マスター資料" [ref=e1306]:
+            - /url: projects/ma-shindanshi-com-a70868a8/docs/20260801-diagnostician-lifecycle-master/index.html
+          - generic [ref=e1307]:
+            - generic [ref=e1308]: 資料
+            - generic [ref=e1309]: ma-shindanshi.com
+        - button "#imported" [ref=e1311]
+      - generic [ref=e1312] [cursor=pointer]:
+        - generic [ref=e1313]:
+          - generic [ref=e1314]: 8/1
+          - text: 7日前
+        - generic [ref=e1315]:
+          - link "分岐元がすべてを決める — SI 廃止後のブランチ運用と ancestry の制約" [ref=e1316]:
+            - /url: projects/ma-shindanshi-com-a70868a8/docs/20260801-branch-strategy-explainer/index.html
+          - generic [ref=e1317]:
+            - generic [ref=e1318]: 解説
+            - generic [ref=e1319]: ma-shindanshi.com
+        - button "#imported" [ref=e1321]
+      - generic [ref=e1322] [cursor=pointer]:
+        - generic [ref=e1323]:
+          - generic [ref=e1324]: 8/1
+          - text: 7日前
+        - generic [ref=e1325]:
+          - link "事務局スタッフ向け 診断士フロー運用マニュアル" [ref=e1326]:
+            - /url: projects/ma-shindanshi-com-a70868a8/docs/20260801-diagnostician-staff-manual/index.html
+          - generic [ref=e1327]:
+            - generic [ref=e1328]: マニュアル
+            - generic [ref=e1329]: ma-shindanshi.com
+        - button "#imported" [ref=e1331]
+      - generic [ref=e1332] [cursor=pointer]:
+        - generic [ref=e1333]:
+          - generic [ref=e1334]: 8/1
+          - text: 7日前
+        - generic [ref=e1335]:
+          - link "Jiku 初回オンボーディング設計" [ref=e1336]:
+            - /url: projects/jiku-2cdb7250/docs/20260801-jiku-onboarding-design/index.html
+          - generic [ref=e1337]:
+            - generic [ref=e1338]: 設計書
+            - generic [ref=e1339]: Jiku
+        - button "#imported" [ref=e1341]
+      - generic [ref=e1342] [cursor=pointer]:
+        - generic [ref=e1343]:
+          - generic [ref=e1344]: 8/1
+          - text: 7日前
+        - generic [ref=e1345]:
+          - link "Jiku 要件理解マップ" [ref=e1346]:
+            - /url: projects/jiku-2cdb7250/docs/20260801-jiku-requirements-overview/index.html
+          - generic [ref=e1347]:
+            - generic [ref=e1348]: 資料
+            - generic [ref=e1349]: Jiku
+        - button "#imported" [ref=e1351]
+      - generic [ref=e1352] [cursor=pointer]:
+        - generic [ref=e1353]:
+          - generic [ref=e1354]: 8/1
+          - text: 7日前
+        - generic [ref=e1355]:
+          - link "Jiku — 認証・テナント設計仕様" [ref=e1356]:
+            - /url: projects/jiku-2cdb7250/docs/20260801-jiku-auth-spec/index.html
+          - generic [ref=e1357]:
+            - generic [ref=e1358]: 仕様書
+            - generic [ref=e1359]: Jiku
+        - button "#imported" [ref=e1361]
+      - generic [ref=e1362] [cursor=pointer]:
+        - generic [ref=e1363]:
+          - generic [ref=e1364]: 8/1
+          - text: 7日前
+        - generic [ref=e1365]:
+          - link "Jiku 駆動 AI 自律実行ループ — 検討メモ" [ref=e1366]:
+            - /url: projects/jiku-2cdb7250/docs/20260801-jiku-autonomy-loop-plan/index.html
+          - generic [ref=e1367]:
+            - generic [ref=e1368]: 資料
+            - generic [ref=e1369]: Jiku
+        - button "#imported" [ref=e1371]
+      - generic [ref=e1372] [cursor=pointer]:
+        - generic [ref=e1373]:
+          - generic [ref=e1374]: 8/1
+          - text: 7日前
+        - generic [ref=e1375]:
+          - link "MCP ツール戦略シミュレーション — A（公開を絞る）vs B（統廃合）" [ref=e1376]:
+            - /url: projects/jiku-2cdb7250/docs/20260801-jiku-mcp-tool-strategy/index.html
+          - generic [ref=e1377]:
+            - generic [ref=e1378]: 資料
+            - generic [ref=e1379]: Jiku
+        - button "#imported" [ref=e1381]
+      - generic [ref=e1382] [cursor=pointer]:
+        - generic [ref=e1383]:
+          - generic [ref=e1384]: 8/1
+          - text: 7日前
+        - generic [ref=e1385]:
+          - link "KATA ロゴ再デザイン — 進め方" [ref=e1386]:
+            - /url: projects/kata-c08d6205/docs/20260801-kata-logo-redesign-process/index.html
+          - generic [ref=e1387]:
+            - generic [ref=e1388]: 資料
+            - generic [ref=e1389]: Kata
+        - button "#imported" [ref=e1391]
+      - generic [ref=e1392] [cursor=pointer]:
+        - generic [ref=e1393]:
+          - generic [ref=e1394]: 8/1
+          - text: 7日前
+        - generic [ref=e1395]:
+          - link "KATA 第1フェーズ導入設計 — 「シーン」で始めて、マスタで先回りする" [ref=e1396]:
+            - /url: projects/kata-c08d6205/docs/20260801-kata-phase1-design-explainer/index.html
+          - generic [ref=e1397]:
+            - generic [ref=e1398]: 解説
+            - generic [ref=e1399]: Kata
+        - button "#imported" [ref=e1401]
+      - generic [ref=e1402] [cursor=pointer]:
+        - generic [ref=e1403]:
+          - generic [ref=e1404]: 8/1
+          - text: 7日前
+        - generic [ref=e1405]:
+          - link "KATA マーケティング基盤 — 勝ちパターンを、組織の型に。" [ref=e1406]:
+            - /url: projects/kata-c08d6205/docs/20260801-kata-marketing-foundation/index.html
+          - generic [ref=e1407]:
+            - generic [ref=e1408]: 資料
+            - generic [ref=e1409]: Kata
+        - button "#imported" [ref=e1411]
+      - generic [ref=e1412] [cursor=pointer]:
+        - generic [ref=e1413]:
+          - generic [ref=e1414]: 8/1
+          - text: 7日前
+        - generic [ref=e1415]:
+          - link "余韻メモ 入力面 — モックと実装の比較" [ref=e1416]:
+            - /url: projects/kata-c08d6205/docs/20260801-kata-yoin-memo-impl-compare/index.html
+          - generic [ref=e1417]:
+            - generic [ref=e1418]: 調査
+            - generic [ref=e1419]: Kata
+        - button "#imported" [ref=e1421]
+      - generic [ref=e1422] [cursor=pointer]:
+        - generic [ref=e1423]:
+          - generic [ref=e1424]: 8/1
+          - text: 7日前
+        - generic [ref=e1425]:
+          - link "Kata ⇄ Salesforce 同期可否調査" [ref=e1426]:
+            - /url: projects/kata-c08d6205/docs/20260801-kata-salesforce-sync-survey/index.html
+          - generic [ref=e1427]:
+            - generic [ref=e1428]: 調査
+            - generic [ref=e1429]: Kata
+        - button "#imported" [ref=e1431]
+      - generic [ref=e1432] [cursor=pointer]:
+        - generic [ref=e1433]:
+          - generic [ref=e1434]: 8/1
+          - text: 7日前
+        - generic [ref=e1435]:
+          - link "KATA 機能概要書 v1.0" [ref=e1436]:
+            - /url: projects/kata-c08d6205/docs/20260801-kata-feature-overview/index.html
+          - generic [ref=e1437]:
+            - generic [ref=e1438]: 仕様書
+            - generic [ref=e1439]: Kata
+        - button "#imported" [ref=e1441]
+      - generic [ref=e1442] [cursor=pointer]:
+        - generic [ref=e1443]:
+          - generic [ref=e1444]: 8/1
+          - text: 7日前
+        - generic [ref=e1445]:
+          - link "KATA — ゴール仕様ビジュアル概要 v0.2" [ref=e1446]:
+            - /url: projects/kata-c08d6205/docs/20260801-kata-spec-overview/index.html
+          - generic [ref=e1447]:
+            - generic [ref=e1448]: 仕様書
+            - generic [ref=e1449]: Kata
+        - button "#imported" [ref=e1451]
+      - generic [ref=e1452]: 2026年7月
+      - generic [ref=e1453] [cursor=pointer]:
+        - generic [ref=e1454]:
+          - generic [ref=e1455]: 7/31
+          - text: 8日前
+        - generic [ref=e1456]:
+          - link "bizdoc プラグインガイド" [ref=e1457]:
+            - /url: projects/claude-code-skills-ef186db6/docs/20260731-bizdoc-plugin-guide/index.html
+          - generic [ref=e1458]:
+            - generic [ref=e1459]: 解説
+            - generic [ref=e1460]: claude-code-skills
+        - generic [ref=e1461]:
+          - button "#bizdoc" [ref=e1462]
+          - button "#doc-hub" [ref=e1463]
+          - button "#plugin-guide" [ref=e1464]
+      - generic [ref=e1465]: 検索は /、移動は ↑↓、開くのは Enter。

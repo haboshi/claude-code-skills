@@ -1,0 +1,260 @@
+- generic [ref=e1]:
+  - complementary [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]: doc-hub
+      - generic [ref=e5]: 74 DOCUMENTS
+    - navigation [ref=e7]:
+      - button "すべて 74" [ref=e249] [cursor=pointer]:
+        - generic [ref=e250]: すべて
+        - generic [ref=e251]: "74"
+      - generic [ref=e252]:
+        - generic [ref=e253]:
+          - button "畳む：AllAmbitious" [ref=e254] [cursor=pointer]: ▾
+          - button "AllAmbitious" [ref=e255] [cursor=pointer]
+          - generic [ref=e256]: "2"
+        - generic [ref=e257]:
+          - button "ai-os 1" [ref=e258] [cursor=pointer]:
+            - generic [ref=e259]: ai-os
+            - generic [ref=e260]: "1"
+          - button "roleaicall 1" [ref=e261] [cursor=pointer]:
+            - generic [ref=e262]: roleaicall
+            - generic [ref=e263]: "1"
+      - generic [ref=e264]:
+        - generic [ref=e265]:
+          - button "畳む：JBR" [ref=e266] [cursor=pointer]: ▾
+          - button "JBR" [ref=e267] [cursor=pointer]
+          - generic [ref=e268]: "26"
+        - generic [ref=e269]:
+          - button "analytics 16" [ref=e270] [cursor=pointer]:
+            - generic [ref=e271]: analytics
+            - generic [ref=e272]: "16"
+          - button "partner-agent 6" [ref=e273] [cursor=pointer]:
+            - generic [ref=e274]: partner-agent
+            - generic [ref=e275]: "6"
+          - button "jbr 1" [ref=e276] [cursor=pointer]:
+            - generic [ref=e277]: jbr
+            - generic [ref=e278]: "1"
+          - button "connect-nextgen-pricing 2" [ref=e279] [cursor=pointer]:
+            - generic [ref=e280]: connect-nextgen-pricing
+            - generic [ref=e281]: "2"
+          - button "connect-call-analyzer 1" [ref=e282] [cursor=pointer]:
+            - generic [ref=e283]: connect-call-analyzer
+            - generic [ref=e284]: "1"
+      - generic [ref=e285]:
+        - generic [ref=e286]:
+          - button "畳む：Octus" [ref=e287] [cursor=pointer]: ▾
+          - button "Octus" [ref=e288] [cursor=pointer]
+          - generic [ref=e289]: "16"
+        - generic [ref=e290]:
+          - button "Kata 11" [active] [ref=e291] [cursor=pointer]:
+            - generic [ref=e292]: Kata
+            - generic [ref=e293]: "11"
+          - button "Jiku 5" [ref=e294] [cursor=pointer]:
+            - generic [ref=e295]: Jiku
+            - generic [ref=e296]: "5"
+      - generic [ref=e297]:
+        - generic [ref=e298]:
+          - button "畳む：未分類" [ref=e299] [cursor=pointer]: ▾
+          - button "未分類" [ref=e300] [cursor=pointer]
+          - generic [ref=e301]: "30"
+        - generic [ref=e302]:
+          - button "Claude Code 設定 3" [ref=e303] [cursor=pointer]:
+            - generic [ref=e304]: Claude Code 設定
+            - generic [ref=e305]: "3"
+          - button "vegeexpress 4" [ref=e306] [cursor=pointer]:
+            - generic [ref=e307]: vegeexpress
+            - generic [ref=e308]: "4"
+          - button "smarep 6" [ref=e309] [cursor=pointer]:
+            - generic [ref=e310]: smarep
+            - generic [ref=e311]: "6"
+          - button "ma-shindanshi.com 11" [ref=e312] [cursor=pointer]:
+            - generic [ref=e313]: ma-shindanshi.com
+            - generic [ref=e314]: "11"
+          - button "claude-code-skills 6" [ref=e315] [cursor=pointer]:
+            - generic [ref=e316]: claude-code-skills
+            - generic [ref=e317]: "6"
+    - generic [ref=e78] [cursor=pointer]:
+      - checkbox "非表示のプロジェクトも出す" [ref=e79]
+      - text: 非表示のプロジェクトも出す
+  - generic [ref=e80]:
+    - banner [ref=e81]:
+      - generic [ref=e82]:
+        - generic [ref=e318]: Octus /
+        - generic [ref=e319]: Kata
+        - generic [ref=e320]: 11件
+        - generic [ref=e321]: ~/Projects/octus/Kata
+      - generic [ref=e86]:
+        - searchbox "タイトル・タグ・種別・プロジェクトで探す" [ref=e87]
+        - generic: /
+    - generic [ref=e88]:
+      - generic [ref=e89]:
+        - generic [ref=e322]:
+          - generic "選んだ種別のいずれかに当てはまる文書" [ref=e323]: 種別
+          - generic [ref=e324]:
+            - button "解説 3" [ref=e325] [cursor=pointer]:
+              - text: 解説
+              - generic [ref=e326]: "3"
+            - button "仕様書 2" [ref=e327] [cursor=pointer]:
+              - text: 仕様書
+              - generic [ref=e328]: "2"
+            - button "資料 2" [ref=e329] [cursor=pointer]:
+              - text: 資料
+              - generic [ref=e330]: "2"
+            - button "調査 2" [ref=e331] [cursor=pointer]:
+              - text: 調査
+              - generic [ref=e332]: "2"
+            - button "提案書 1" [ref=e333] [cursor=pointer]:
+              - text: 提案書
+              - generic [ref=e334]: "1"
+            - button "報告書 1" [ref=e335] [cursor=pointer]:
+              - text: 報告書
+              - generic [ref=e336]: "1"
+        - generic [ref=e337]:
+          - generic "選んだタグをすべて持つ文書" [ref=e338]: タグ
+          - generic [ref=e339]:
+            - button "imported 7" [ref=e340] [cursor=pointer]:
+              - text: imported
+              - generic [ref=e341]: "7"
+            - button "Issue394 1" [ref=e342] [cursor=pointer]:
+              - text: Issue394
+              - generic [ref=e343]: "1"
+            - button "SaaS 1" [ref=e344] [cursor=pointer]:
+              - text: SaaS
+              - generic [ref=e345]: "1"
+            - button "デスクトップ 1" [ref=e346] [cursor=pointer]:
+              - text: デスクトップ
+              - generic [ref=e347]: "1"
+            - button "テナント分離 1" [ref=e348] [cursor=pointer]:
+              - text: テナント分離
+              - generic [ref=e349]: "1"
+            - button "リスク 1" [ref=e350] [cursor=pointer]:
+              - text: リスク
+              - generic [ref=e351]: "1"
+            - button "ワークスペース 1" [ref=e352] [cursor=pointer]:
+              - text: ワークスペース
+              - generic [ref=e353]: "1"
+            - button "競合 1" [ref=e354] [cursor=pointer]:
+              - text: 競合
+              - generic [ref=e355]: "1"
+            - button "検知 1" [ref=e356] [cursor=pointer]:
+              - text: 検知
+              - generic [ref=e357]: "1"
+            - button "実装計画 1" [ref=e358] [cursor=pointer]:
+              - text: 実装計画
+              - generic [ref=e359]: "1"
+            - button "他 3" [ref=e360] [cursor=pointer]
+      - button "更新日順 ⇄ タイトル順" [ref=e134] [cursor=pointer]
+    - main [ref=e135]:
+      - generic [ref=e361]: 2026年8月
+      - generic [ref=e362] [cursor=pointer]:
+        - generic [ref=e363]:
+          - generic [ref=e364]: 8/5
+          - text: 3日前
+        - generic [ref=e365]:
+          - link "商談後の確認体験・第1段は着手できる。承認済み方針を4点変える（全項決着）" [ref=e366]:
+            - /url: projects/kata-c08d6205/docs/20260805-post-meeting-confirm-stage1-proposal/index.html
+          - generic [ref=e367]: 提案書
+        - generic [ref=e369]:
+          - button "#Issue394" [ref=e370]
+          - button "#商談後" [ref=e371]
+          - button "#実装計画" [ref=e372]
+      - generic [ref=e373] [cursor=pointer]:
+        - generic [ref=e374]:
+          - generic [ref=e375]: 8/5
+          - text: 3日前
+        - generic [ref=e376]:
+          - link "ワークスペースは新しい表ではない — 既にある organizations の読み替えで足りる" [ref=e377]:
+            - /url: projects/kata-c08d6205/docs/20260805-kata-workspace-concept/index.html
+          - generic [ref=e378]: 解説
+        - generic [ref=e380]:
+          - button "#ワークスペース" [ref=e381]
+          - button "#SaaS" [ref=e382]
+          - button "#テナント分離" [ref=e383]
+      - generic [ref=e384] [cursor=pointer]:
+        - generic [ref=e385]:
+          - generic [ref=e386]: 8/4
+          - text: 4日前
+        - generic [ref=e387]:
+          - link "録音は「マイクが動いた」で始めない — KATA デスクトップの開始・終了メカニズム" [ref=e388]:
+            - /url: projects/kata-c08d6205/docs/20260804-desktop-recording-start-stop-mechanism/index.html
+          - generic [ref=e389]: 解説
+        - generic [ref=e391]:
+          - button "#デスクトップ" [ref=e392]
+          - button "#検知" [ref=e393]
+          - button "#録音" [ref=e394]
+      - generic [ref=e395] [cursor=pointer]:
+        - generic [ref=e396]:
+          - generic [ref=e397]: 8/3
+          - text: 5日前
+        - generic [ref=e398]:
+          - link "bellSalesAI 特許調査報告 — KATA は抵触するか" [ref=e399]:
+            - /url: projects/kata-c08d6205/docs/20260803-bellsalesai-patent-risk-assessment/index.html
+          - generic [ref=e400]: 報告書
+        - generic [ref=e402]:
+          - button "#特許" [ref=e403]
+          - button "#競合" [ref=e404]
+          - button "#リスク" [ref=e405]
+      - generic [ref=e406] [cursor=pointer]:
+        - generic [ref=e407]:
+          - generic [ref=e408]: 8/1
+          - text: 7日前
+        - generic [ref=e409]:
+          - link "KATA ロゴ再デザイン — 進め方" [ref=e410]:
+            - /url: projects/kata-c08d6205/docs/20260801-kata-logo-redesign-process/index.html
+          - generic [ref=e411]: 資料
+        - button "#imported" [ref=e414]
+      - generic [ref=e415] [cursor=pointer]:
+        - generic [ref=e416]:
+          - generic [ref=e417]: 8/1
+          - text: 7日前
+        - generic [ref=e418]:
+          - link "KATA 第1フェーズ導入設計 — 「シーン」で始めて、マスタで先回りする" [ref=e419]:
+            - /url: projects/kata-c08d6205/docs/20260801-kata-phase1-design-explainer/index.html
+          - generic [ref=e420]: 解説
+        - button "#imported" [ref=e423]
+      - generic [ref=e424] [cursor=pointer]:
+        - generic [ref=e425]:
+          - generic [ref=e426]: 8/1
+          - text: 7日前
+        - generic [ref=e427]:
+          - link "KATA マーケティング基盤 — 勝ちパターンを、組織の型に。" [ref=e428]:
+            - /url: projects/kata-c08d6205/docs/20260801-kata-marketing-foundation/index.html
+          - generic [ref=e429]: 資料
+        - button "#imported" [ref=e432]
+      - generic [ref=e433] [cursor=pointer]:
+        - generic [ref=e434]:
+          - generic [ref=e435]: 8/1
+          - text: 7日前
+        - generic [ref=e436]:
+          - link "余韻メモ 入力面 — モックと実装の比較" [ref=e437]:
+            - /url: projects/kata-c08d6205/docs/20260801-kata-yoin-memo-impl-compare/index.html
+          - generic [ref=e438]: 調査
+        - button "#imported" [ref=e441]
+      - generic [ref=e442] [cursor=pointer]:
+        - generic [ref=e443]:
+          - generic [ref=e444]: 8/1
+          - text: 7日前
+        - generic [ref=e445]:
+          - link "Kata ⇄ Salesforce 同期可否調査" [ref=e446]:
+            - /url: projects/kata-c08d6205/docs/20260801-kata-salesforce-sync-survey/index.html
+          - generic [ref=e447]: 調査
+        - button "#imported" [ref=e450]
+      - generic [ref=e451] [cursor=pointer]:
+        - generic [ref=e452]:
+          - generic [ref=e453]: 8/1
+          - text: 7日前
+        - generic [ref=e454]:
+          - link "KATA 機能概要書 v1.0" [ref=e455]:
+            - /url: projects/kata-c08d6205/docs/20260801-kata-feature-overview/index.html
+          - generic [ref=e456]: 仕様書
+        - button "#imported" [ref=e459]
+      - generic [ref=e460] [cursor=pointer]:
+        - generic [ref=e461]:
+          - generic [ref=e462]: 8/1
+          - text: 7日前
+        - generic [ref=e463]:
+          - link "KATA — ゴール仕様ビジュアル概要 v0.2" [ref=e464]:
+            - /url: projects/kata-c08d6205/docs/20260801-kata-spec-overview/index.html
+          - generic [ref=e465]: 仕様書
+        - button "#imported" [ref=e468]
+      - generic [ref=e469]: 検索は /、移動は ↑↓、開くのは Enter。

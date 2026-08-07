@@ -14,6 +14,8 @@ export const STYLES = `
   --bg: #ffffff; --bg-soft: #f8fafc; --bg-sink: #eef2f7;
   --danger: #b91c1c; --danger-soft: #fef2f7;
   --shadow: 0 1px 2px rgba(15,23,42,.06), 0 8px 24px -18px rgba(15,23,42,.35);
+  /* スクロールバーやフォーム部品もテーマに追随させる */
+  color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -108,7 +110,7 @@ mark { background: transparent; color: var(--accent-ink); font-weight: 700; box-
   border-radius: 4px; padding: 0 .3rem; pointer-events: none; background: var(--bg);
 }
 .search input:not(:placeholder-shown) + kbd { display: none; }
-.facet-actions { flex: none; align-self: flex-start; display: flex; flex-direction: column; align-items: flex-end; gap: .3rem; }
+.facet-actions { flex: none; align-self: flex-start; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .3rem; }
 .sortbtn, .clearbtn { font-size: 11.5px; color: var(--ink-2); padding: .1rem .55rem; border: 1px solid var(--line); border-radius: 999px; white-space: nowrap; }
 .sortbtn:hover { border-color: var(--line-strong); background: var(--bg-soft); }
 .clearbtn { border-color: var(--danger); color: var(--danger); }
@@ -183,6 +185,8 @@ mark { background: transparent; color: var(--accent-ink); font-weight: 700; box-
 .doc .tag.more::before { content: ""; }
 button.tag:hover { color: var(--accent-ink); text-decoration: underline; }
 .doc .tag[data-on] { color: var(--accent-ink); font-weight: 700; }
+.doc .why { flex: none; color: var(--danger); }
+.doc .why::before { content: "・"; color: var(--ink-3); }
 .doc.broken { color: var(--danger); }
 .doc.broken .ttl, .doc.broken:hover .ttl, .doc.broken[data-cursor="1"] .ttl { color: var(--danger); }
 .doc.broken .kind { border-color: var(--danger); color: var(--danger); background: var(--danger-soft); }

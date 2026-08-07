@@ -11,7 +11,7 @@ export const APP_JS = `
   var PERIODS = [{ label: '今週', days: 7 }, { label: '今月', days: 30 }, { label: '3か月', days: 90 }];
 
   var state = {
-    scope: 'all', q: '', qTokens: [], types: [], tags: [], period: null, sort: 'updated', sideQuery: '',
+    scope: 'all', q: '', qRaw: '', qTokens: [], types: [], tags: [], period: null, sort: 'updated', sideQuery: '',
     showHidden: false, collapsed: {}, typesOpen: false, tagsOpen: false, cursor: -1,
     focusKey: null, sideFocusKey: null
   };
@@ -477,9 +477,10 @@ export const APP_JS = `
     var t = el(d.broken ? 'div' : 'a', 'ttl');
     // 破損行も同じくフォーカスを受け取れるようにする（受け取れないと、カーソルだけ進んで
     // Enter が前の行を開く）。開くリンクは持たないので Enter では何も起きない
+    t.title = d.broken ? d.title + '（manifest.json が壊れているため開けません）' : d.title;
     if (d.broken) {
       t.tabIndex = 0;
-      t.title = d.title + '（manifest.json が壊れているため開けません）';
+      t.setAttribute('aria-disabled', 'true');
     }
     if (!d.broken) {
       t.href = d.href;
@@ -492,7 +493,6 @@ export const APP_JS = `
         t.click();
       });
     }
-    t.title = d.title;
     highlight(t, d.title);
     body.appendChild(t);
     // 種別・プロジェクト名・タグも検索対象なので、どこが一致したのか分かるよう同じく印を付ける
@@ -505,6 +505,8 @@ export const APP_JS = `
       highlight(of, d.proj.label);
       meta.appendChild(of);
     }
+    // 赤いだけでは理由が分からないので、開けない訳を行の中に書く
+    if (d.broken) meta.appendChild(el('span', 'why', 'manifest.json が壊れているため開けません'));
     body.appendChild(meta);
     a.appendChild(body);
     var tw = el('div', 'tags');
@@ -546,7 +548,7 @@ export const APP_JS = `
       } else {
         e.appendChild(el('b', null, '該当するドキュメントがありません'));
         e.appendChild(el('div', null,
-          state.q ? '「' + state.q + '」に一致する文書は、この範囲にありません。' : '絞り込み条件を外すか、範囲を「すべて」に広げてください。'));
+          state.qRaw ? '「' + state.qRaw + '」に一致する文書は、この範囲にありません。' : '絞り込み条件を外すか、範囲を「すべて」に広げてください。'));
         var btn = el('button', null, '条件をすべて解除');
         btn.type = 'button';
         btn.addEventListener('click', clearFilters);
@@ -607,14 +609,15 @@ export const APP_JS = `
   function renderAll() { renderSide(); renderHead(); renderFacets(); renderList(); clearBtn.hidden = !narrowed(); }
 
   function clearFilters() {
-    state.q = ''; state.qTokens = []; state.types = []; state.tags = []; state.period = null;
+    state.q = ''; state.qRaw = ''; state.qTokens = []; state.types = []; state.tags = []; state.period = null;
     state.typesOpen = false; state.tagsOpen = false; state.cursor = -1; state.focusKey = null;
     input.value = '';
     renderAll();
   }
 
   function applyQuery() {
-    state.q = input.value.trim().toLowerCase();
+    state.qRaw = input.value.trim(); // 画面に出すのは打った通りの文字（小文字化した方ではない）
+    state.q = state.qRaw.toLowerCase();
     state.qTokens = state.q.split(/[\\s\\u3000]+/).filter(Boolean);
     state.cursor = -1; state.typesOpen = false; state.tagsOpen = false; state.focusKey = null;
     renderAll();
@@ -648,13 +651,23 @@ export const APP_JS = `
   document.addEventListener('keydown', function (ev) {
     // 日本語変換中のキーは横取りしない（変換中の Esc で入力ごと消える・↓ で候補選択を奪う）
     if (ev.isComposing || ev.keyCode === 229) return;
-    var typing = document.activeElement === input;
-    if (ev.key === '/' && !typing) { ev.preventDefault(); input.focus(); input.select(); return; }
+    var el0 = document.activeElement;
+    var inField = !!el0 && (el0.tagName === 'INPUT' || el0.tagName === 'TEXTAREA' || el0.isContentEditable);
+    var inSubField = inField && el0 !== input; // 「タグを絞る」「プロジェクトを絞る」側
+    if (ev.key === '/' && !inField) { ev.preventDefault(); input.focus(); input.select(); return; }
     if (ev.key === 'Escape') {
+      // 補助の入力欄では、その入力だけを空にして絞り込み自体は保つ
+      if (inSubField) {
+        el0.value = '';
+        el0.dispatchEvent(new Event('input'));
+        el0.blur();
+        return;
+      }
       if (narrowed()) { clearTimeout(qTimer); clearFilters(); }
       input.blur();
       return;
     }
+    if (inSubField) return; // 補助入力にいる間は行移動を横取りしない
     if (ev.key === 'ArrowDown' || (ev.key === 'n' && ev.ctrlKey)) { ev.preventDefault(); moveCursor(1); return; }
     if (ev.key === 'ArrowUp' || (ev.key === 'p' && ev.ctrlKey)) { ev.preventDefault(); moveCursor(-1); return; }
     // Enter は握らない。カーソル行のタイトルにフォーカスが乗っているので、リンクの既定動作で開く

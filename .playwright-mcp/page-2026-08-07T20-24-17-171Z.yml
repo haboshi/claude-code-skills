@@ -1,0 +1,95 @@
+- generic [ref=e1]:
+  - complementary [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]: doc-hub
+      - generic [ref=e5]: 74 DOCUMENTS
+    - navigation [ref=e7]:
+      - button "すべて 74" [ref=e470] [cursor=pointer]:
+        - generic [ref=e471]: すべて
+        - generic [ref=e472]: "74"
+      - generic [ref=e473]:
+        - generic [ref=e474]:
+          - button "畳む：AllAmbitious" [ref=e475] [cursor=pointer]: ▾
+          - button "AllAmbitious" [ref=e476] [cursor=pointer]
+          - generic [ref=e477]: "2"
+        - generic [ref=e478]:
+          - button "ai-os 1" [ref=e479] [cursor=pointer]:
+            - generic [ref=e480]: ai-os
+            - generic [ref=e481]: "1"
+          - button "roleaicall 1" [ref=e482] [cursor=pointer]:
+            - generic [ref=e483]: roleaicall
+            - generic [ref=e484]: "1"
+      - generic [ref=e485]:
+        - generic [ref=e486]:
+          - button "畳む：JBR" [ref=e487] [cursor=pointer]: ▾
+          - button "JBR" [ref=e488] [cursor=pointer]
+          - generic [ref=e489]: "26"
+        - generic [ref=e490]:
+          - button "analytics 16" [ref=e491] [cursor=pointer]:
+            - generic [ref=e492]: analytics
+            - generic [ref=e493]: "16"
+          - button "partner-agent 6" [ref=e494] [cursor=pointer]:
+            - generic [ref=e495]: partner-agent
+            - generic [ref=e496]: "6"
+          - button "jbr 1" [ref=e497] [cursor=pointer]:
+            - generic [ref=e498]: jbr
+            - generic [ref=e499]: "1"
+          - button "connect-nextgen-pricing 2" [ref=e500] [cursor=pointer]:
+            - generic [ref=e501]: connect-nextgen-pricing
+            - generic [ref=e502]: "2"
+          - button "connect-call-analyzer 1" [ref=e503] [cursor=pointer]:
+            - generic [ref=e504]: connect-call-analyzer
+            - generic [ref=e505]: "1"
+      - generic [ref=e506]:
+        - generic [ref=e507]:
+          - button "畳む：Octus" [ref=e508] [cursor=pointer]: ▾
+          - button "Octus" [ref=e509] [cursor=pointer]
+          - generic [ref=e510]: "16"
+        - generic [ref=e511]:
+          - button "Kata 11" [ref=e512] [cursor=pointer]:
+            - generic [ref=e513]: Kata
+            - generic [ref=e514]: "11"
+          - button "Jiku 5" [ref=e515] [cursor=pointer]:
+            - generic [ref=e516]: Jiku
+            - generic [ref=e517]: "5"
+      - generic [ref=e518]:
+        - generic [ref=e519]:
+          - button "畳む：未分類" [ref=e520] [cursor=pointer]: ▾
+          - button "未分類" [ref=e521] [cursor=pointer]
+          - generic [ref=e522]: "30"
+        - generic [ref=e523]:
+          - button "Claude Code 設定 3" [ref=e524] [cursor=pointer]:
+            - generic [ref=e525]: Claude Code 設定
+            - generic [ref=e526]: "3"
+          - button "vegeexpress 4" [ref=e527] [cursor=pointer]:
+            - generic [ref=e528]: vegeexpress
+            - generic [ref=e529]: "4"
+          - button "smarep 6" [ref=e530] [cursor=pointer]:
+            - generic [ref=e531]: smarep
+            - generic [ref=e532]: "6"
+          - button "ma-shindanshi.com 11" [ref=e533] [cursor=pointer]:
+            - generic [ref=e534]: ma-shindanshi.com
+            - generic [ref=e535]: "11"
+          - button "claude-code-skills 6" [ref=e536] [cursor=pointer]:
+            - generic [ref=e537]: claude-code-skills
+            - generic [ref=e538]: "6"
+          - button "d49afda2-9576-4721-ad1a-5dca95ae6447 0" [active] [ref=e539] [cursor=pointer]:
+            - generic [ref=e540]: d49afda2-9576-4721-ad1a-5dca95ae6447
+            - generic [ref=e541]: "0"
+    - generic [ref=e78] [cursor=pointer]:
+      - checkbox "非表示のプロジェクトも出す" [checked] [ref=e79]
+      - text: 非表示のプロジェクトも出す
+  - generic [ref=e80]:
+    - banner [ref=e81]:
+      - generic [ref=e82]:
+        - generic [ref=e542]: d49afda2-9576-4721-ad1a-5dca95ae6447
+        - generic [ref=e543]: 0件
+        - generic [ref=e544]: /private/tmp/claude-501/-Users-haboshi-orca-workspaces-Kata-----/d49afda2-9576-4721-ad1a-5dca95ae6447
+      - generic [ref=e86]:
+        - searchbox "タイトル・タグ・種別・プロジェクトで探す" [ref=e87]
+        - generic: /
+    - button "更新日順 ⇄ タイトル順" [ref=e134] [cursor=pointer]
+    - main [ref=e135]:
+      - generic [ref=e545]:
+        - generic [ref=e546]: まだドキュメントがありません
+        - generic [ref=e547]: この範囲に登録された文書はまだありません。

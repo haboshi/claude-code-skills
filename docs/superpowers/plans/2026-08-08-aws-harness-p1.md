@@ -963,12 +963,21 @@ set -u
 
 deny() { printf 'aws-harness: %s\n' "$1" >&2; exit 2; }
 
-input=$(cat) || deny "フック入力を読めません"
+# 標準入力の読み取りに外部コマンド（cat）を使わない。PATH が壊れた環境でも
+# 「保護対象でなければ素通しする」を成立させるため
+input=""
+IFS= read -r -d '' input
+# 0バイト入力は「どのプロジェクトか判定できない」状態なので deny に倒す
+# （jq は空入力に rc=0 を返すため、後段の終了コード検査では捕まえられない）
+[ -n "$input" ] || deny "フック入力が空です"
 
 # 作業ディレクトリの決定（jq を使わずに済む経路を先に試す）
 proj="${CLAUDE_PROJECT_DIR:-}"
 if [ -z "$proj" ] && command -v jq >/dev/null 2>&1; then
-  proj=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
+  # cwd 欠落（空文字）は $PWD へフォールバックしてよいが、JSON 自体が壊れていて
+  # jq が解釈できない場合はフォールバックせず deny する（$PWD を信用しない）
+  proj=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null) \
+    || deny "フック入力を解析できません"
 fi
 [ -n "$proj" ] || proj="$PWD"
 
@@ -1100,11 +1109,20 @@ set -u
 
 deny() { printf 'aws-harness: %s\n' "$1" >&2; exit 2; }
 
-input=$(cat) || deny "フック入力を読めません"
+# 標準入力の読み取りに外部コマンド（cat）を使わない。PATH が壊れた環境でも
+# 「保護対象でなければ素通しする」を成立させるため
+input=""
+IFS= read -r -d '' input
+# 0バイト入力は「どのプロジェクトか判定できない」状態なので deny に倒す
+# （jq は空入力に rc=0 を返すため、後段の終了コード検査では捕まえられない）
+[ -n "$input" ] || deny "フック入力が空です"
 
 proj="${CLAUDE_PROJECT_DIR:-}"
 if [ -z "$proj" ] && command -v jq >/dev/null 2>&1; then
-  proj=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
+  # cwd 欠落（空文字）は $PWD へフォールバックしてよいが、JSON 自体が壊れていて
+  # jq が解釈できない場合はフォールバックせず deny する（$PWD を信用しない）
+  proj=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null) \
+    || deny "フック入力を解析できません"
 fi
 [ -n "$proj" ] || proj="$PWD"
 
@@ -1151,11 +1169,20 @@ set -u
 
 deny() { printf 'aws-harness: %s\n' "$1" >&2; exit 2; }
 
-input=$(cat) || deny "フック入力を読めません"
+# 標準入力の読み取りに外部コマンド（cat）を使わない。PATH が壊れた環境でも
+# 「保護対象でなければ素通しする」を成立させるため
+input=""
+IFS= read -r -d '' input
+# 0バイト入力は「どのプロジェクトか判定できない」状態なので deny に倒す
+# （jq は空入力に rc=0 を返すため、後段の終了コード検査では捕まえられない）
+[ -n "$input" ] || deny "フック入力が空です"
 
 proj="${CLAUDE_PROJECT_DIR:-}"
 if [ -z "$proj" ] && command -v jq >/dev/null 2>&1; then
-  proj=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null)
+  # cwd 欠落（空文字）は $PWD へフォールバックしてよいが、JSON 自体が壊れていて
+  # jq が解釈できない場合はフォールバックせず deny する（$PWD を信用しない）
+  proj=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null) \
+    || deny "フック入力を解析できません"
 fi
 [ -n "$proj" ] || proj="$PWD"
 

@@ -1026,18 +1026,48 @@ git commit -m "feat(aws-harness): PreToolUse(Bash) の deny フックを実装�
 
 ---
 
-### Task 6: ファイル操作の deny と UserPromptSubmit の enforcement
+### Task 6: フック共通ライブラリの抽出とフック2本の実装
 
 **Files:**
+- Create: `scripts/hooks/hook-lib.sh`
+- Modify: `scripts/hooks/guard-bash.sh`（共通ライブラリへ移行）
 - Create: `scripts/hooks/guard-files.sh`
 - Create: `scripts/hooks/guard-prompt.sh`
 - Modify: `tests/run-tests.sh`
 
 **Interfaces:**
+- Produces: `hook-lib.sh` — 3フックが共有する関数。`deny()` / `hook_read_input()` /
+  `hook_project_dir()` / `hook_require_jq()`
 - Produces: `guard-files.sh` — PreToolUse(Read/Edit/Write) 用。`tool_input.file_path` が
   AWS 認証設定・契約・shim・フック自身を指していたら `exit 2`。
-- Produces: `guard-prompt.sh` — UserPromptSubmit 用。契約セッションで STS 照合が
-  通らなければ `exit 2`（プロンプトを止める）。
+- Produces: `guard-prompt.sh` — UserPromptSubmit 用。保護対象で shim を経ていない、
+  または STS 照合が通らなければ `exit 2`（プロンプトを止める）。
+
+**なぜ共通ライブラリを先に作るのか**: 入力の読み取り・保護対象の判定・deny への
+倒し方は3フックで完全に同じで、しかも fail-closed の要になる。Task 5 の実装中に
+この共通部分のバグ（`cat` への PATH 依存 / jq のパース失敗の未検査 / 0バイト入力の
+素通し）が3回見つかり、そのたびに全フックへ同じ修正を配る必要があった。
+1箇所に集約すれば、次の修正が1回で済み、フック間の挙動のずれも起きない。
+
+- [ ] **Step 0: 共通ライブラリを抽出し、guard-bash.sh を移行する**
+
+`scripts/hooks/guard-bash.sh` の実装から、次の共通部分を `scripts/hooks/hook-lib.sh`
+へ切り出す（**Task 5 で実証済みの挙動を変えないこと**）。
+
+- `deny()` — メッセージを stderr に出して `exit 2`
+- `hook_read_input()` — 外部コマンドに依存せず stdin を読む。0バイトなら deny
+- `hook_project_dir()` — `CLAUDE_PROJECT_DIR` → 入力の `cwd` → `$PWD` の順で解決。
+  jq が入力を解釈できない場合は deny（`$PWD` へフォールバックしない）
+- `hook_require_jq()` — jq が無ければ deny
+
+**関数は結果をグローバル変数に代入する（標準出力に返さない）。**
+`input=$(hook_read_input)` の形にすると、関数内の `exit 2` がサブシェルを終えるだけで
+親スクリプトは続行してしまい、**deny がすべて無効化される**。この落とし穴を避けるため、
+`hook_read_input` は `HOOK_INPUT` に、`hook_project_dir` は `HOOK_PROJECT_DIR` に代入し、
+呼び出し側は代入後の変数を読む。
+
+`guard-bash.sh` をこのライブラリを使う形に書き換え、**既存78ケースがそのまま通ること**を
+確認してから次へ進む。ここでテストが1件でも落ちたら、挙動を変えてしまっている。
 
 - [ ] **Step 1: 失敗するテストを書く**
 
@@ -1104,34 +1134,21 @@ Expected: FAIL（2つのフックが存在しない）
 ```bash
 #!/usr/bin/env bash
 # PreToolUse(Read/Edit/Write): AWS 認証設定・契約・ハーネス自身への直接アクセスを deny する
-# 保護対象の判定は guard-bash.sh と同じくマーカーの有無で行う
+# 入力の読み取り・保護対象の判定は hook-lib.sh に集約（3フックで共通）
 set -u
 
-deny() { printf 'aws-harness: %s\n' "$1" >&2; exit 2; }
+HOOK_DIR=$(cd "$(dirname "$0")" && pwd)
+. "$HOOK_DIR/hook-lib.sh"
 
-# 標準入力の読み取りに外部コマンド（cat）を使わない。PATH が壊れた環境でも
-# 「保護対象でなければ素通しする」を成立させるため
-input=""
-IFS= read -r -d '' input
-# 0バイト入力は「どのプロジェクトか判定できない」状態なので deny に倒す
-# （jq は空入力に rc=0 を返すため、後段の終了コード検査では捕まえられない）
-[ -n "$input" ] || deny "フック入力が空です"
+hook_read_input                 # HOOK_INPUT に代入（サブシェルにしない）
+hook_project_dir                # HOOK_PROJECT_DIR に代入
 
-proj="${CLAUDE_PROJECT_DIR:-}"
-if [ -z "$proj" ] && command -v jq >/dev/null 2>&1; then
-  # cwd 欠落（空文字）は $PWD へフォールバックしてよいが、JSON 自体が壊れていて
-  # jq が解釈できない場合はフォールバックせず deny する（$PWD を信用しない）
-  proj=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null) \
-    || deny "フック入力を解析できません"
-fi
-[ -n "$proj" ] || proj="$PWD"
+[ -f "$HOOK_PROJECT_DIR/.aws-harness" ] || exit 0
 
-[ -f "$proj/.aws-harness" ] || exit 0
+hook_require_jq "ファイル操作の検査"
 
-command -v jq >/dev/null 2>&1 || deny "jq が無いためファイル操作の検査ができません"
-
-printf '%s' "$input" | jq -e . >/dev/null 2>&1 || deny "フック入力が JSON ではありません"
-path=$(printf '%s' "$input" | jq -r '.tool_input.file_path // empty' 2>/dev/null) \
+printf '%s' "$HOOK_INPUT" | jq -e . >/dev/null 2>&1 || deny "フック入力が JSON ではありません"
+path=$(printf '%s' "$HOOK_INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null) \
   || deny "フック入力を解析できません"
 
 [ -n "$path" ] || exit 0
@@ -1167,27 +1184,14 @@ exit 0
 #   2. セッション中に Identity が契約と食い違った
 set -u
 
-deny() { printf 'aws-harness: %s\n' "$1" >&2; exit 2; }
+HOOK_DIR=$(cd "$(dirname "$0")" && pwd)
+. "$HOOK_DIR/hook-lib.sh"
 
-# 標準入力の読み取りに外部コマンド（cat）を使わない。PATH が壊れた環境でも
-# 「保護対象でなければ素通しする」を成立させるため
-input=""
-IFS= read -r -d '' input
-# 0バイト入力は「どのプロジェクトか判定できない」状態なので deny に倒す
-# （jq は空入力に rc=0 を返すため、後段の終了コード検査では捕まえられない）
-[ -n "$input" ] || deny "フック入力が空です"
-
-proj="${CLAUDE_PROJECT_DIR:-}"
-if [ -z "$proj" ] && command -v jq >/dev/null 2>&1; then
-  # cwd 欠落（空文字）は $PWD へフォールバックしてよいが、JSON 自体が壊れていて
-  # jq が解釈できない場合はフォールバックせず deny する（$PWD を信用しない）
-  proj=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null) \
-    || deny "フック入力を解析できません"
-fi
-[ -n "$proj" ] || proj="$PWD"
+hook_read_input                 # HOOK_INPUT に代入（サブシェルにしない）
+hook_project_dir                # HOOK_PROJECT_DIR に代入
 
 # 保護対象でなければ干渉しない
-[ -f "$proj/.aws-harness" ] || exit 0
+[ -f "$HOOK_PROJECT_DIR/.aws-harness" ] || exit 0
 
 # 検出1: 保護対象なのに shim を経ていない
 [ -n "${AWS_HARNESS_CONTRACT_ID:-}" ] \

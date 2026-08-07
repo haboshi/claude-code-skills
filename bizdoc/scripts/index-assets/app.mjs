@@ -63,12 +63,13 @@ export const APP_JS = `
     for (var i = 0; i < state.qTokens.length; i++) if (doc.hay.indexOf(state.qTokens[i]) < 0) return false;
     return true;
   }
-  function matchPeriod(doc) {
-    if (!state.period) return true;
+  function inPeriod(doc, days) {
+    if (!days) return true;
     var from = new Date(); from.setHours(0, 0, 0, 0);
-    from.setDate(from.getDate() - state.period);
+    from.setDate(from.getDate() - days);
     return doc.t >= from.getTime();
   }
+  function matchPeriod(doc) { return inPeriod(doc, state.period); }
   // 種別は「いずれか」（1文書1種別なので AND では常に空になる）、タグは「すべて含む」
   function matchTypes(doc) { return !state.types.length || state.types.indexOf(doc.type) >= 0; }
   function matchTags(doc) {
@@ -265,7 +266,10 @@ export const APP_JS = `
     if (n !== null && n !== undefined) b.appendChild(el('span', 'n', n));
     if (key) b.dataset.key = key;
     // 再描画で DOM が作り直されるので、押したチップと同じものへフォーカスを戻す
-    b.addEventListener('click', function () { state.focusKey = key || null; onClick(); });
+    b.addEventListener('click', function () {
+      state.focusKey = key || null; state.sideFocusKey = null;
+      onClick();
+    });
     return b;
   }
   function restoreFocus(root) {
@@ -316,10 +320,10 @@ export const APP_JS = `
     if (!base.length && !narrowed()) return;
 
     var periods = PERIODS.map(function (p) {
-      var saved = state.period; state.period = p.days;
-      var n = forPeriod.filter(matchPeriod).length;
-      state.period = saved;
-      return { v: p.label, n: n, days: p.days };
+      return {
+        v: p.label, days: p.days,
+        n: forPeriod.filter(function (d) { return inPeriod(d, p.days); }).length,
+      };
     }).filter(function (p) { return p.n > 0 || state.period === p.days; });
     if (periods.length) {
       var pl = el('div', 'facet-line');

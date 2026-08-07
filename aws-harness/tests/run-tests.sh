@@ -429,6 +429,44 @@ RC=$(printf '{"hook_event_name":"UserPromptSubmit","prompt":"x"}' \
 [ "$RC" = "0" ] && ok "guard-prompt: 非保護対象は依存不在でも素通し" \
   || bad "guard-prompt: 非保護対象は依存不在でも素通し" "rc=$RC"
 
+# --- Task 7: 配線と公開安全性 ---
+jq -e '.name == "aws-harness" and .version and .description' "$PLUG/.claude-plugin/plugin.json" >/dev/null 2>&1 \
+  && ok "plugin.json が必須項目を持つ" || bad "plugin.json が必須項目を持つ" "不正または欠落"
+
+jq -e '.hooks.PreToolUse and .hooks.UserPromptSubmit' "$PLUG/hooks/hooks.json" >/dev/null 2>&1 \
+  && ok "hooks.json が PreToolUse と UserPromptSubmit を配線している" \
+  || bad "hooks.json が PreToolUse と UserPromptSubmit を配線している" "欠落"
+
+REPO_ROOT=$(cd "$PLUG/.." && pwd)
+for m in "$REPO_ROOT/marketplace.json" "$REPO_ROOT/.claude-plugin/marketplace.json"; do
+  jq -e '[.plugins[] | select(.name=="aws-harness")] | length == 1' "$m" >/dev/null 2>&1 \
+    && ok "$(basename "$(dirname "$m")")/marketplace.json に登録されている" \
+    || bad "$(basename "$(dirname "$m")")/marketplace.json に登録されている" "未登録"
+  jq -e '[.plugins[] | select(.name=="aws-harness") | has("skills")] | any | not' "$m" >/dev/null 2>&1 \
+    && ok "$(basename "$(dirname "$m")")/marketplace.json に skills フィールドがない" \
+    || bad "$(basename "$(dirname "$m")")/marketplace.json に skills フィールドがない" "禁止フィールドあり"
+done
+
+# 二重マニフェストの一致
+A=$(jq -S '[.plugins[] | select(.name=="aws-harness")]' "$REPO_ROOT/marketplace.json")
+B=$(jq -S '[.plugins[] | select(.name=="aws-harness")]' "$REPO_ROOT/.claude-plugin/marketplace.json")
+[ "$A" = "$B" ] && ok "両マニフェストのエントリが一致する" || bad "両マニフェストのエントリが一致する" "不一致"
+
+# 公開安全性: コミット対象に実情報が混入していないこと
+# --exclude=run-tests.sh: このテスト自身の検査パターン文字列（"/Users/" 等のリテラル）が
+# 自己マッチして誤検知するのを避ける（実リークの検出範囲は変えない）。
+LEAK=$(grep -rEn --exclude=run-tests.sh '(/Users/|/home/[^/]+/|[a-z0-9-]+\.awsapps\.com)' \
+  "$PLUG/scripts" "$PLUG/templates" "$PLUG/skills" "$PLUG/tests" 2>/dev/null \
+  | grep -v '\$HOME' | head -5)
+[ -z "$LEAK" ] && ok "個人パス・SSO URL がコミット対象に無い" \
+  || bad "個人パス・SSO URL がコミット対象に無い" "$LEAK"
+
+ACCTLEAK=$(grep -rEn '(^|[^0-9a-zA-Z-])[0-9]{12}([^0-9a-zA-Z-]|$)' \
+  "$PLUG/scripts" "$PLUG/templates" "$PLUG/skills" 2>/dev/null \
+  | grep -v '000000000000' | head -5)
+[ -z "$ACCTLEAK" ] && ok "例示以外の Account ID がコミット対象に無い" \
+  || bad "例示以外の Account ID がコミット対象に無い" "$ACCTLEAK"
+
 echo "----"
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

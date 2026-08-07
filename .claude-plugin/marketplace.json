@@ -318,6 +318,25 @@
         "報告書",
         "ドキュメント管理"
       ]
+    },
+    {
+      "name": "aws-harness",
+      "description": "プロジェクトごとに AWS Identity を Agent CLI の起動前に固定し、契約が壊れているときは起動を拒否する",
+      "source": "./aws-harness",
+      "strict": false,
+      "version": "0.1.0",
+      "category": "developer-tools",
+      "keywords": [
+        "aws",
+        "identity",
+        "execution-contract",
+        "fail-closed",
+        "hooks",
+        "harness",
+        "認証",
+        "アカウント固定",
+        "誤操作防止"
+      ]
     }
   ]
 }

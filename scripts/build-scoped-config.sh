@@ -40,11 +40,12 @@ fi
 cdir="${1:-}"
 cid="${2:-}"
 [ -n "$cdir" ] && [ -n "$cid" ] || { harness_err "usage: build-scoped-config.sh <contract-dir> <contract-id>"; exit 3; }
+valid_contract_id "$cid" || { harness_err "不正な契約IDです"; exit 3; }
 [ -f "$cdir/aws-config" ] || { harness_err "契約に aws-config がありません"; exit 3; }
 
 rt="$(harness_home)/runtime/$cid"
 mkdir -p "$rt" || { harness_err "runtime ディレクトリを作成できません"; exit 3; }
-chmod 700 "$rt" 2>/dev/null
+chmod 700 "$rt" || { harness_err "runtime ディレクトリの権限を設定できません"; exit 3; }
 
 out="$rt/config"
 umask 077
@@ -53,6 +54,6 @@ chmod 600 "$out" || { harness_err "config の権限を設定できません"; ex
 
 # 空の credentials ファイル（共有 credentials を参照させないため）
 : > "$rt/credentials" || { harness_err "credentials プレースホルダを作成できません"; exit 3; }
-chmod 600 "$rt/credentials"
+chmod 600 "$rt/credentials" || { harness_err "credentials の権限を設定できません"; exit 3; }
 
 printf '%s\n' "$out"

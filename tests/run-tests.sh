@@ -128,6 +128,17 @@ else
   echo "SKIP: boto3 未導入のため SDK 可視性テストを省略"
 fi
 
+# パストラバーサルの契約IDは拒否され、runtime/ の外に何も書き込まれないこと
+FS_BEFORE=$(find "$WORK" -mindepth 1 | sort)
+TRAV_CID="../../aabbccdd1122"
+bash "$PLUG/scripts/build-scoped-config.sh" "$CDIR" "$TRAV_CID" >/dev/null 2>&1
+TRAV_RC=$?
+FS_AFTER=$(find "$WORK" -mindepth 1 | sort)
+[ "$TRAV_RC" -eq 3 ] && ok "パストラバーサルの契約IDは拒否(exit 3)" \
+  || bad "パストラバーサルの契約IDは拒否(exit 3)" "rc=$TRAV_RC"
+[ "$FS_BEFORE" = "$FS_AFTER" ] && ok "runtime/ の外にファイルが作られない" \
+  || bad "runtime/ の外にファイルが作られない" "ファイルシステムに差分あり"
+
 echo "----"
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

@@ -88,7 +88,10 @@ export function renderIndex({ projects, groups }) {
   </header>
   <div class="facets-row">
     <div class="facets"></div>
-    <button type="button" class="sortbtn">更新日順 ⇄ タイトル順</button>
+    <div class="facet-actions">
+      <button type="button" class="clearbtn" hidden>絞り込みを解除</button>
+      <button type="button" class="sortbtn">更新日順 ⇄ タイトル順</button>
+    </div>
   </div>
   <main class="list"></main>
 </div>

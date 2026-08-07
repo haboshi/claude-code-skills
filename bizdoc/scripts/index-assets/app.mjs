@@ -157,7 +157,9 @@ export const APP_JS = `
   var list = document.querySelector('.list');
   var input = document.querySelector('.search input');
   var sortBtn = document.querySelector('.sortbtn');
+  var clearBtn = document.querySelector('.clearbtn');
   var hiddenToggle = document.querySelector('.side-foot input');
+  clearBtn.addEventListener('click', clearFilters);
 
   // hidden 指定のプロジェクトを名指しで開いたときは、隠したままだと空振りするので表示に切り替える
   function ensureVisible(scope) {
@@ -453,14 +455,6 @@ export const APP_JS = `
     }
     facets.classList.toggle('expanded', state.typesOpen || state.tagsOpen);
 
-    if (narrowed()) {
-      var last = el('div', 'facet-line');
-      last.appendChild(el('span', 'facet-label', ''));
-      var box = el('div', 'facet-chips');
-      box.appendChild(chip('絞り込みを解除', null, false, clearFilters, 'clear', 'clear'));
-      last.appendChild(box);
-      facets.appendChild(last);
-    }
     restoreFocus(facets);
   }
 
@@ -481,6 +475,12 @@ export const APP_JS = `
     a.appendChild(when);
     var body = el('div', 'body');
     var t = el(d.broken ? 'div' : 'a', 'ttl');
+    // 破損行も同じくフォーカスを受け取れるようにする（受け取れないと、カーソルだけ進んで
+    // Enter が前の行を開く）。開くリンクは持たないので Enter では何も起きない
+    if (d.broken) {
+      t.tabIndex = 0;
+      t.title = d.title + '（manifest.json が壊れているため開けません）';
+    }
     if (!d.broken) {
       t.href = d.href;
       // 行のどこを押しても開くための補助。リンク自身の上や、修飾キー付き・中クリックのときは
@@ -591,7 +591,7 @@ export const APP_JS = `
       : Math.min(rs.length - 1, Math.max(0, state.cursor + delta));
     markCursor();
     var row = rs[state.cursor];
-    var link = row.querySelector('.ttl[href]');
+    var link = row.querySelector('.ttl');
     if (link) link.focus({ preventScroll: true });
     row.scrollIntoView({ block: 'nearest' });
   }
@@ -603,7 +603,8 @@ export const APP_JS = `
     }
   });
 
-  function renderAll() { renderSide(); renderHead(); renderFacets(); renderList(); }
+  // 解除ボタンはスクロールする facets の外に置く（中に入れると切れて押せなくなる）
+  function renderAll() { renderSide(); renderHead(); renderFacets(); renderList(); clearBtn.hidden = !narrowed(); }
 
   function clearFilters() {
     state.q = ''; state.qTokens = []; state.types = []; state.tags = []; state.period = null;

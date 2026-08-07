@@ -1,0 +1,161 @@
+- generic [ref=f13e1]:
+  - complementary [ref=f13e2]:
+    - generic [ref=f13e3]:
+      - generic [ref=f13e4]: doc-hub
+      - generic [ref=f13e5]: 74 DOCUMENTS
+    - navigation [ref=f13e7]:
+      - button "すべて 48" [ref=f13e178] [cursor=pointer]:
+        - generic [ref=f13e179]: すべて
+        - generic [ref=f13e180]: "48"
+      - generic [ref=f13e182]:
+        - button "開く：AllAmbitious" [ref=f13e183] [cursor=pointer]: ▾
+        - button "AllAmbitious" [ref=f13e184] [cursor=pointer]
+        - generic [ref=f13e185]: "0"
+      - generic [ref=f13e186]:
+        - generic [ref=f13e187]:
+          - button "畳む：JBR" [ref=f13e188] [cursor=pointer]: ▾
+          - button "JBR" [ref=f13e189] [cursor=pointer]
+          - generic [ref=f13e190]: "26"
+        - generic [ref=f13e191]:
+          - button "analytics 16" [ref=f13e192] [cursor=pointer]:
+            - generic [ref=f13e193]: analytics
+            - generic [ref=f13e194]: "16"
+          - button "partner-agent 6" [ref=f13e195] [cursor=pointer]:
+            - generic [ref=f13e196]: partner-agent
+            - generic [ref=f13e197]: "6"
+          - button "jbr 1" [ref=f13e198] [cursor=pointer]:
+            - generic [ref=f13e199]: jbr
+            - generic [ref=f13e200]: "1"
+          - button "connect-nextgen-pricing 2" [ref=f13e201] [cursor=pointer]:
+            - generic [ref=f13e202]: connect-nextgen-pricing
+            - generic [ref=f13e203]: "2"
+          - button "connect-call-analyzer 1" [ref=f13e204] [cursor=pointer]:
+            - generic [ref=f13e205]: connect-call-analyzer
+            - generic [ref=f13e206]: "1"
+      - generic [ref=f13e207]:
+        - generic [ref=f13e208]:
+          - button "畳む：Octus" [ref=f13e209] [cursor=pointer]: ▾
+          - button "Octus" [ref=f13e210] [cursor=pointer]
+          - generic [ref=f13e211]: "12"
+        - generic [ref=f13e212]:
+          - button "Kata 7" [ref=f13e213] [cursor=pointer]:
+            - generic [ref=f13e214]: Kata
+            - generic [ref=f13e215]: "7"
+          - button "Jiku 5" [ref=f13e216] [cursor=pointer]:
+            - generic [ref=f13e217]: Jiku
+            - generic [ref=f13e218]: "5"
+      - generic [ref=f13e219]:
+        - generic [ref=f13e220]:
+          - button "畳む：未分類" [ref=f13e221] [cursor=pointer]: ▾
+          - button "未分類" [ref=f13e222] [cursor=pointer]
+          - generic [ref=f13e223]: "10"
+        - generic [ref=f13e224]:
+          - button "Claude Code 設定 0" [ref=f13e225] [cursor=pointer]:
+            - generic [ref=f13e226]: Claude Code 設定
+            - generic [ref=f13e227]: "0"
+          - button "vegeexpress 0" [ref=f13e228] [cursor=pointer]:
+            - generic [ref=f13e229]: vegeexpress
+            - generic [ref=f13e230]: "0"
+          - button "smarep 0" [ref=f13e231] [cursor=pointer]:
+            - generic [ref=f13e232]: smarep
+            - generic [ref=f13e233]: "0"
+          - button "ma-shindanshi.com 5" [active] [ref=f13e234] [cursor=pointer]:
+            - generic [ref=f13e235]: ma-shindanshi.com
+            - generic [ref=f13e236]: "5"
+          - button "claude-code-skills 5" [ref=f13e237] [cursor=pointer]:
+            - generic [ref=f13e238]: claude-code-skills
+            - generic [ref=f13e239]: "5"
+    - generic [ref=f13e71] [cursor=pointer]:
+      - checkbox "非表示のプロジェクトも出す" [ref=f13e72]
+      - text: 非表示のプロジェクトも出す
+  - generic [ref=f13e73]:
+    - banner [ref=f13e74]:
+      - generic [ref=f13e75]:
+        - generic [ref=f13e240]: ma-shindanshi.com
+        - generic [ref=f13e241]: 5 / 11件
+        - generic [ref=f13e242]: ~/Projects/ma-shindanshi.com
+      - generic [ref=f13e80]:
+        - searchbox "タイトル・タグ・種別・プロジェクトで探す" [ref=f13e81]
+        - generic: /
+    - generic [ref=f13e82]:
+      - generic [ref=f13e83]:
+        - generic [ref=f13e243]:
+          - generic "選んだ種別のいずれかに当てはまる文書" [ref=f13e244]: 種別
+          - generic [ref=f13e245]:
+            - button "仕様書 2" [ref=f13e246] [cursor=pointer]:
+              - text: 仕様書
+              - generic [ref=f13e247]: "2"
+            - button "マニュアル 1" [ref=f13e248] [cursor=pointer]:
+              - text: マニュアル
+              - generic [ref=f13e249]: "1"
+            - button "解説 1" [ref=f13e250] [cursor=pointer]:
+              - text: 解説
+              - generic [ref=f13e251]: "1"
+            - button "資料 1" [ref=f13e252] [cursor=pointer]:
+              - text: 資料
+              - generic [ref=f13e253]: "1"
+        - generic [ref=f13e254]:
+          - generic "選んだタグをすべて持つ文書" [ref=f13e255]: タグ
+          - button "imported 5" [ref=f13e257] [cursor=pointer]:
+            - text: imported
+            - generic [ref=f13e258]: "5"
+        - button "絞り込みを解除" [ref=f13e262] [cursor=pointer]
+      - button "更新日順 ⇄ タイトル順" [ref=f13e104] [cursor=pointer]
+    - main [ref=f13e105]:
+      - generic [ref=f13e263]: 2026年8月
+      - generic [ref=f13e264] [cursor=pointer]:
+        - generic [ref=f13e265]:
+          - generic [ref=f13e266]: 8/1
+          - text: 7日前
+        - generic [ref=f13e267]:
+          - link "研修決済・サブスク決済 仕様まとめ｜不動産M&A診断士協会" [ref=f13e268]:
+            - /url: projects/ma-shindanshi-com-a70868a8/docs/20260801-payment-lifecycle-summary/index.html
+          - generic [ref=f13e269]: 仕様書
+        - button [ref=f13e272]:
+          - text: "#"
+          - mark [ref=f13e273]: imported
+      - generic [ref=f13e274] [cursor=pointer]:
+        - generic [ref=f13e275]:
+          - generic [ref=f13e276]: 8/1
+          - text: 7日前
+        - generic [ref=f13e277]:
+          - link "法人所有不動産の出口診断システム 統合要件定義" [ref=f13e278]:
+            - /url: projects/ma-shindanshi-com-a70868a8/docs/20260801-exit-shindan-requirements/index.html
+          - generic [ref=f13e279]: 仕様書
+        - button [ref=f13e282]:
+          - text: "#"
+          - mark [ref=f13e283]: imported
+      - generic [ref=f13e284] [cursor=pointer]:
+        - generic [ref=f13e285]:
+          - generic [ref=f13e286]: 8/1
+          - text: 7日前
+        - generic [ref=f13e287]:
+          - link "不動産M&A診断士 ライフサイクル全フロー マスター資料" [ref=f13e288]:
+            - /url: projects/ma-shindanshi-com-a70868a8/docs/20260801-diagnostician-lifecycle-master/index.html
+          - generic [ref=f13e289]: 資料
+        - button [ref=f13e292]:
+          - text: "#"
+          - mark [ref=f13e293]: imported
+      - generic [ref=f13e294] [cursor=pointer]:
+        - generic [ref=f13e295]:
+          - generic [ref=f13e296]: 8/1
+          - text: 7日前
+        - generic [ref=f13e297]:
+          - link "分岐元がすべてを決める — SI 廃止後のブランチ運用と ancestry の制約" [ref=f13e298]:
+            - /url: projects/ma-shindanshi-com-a70868a8/docs/20260801-branch-strategy-explainer/index.html
+          - generic [ref=f13e299]: 解説
+        - button [ref=f13e302]:
+          - text: "#"
+          - mark [ref=f13e303]: imported
+      - generic [ref=f13e304] [cursor=pointer]:
+        - generic [ref=f13e305]:
+          - generic [ref=f13e306]: 8/1
+          - text: 7日前
+        - generic [ref=f13e307]:
+          - link "事務局スタッフ向け 診断士フロー運用マニュアル" [ref=f13e308]:
+            - /url: projects/ma-shindanshi-com-a70868a8/docs/20260801-diagnostician-staff-manual/index.html
+          - generic [ref=f13e309]: マニュアル
+        - button [ref=f13e312]:
+          - text: "#"
+          - mark [ref=f13e313]: imported
+      - generic [ref=f13e314]: 検索は /、移動は ↑↓、開くのは Enter。

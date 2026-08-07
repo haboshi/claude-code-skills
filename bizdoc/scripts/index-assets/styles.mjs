@@ -27,6 +27,7 @@ export const STYLES = `
   }
 }
 * { box-sizing: border-box; }
+.hidden { display: none !important; }
 html, body { height: 100%; }
 body {
   margin: 0; background: var(--bg); color: var(--ink);
@@ -107,8 +108,11 @@ mark { background: transparent; color: var(--accent-ink); font-weight: 700; box-
   border-radius: 4px; padding: 0 .3rem; pointer-events: none; background: var(--bg);
 }
 .search input:not(:placeholder-shown) + kbd { display: none; }
-.sortbtn { flex: none; align-self: flex-start; font-size: 11.5px; color: var(--ink-2); padding: .1rem .55rem; border: 1px solid var(--line); border-radius: 999px; white-space: nowrap; }
+.facet-actions { flex: none; align-self: flex-start; display: flex; flex-direction: column; align-items: flex-end; gap: .3rem; }
+.sortbtn, .clearbtn { font-size: 11.5px; color: var(--ink-2); padding: .1rem .55rem; border: 1px solid var(--line); border-radius: 999px; white-space: nowrap; }
 .sortbtn:hover { border-color: var(--line-strong); background: var(--bg-soft); }
+.clearbtn { border-color: var(--danger); color: var(--danger); }
+.clearbtn:hover { background: var(--danger-soft); }
 
 /* ── 右：ファセット ──────────────────────────────── */
 .facets-row { display: flex; align-items: flex-start; gap: .9rem; padding: 0 1.6rem .7rem; border-bottom: 1px solid var(--line); background: var(--bg); }

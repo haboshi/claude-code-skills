@@ -7,11 +7,11 @@ export const APP_JS = `
 (function () {
   var D = window.__DOC_HUB__ || { projects: [], groups: [] };
   var LS_KEY = 'doc-hub:view:1';
-  var TYPE_LIMIT = 8, TAG_LIMIT = 10, TAGS_IN_ROW = 3;
+  var TYPE_LIMIT = 8, TAG_LIMIT = 10, TAGS_IN_ROW = 3, SIDE_FILTER_FROM = 20;
   var PERIODS = [{ label: '今週', days: 7 }, { label: '今月', days: 30 }, { label: '3か月', days: 90 }];
 
   var state = {
-    scope: 'all', q: '', qTokens: [], types: [], tags: [], period: null, sort: 'updated',
+    scope: 'all', q: '', qTokens: [], types: [], tags: [], period: null, sort: 'updated', sideQuery: '',
     showHidden: false, collapsed: {}, typesOpen: false, tagsOpen: false, cursor: -1,
     focusKey: null, sideFocusKey: null
   };
@@ -215,10 +215,13 @@ export const APP_JS = `
     var dim = narrowed();
     side.appendChild(scopeButton('すべて', 'all', sum(vis)));
 
+    // プロジェクトが多いときだけ出す名前フィルタ（少数なら目で追えるので邪魔にしない）
+    var sq = state.sideQuery;
+    var named = function (p) { return !sq || p.label.toLowerCase().indexOf(sq) >= 0; };
     var buckets = D.groups.map(function (g) {
-      return { key: g.key, label: g.label, members: vis.filter(function (p) { return p.group === g.key; }) };
+      return { key: g.key, label: g.label, members: vis.filter(function (p) { return p.group === g.key && named(p); }) };
     }).filter(function (b) { return b.members.length > 0; });
-    var loose = vis.filter(isLoose);
+    var loose = vis.filter(function (p) { return isLoose(p) && named(p); });
     if (loose.length) buckets.push({ key: NONE, label: '未分類', members: loose });
 
     buckets.forEach(function (b) {
@@ -348,6 +351,25 @@ export const APP_JS = `
     line.appendChild(lb);
     var box = el('div', 'facet-chips');
     var shown = isOpen ? items : items.slice(0, limit);
+    // 全部開くと数十個並ぶので、その場で絞れる入力を先頭に置く。
+    // ここは再描画せず DOM を隠すだけにして、打鍵中にフォーカスが飛ばないようにする
+    if (isOpen && items.length > limit) {
+      var f = el('input', 'facet-filter');
+      f.type = 'search';
+      f.placeholder = label + 'を絞る';
+      f.addEventListener('input', function () {
+        var q = f.value.trim().toLowerCase();
+        var chips = box.querySelectorAll('.chip');
+        for (var i = 0; i < chips.length; i++) {
+          if (chips[i].classList.contains('more') || chips[i].classList.contains('clear')) continue;
+          var v = (chips[i].dataset.key || '').slice(prefix.length).toLowerCase();
+          chips[i].classList.toggle('hidden', q !== '' && v.indexOf(q) < 0);
+        }
+        var notes = box.querySelectorAll('.facet-note');
+        for (var j = 0; j < notes.length; j++) notes[j].classList.toggle('hidden', q !== '');
+      });
+      box.appendChild(f);
+    }
     // 全部開くと 1 件だけのタグが壁になるので、そこから先は区切って「探す対象」だと分かるようにする
     var hasMulti = shown.some(function (t) { return t.n > 1; });
     var marked = false;
@@ -473,14 +495,22 @@ export const APP_JS = `
     t.title = d.title;
     highlight(t, d.title);
     body.appendChild(t);
+    // 種別・プロジェクト名・タグも検索対象なので、どこが一致したのか分かるよう同じく印を付ける
     var meta = el('div', 'meta');
-    meta.appendChild(el('span', 'kind', d.type));
-    if (state.scope === 'all' || state.scope.indexOf('g:') === 0) meta.appendChild(el('span', 'of', d.proj.label));
+    var kind = el('span', 'kind');
+    highlight(kind, d.type);
+    meta.appendChild(kind);
+    if (state.scope === 'all' || state.scope.indexOf('g:') === 0) {
+      var of = el('span', 'of');
+      highlight(of, d.proj.label);
+      meta.appendChild(of);
+    }
     body.appendChild(meta);
     a.appendChild(body);
     var tw = el('div', 'tags');
     d.tags.slice(0, TAGS_IN_ROW).forEach(function (tag) {
-      var s = el('button', 'tag', tag);
+      var s = el('button', 'tag');
+      highlight(s, tag);
       s.type = 'button';
       // Tab の停留点にはしない（74行×3タグ分の停留は移動を壊す）。
       // キーボードから同じ操作をするときは上のタグチップを使う。
@@ -601,6 +631,13 @@ export const APP_JS = `
   });
   hiddenToggle.addEventListener('change', function (ev) {
     state.showHidden = ev.target.checked; save(); renderAll();
+  });
+  var sideFilter = document.querySelector('.side-filter');
+  var sideFilterInput = sideFilter.querySelector('input');
+  if (D.projects.length >= SIDE_FILTER_FROM) sideFilter.hidden = false;
+  sideFilterInput.addEventListener('input', function () {
+    state.sideQuery = sideFilterInput.value.trim().toLowerCase();
+    renderSide();
   });
   if (narrowMq.matches) sideEl.classList.add('collapsed'); // 狭い画面では一覧を優先し、最初は畳んでおく
   document.querySelector('.brand').addEventListener('click', function () {

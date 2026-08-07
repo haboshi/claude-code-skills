@@ -77,6 +77,7 @@ export function renderIndex({ projects, groups }) {
 <body>
 <aside class="side">
   <div class="brand"><b>doc-hub</b><span>${total} DOCUMENTS</span><i></i></div>
+  <div class="side-filter" hidden><input type="search" placeholder="プロジェクトを絞る" autocomplete="off" spellcheck="false"></div>
   <nav class="scopes"></nav>
   <div class="side-foot"><label><input type="checkbox">非表示のプロジェクトも出す</label></div>
 </aside>

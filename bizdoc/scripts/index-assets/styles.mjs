@@ -5,6 +5,8 @@
 export const STYLES = `
 :root {
   --accent: #2563eb; --accent-soft: #eef4ff; --accent-ink: #1d4ed8;
+  /* アクセント面の上に載る文字色。ダークのアクセントは明るいので暗い文字に入れ替える */
+  --on-accent: #ffffff; --on-accent-2: rgba(255, 255, 255, .82);
   /* ink-3 は日付・件数・タグなど 11px 前後の小さい文字（タグは押せる操作要素）に使う。
      bizdoc 本体の #9ca3af は白地に 2.3:1 しかないため、4.5:1 を満たす濃さに置き換えている */
   --ink: #111827; --ink-2: #4b5563; --ink-3: #646e7d;
@@ -16,6 +18,7 @@ export const STYLES = `
 @media (prefers-color-scheme: dark) {
   :root {
     --accent: #6ea8ff; --accent-soft: #16263d; --accent-ink: #9cc4ff;
+    --on-accent: #0a111c; --on-accent-2: rgba(10, 17, 28, .72);
     --ink: #e6eaf0; --ink-2: #a3aebd; --ink-3: #8894a6;
     --line: #232c38; --line-strong: #33404f;
     --bg: #0e131a; --bg-soft: #131a23; --bg-sink: #182029;
@@ -73,7 +76,8 @@ mark { background: transparent; color: var(--accent-ink); font-weight: 700; box-
 .scope[aria-current="true"] .n { color: var(--accent-ink); }
 .scope.is-broken .nm::after { content: " ●"; color: var(--danger); }
 .scope.is-hidden .nm { opacity: .55; font-style: italic; }
-.scope.is-zero { opacity: .38; }
+/* 0 件でも押せる行なので、薄くしすぎない（件数の 0 で十分見分けがつく） */
+.scope.is-zero .nm { color: var(--ink-3); font-weight: 400; }
 .grp-b .scope { padding-left: 1.15rem; }
 .side-foot { border-top: 1px solid var(--line); padding: .6rem .9rem .75rem; font-size: 11.5px; color: var(--ink-3); }
 .side-foot label { display: flex; align-items: center; gap: .4rem; cursor: pointer; }
@@ -118,6 +122,13 @@ mark { background: transparent; color: var(--accent-ink); font-weight: 700; box-
 .facet-label { font-size: 10px; font-weight: 700; letter-spacing: .1em; color: var(--ink-3); padding-top: .22rem; }
 .facet-label i { display: block; font-style: normal; font-weight: 600; font-size: 9px; letter-spacing: 0; color: var(--accent); }
 .facet-note { align-self: center; margin-left: .35rem; padding-left: .55rem; border-left: 1px solid var(--line-strong); font-size: 9.5px; color: var(--ink-3); }
+.facet-filter { width: 7.5rem; padding: .1rem .6rem; font: inherit; font-size: 11.5px; color: var(--ink);
+  background: var(--bg-soft); border: 1px solid var(--line-strong); border-radius: 999px; }
+.facet-filter:focus { outline: none; border-color: var(--accent); background: var(--bg); box-shadow: 0 0 0 3px var(--accent-soft); }
+.side-filter { padding: .55rem .8rem .1rem; }
+.side-filter input { width: 100%; padding: .28rem .7rem; font: inherit; font-size: 12px; color: var(--ink);
+  background: var(--bg); border: 1px solid var(--line-strong); border-radius: 999px; }
+.side-filter input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .chip {
   display: inline-flex; align-items: baseline; gap: .3rem; padding: .12rem .55rem;
   border: 1px solid var(--line); border-radius: 999px; font-size: 11.5px; color: var(--ink-2);
@@ -125,8 +136,8 @@ mark { background: transparent; color: var(--accent-ink); font-weight: 700; box-
 }
 .chip:hover { border-color: var(--accent); color: var(--accent-ink); }
 .chip .n { font-size: 10px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
-.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
-.chip[aria-pressed="true"] .n { color: rgba(255,255,255,.75); }
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+.chip[aria-pressed="true"] .n { color: var(--on-accent-2); }
 .chip.more { border-style: dashed; color: var(--ink-3); }
 .chip.rel { border-style: dashed; border-color: var(--accent); color: var(--accent-ink); background: var(--accent-soft); }
 .chip.clear { border-color: var(--danger); color: var(--danger); }

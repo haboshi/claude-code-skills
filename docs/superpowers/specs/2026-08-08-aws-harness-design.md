@@ -1,8 +1,33 @@
 # aws-harness P1 設計書 — Execution Contract による AWS Identity の起動前固定
 
 - 日付: 2026-08-08
-- ステータス: レビュー待ち
+- ステータス: **要改訂**（敵対的レビュー + 外部モデル評価で土台前提の反証あり。下記「レビューで反証された前提」を参照）
 - 対象 Phase: P1（Execution Contract + launcher shim + 多層防御フック）
+
+## レビューで反証された前提（2026-08-08 追記・実測/公式裏取り済み）
+
+本設計の初版は次の前提に依拠していたが、いずれも反証された。改訂前に実装へ進んではならない。
+
+| 反証された前提 | 実測・公式による事実 | 影響する節 |
+|---|---|---|
+| PATH 前段の shim で claude 起動を横取りできる | シェル設定に `alias claude` がフルパス指定で存在し、対話ログインシェルでは PATH 探索が起きない。Operator Harness もフルパスで起動している | 「確認済み前提」「Shim の動作フロー」「代替案」 |
+| `~/.local/bin/claude` を横取り点にすればよい | 同パスは symlink で、auto-update がバージョン更新のたびに張り替える（実測: 6 バージョンが日次で追加・symlink の mtime が追随） | 同上 |
+| credential は `aws-vault exec` の子プロセスにのみ存在し、他 profile には原理的に到達しない | 同一 OS ユーザーから ambient な認証ソース（SSO キャッシュ・共有 config・Keychain）へ到達できる。SDK 直叩きは deny 文字列に一切当たらない | 「設計上の要点」「多層防御フック」 |
+| SessionStart で再照合すれば不整合を止められる | 公式仕様上 SessionStart は exit code 2 でもブロックできない（stderr 表示のみ）。ブロック可能なのは PreToolUse / UserPromptSubmit 等 | 「SessionStart: session-verify.sh」 |
+| contract がなければ素通しでよい（安全な既定） | 保護対象プロジェクトで contract が欠落・改名・未配布のときも素通しになり、fail-closed 原則と矛盾する（fail-open） | 「Shim の動作フロー」「エラーハンドリング」 |
+| フックの文字列 deny は残余リスクとして受容できる | 公式仕様上フックの exit 1 は非ブロッキングであり、解析エラー時に fail-open する。deny を成立させるには exit 2 への明示変換が必要 | 「多層防御フック」 |
+| 最終境界は read-only role である | 到達しうる全ロールが read-only でなければ境界にならない。契約外 Account の管理者ロールに到達できる限り、境界は張られていない | 「設計の本質性」全般 |
+
+### 改訂の方向（次版で反映する）
+
+1. 横取り点を PATH ではなく「起動元の合流点」に置く（起動コマンド設定と alias を shim へ向ける）
+2. contract 解決を remote URL マッチから、追跡ファイルに置く不透明な contract ID へ変更する
+3. 保護必須マーカーを導入し、マーカーあり + contract なしは起動拒否（fail-closed）にする
+4. ambient な認証ソースを環境変数で遮断する（SDK から見える profile を契約の 1 つに限定できることは実測済み）
+5. enforcement は PreToolUse / UserPromptSubmit に置き、SessionStart は通知専用と明記する
+6. フックの解析エラーを必ず deny（exit 2）へ変換する
+7. 権限は AWS 管理ポリシーでなく最小権限のカスタマー管理ポリシーへ
+8. 本設計の主張を「セキュリティ境界」ではなく「Identity 誤選択の防止」に限定する
 
 ## 背景と目的
 

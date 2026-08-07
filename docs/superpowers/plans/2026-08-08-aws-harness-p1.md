@@ -1137,7 +1137,12 @@ Expected: FAIL（2つのフックが存在しない）
 # 入力の読み取り・保護対象の判定は hook-lib.sh に集約（3フックで共通）
 set -u
 
-HOOK_DIR=$(cd "$(dirname "$0")" && pwd)
+# dirname は外部コマンドなので使わない。PATH が壊れた環境で解決に失敗すると
+# ライブラリを読み込めず、bash の exit 1（非ブロッキング）に退化して素通りする
+case "$0" in
+  */*) HOOK_DIR=$(cd "${0%/*}" && pwd) ;;
+  *)   HOOK_DIR=$(pwd) ;;
+esac
 . "$HOOK_DIR/hook-lib.sh"
 
 hook_read_input                 # HOOK_INPUT に代入（サブシェルにしない）
@@ -1184,7 +1189,12 @@ exit 0
 #   2. セッション中に Identity が契約と食い違った
 set -u
 
-HOOK_DIR=$(cd "$(dirname "$0")" && pwd)
+# dirname は外部コマンドなので使わない。PATH が壊れた環境で解決に失敗すると
+# ライブラリを読み込めず、bash の exit 1（非ブロッキング）に退化して素通りする
+case "$0" in
+  */*) HOOK_DIR=$(cd "${0%/*}" && pwd) ;;
+  *)   HOOK_DIR=$(pwd) ;;
+esac
 . "$HOOK_DIR/hook-lib.sh"
 
 hook_read_input                 # HOOK_INPUT に代入（サブシェルにしない）

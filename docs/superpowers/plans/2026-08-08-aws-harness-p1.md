@@ -834,6 +834,12 @@ export AWS_HARNESS_SCRIPT_DIR="$SCRIPT_DIR"
 export AWS_HARNESS_CONTRACT_DIR="$cdir"
 export AWS_HARNESS_REAL_CLI="$real_cli"
 
+# credential を先に取れるか確かめる。exec してしまうと aws-vault 自身の終了コードが
+# そのまま漏れ、「拒否は exit 3」の契約が破れるため（aws-vault はセッションを
+# キャッシュするので、続く exec で再認証が二度求められることは通常ない）
+aws-vault exec "$profile" -- true \
+  || { harness_err "credential を取得できません（aws-vault）"; exit 3; }
+
 exec aws-vault exec "$profile" -- "$SCRIPT_DIR/harness-verify-then-exec.sh" "$@"
 ```
 

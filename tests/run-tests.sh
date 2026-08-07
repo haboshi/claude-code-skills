@@ -210,11 +210,21 @@ R=$(make_repo repo-launch-none "")
 R=$(make_repo repo-launch-ok "contract_id: $CID
 required: true
 ")
-RC=$(cd "$R" && FAKE_CLI_ENV_OUT="$WORK/env.json" \
-  FAKE_AWS_ACCOUNT="$ACCT" \
-  FAKE_AWS_ARN="arn:aws:sts::$ACCT:assumed-role/ExampleAgentReadOnly/session" \
-  AWS_PROFILE=leaked AWS_ENDPOINT_URL=http://evil.example \
-  bash "$PLUG/scripts/harness-launch.sh" >/dev/null 2>&1; echo $?)
+# 消毒対象（build-scoped-config.sh --list-unset）の全変数に ambient な「漏れた値」を
+# 事前に仕込んでおき、起動後に fake claude 側でその値が残っていないか全件確認する
+# （2変数だけの手検査だと消毒ループの回帰を検出できないため; fix round 1 対応）。
+RC=$(
+  cd "$R" || exit 2
+  FAKE_CLI_ENV_OUT="$WORK/env.json"; export FAKE_CLI_ENV_OUT
+  FAKE_AWS_ACCOUNT="$ACCT"; export FAKE_AWS_ACCOUNT
+  FAKE_AWS_ARN="arn:aws:sts::$ACCT:assumed-role/ExampleAgentReadOnly/session"; export FAKE_AWS_ARN
+  FAKE_CLI_CHECK_VARS="$UNSETS"; export FAKE_CLI_CHECK_VARS
+  for v in $UNSETS; do
+    export "$v=leaked-$v"
+  done
+  bash "$PLUG/scripts/harness-launch.sh" >/dev/null 2>&1
+  echo $?
+)
 [ "$RC" = "0" ] && ok "契約ありは検証を通って起動する" || bad "契約ありは検証を通って起動する" "rc=$RC"
 [ "$(envget contract_id)" = "$CID" ] && ok "契約セッションは契約 ID を立てる" \
   || bad "契約セッションは契約 ID を立てる" "id=$(envget contract_id)"
@@ -228,6 +238,12 @@ case "$(envget config_file)" in
 esac
 [ "$(envget vault_profile)" = "example-agent" ] && ok "契約の profile で credential を取る" \
   || bad "契約の profile で credential を取る" "p=$(envget vault_profile)"
+
+# 消毒対象の全変数（19件）で ambient 値が実 CLI まで漏れていないことを確認する
+for v in $UNSETS; do
+  [ "$(envget "san_$v")" != "leaked-$v" ] && ok "起動時に $v の ambient 値が漏れない" \
+    || bad "起動時に $v の ambient 値が漏れない" "leaked value が残っている"
+done
 
 R=$(make_repo repo-launch-deny "contract_id: 11111111-2222-3333-4444-555555555555
 required: true
@@ -247,7 +263,15 @@ RC=$(cd "$R" && FAKE_VAULT_FAIL=1 bash "$PLUG/scripts/harness-launch.sh" >/dev/n
 [ "$RC" = "3" ] && ok "credential 取得失敗なら起動を拒否する" \
   || bad "credential 取得失敗なら起動を拒否する" "rc=$RC"
 
+# 再帰防止が「本当に検証をスキップした」ことを積極的に証明するため、
+# 検証が実際に走れば必ず拒否される条件（STS 不一致 かつ credential 取得失敗）を
+# あえて仕込む。それでも起動できる（rc=0）ことが再帰防止の直接証拠になる
+# （fix round 1 対応。以前は正当な契約と一致するデフォルト値のままだったため、
+#   再帰防止コードを削除しても検証が偶然通ってしまい変異を検出できなかった）。
 RC=$(cd "$R" && FAKE_CLI_ENV_OUT="$WORK/env2.json" AWS_HARNESS_LAUNCHED=1 \
+  FAKE_AWS_ACCOUNT=000000000001 \
+  FAKE_AWS_ARN="arn:aws:sts::000000000001:assumed-role/ExampleAgentReadOnly/session" \
+  FAKE_VAULT_FAIL=1 \
   bash "$PLUG/scripts/harness-launch.sh" >/dev/null 2>&1; echo $?)
 [ "$RC" = "0" ] && ok "既に shim 経由なら再検証せず素通しする（再帰防止）" \
   || bad "既に shim 経由なら再検証せず素通しする（再帰防止）" "rc=$RC"

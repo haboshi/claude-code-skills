@@ -337,6 +337,18 @@ RC=$(printf '{}' | PATH="/nonexistent" CLAUDE_PROJECT_DIR="$UNGUARDED" \
   /bin/bash "$PLUG/scripts/hooks/guard-bash.sh" >/dev/null 2>&1; echo $?)
 [ "$RC" = "0" ] && ok "非保護対象は依存不在でも素通し" || bad "非保護対象は依存不在でも素通し" "rc=$RC"
 
+# 0バイトの stdin: jq は「壊れた JSON」と違い空入力を rc=0/空文字として通してしまうため、
+# .cwd 抽出の成否だけでは検知できない別経路。入力自体が読めない＝何を判定しているかも
+# 分からない「想定外入力」として、保護対象・非保護対象を問わず一律 deny(exit 2) にする
+# （JSON 破損時の deny 判定と同じ「安全側に倒す」方針。詳細な判断理由は task-5-report.md）。
+RC=$(: | CLAUDE_PROJECT_DIR="$GUARDED" bash "$PLUG/scripts/hooks/guard-bash.sh" >/dev/null 2>&1; echo $?)
+[ "$RC" = "2" ] && ok "0バイト stdin は保護対象で deny(exit 2)" \
+  || bad "0バイト stdin は保護対象で deny(exit 2)" "rc=$RC"
+
+RC=$(: | CLAUDE_PROJECT_DIR="$UNGUARDED" bash "$PLUG/scripts/hooks/guard-bash.sh" >/dev/null 2>&1; echo $?)
+[ "$RC" = "2" ] && ok "0バイト stdin は非保護対象でも deny(exit 2)" \
+  || bad "0バイト stdin は非保護対象でも deny(exit 2)" "rc=$RC"
+
 echo "----"
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

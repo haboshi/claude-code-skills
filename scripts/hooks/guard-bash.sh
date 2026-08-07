@@ -13,6 +13,11 @@ deny() { printf 'aws-harness: %s\n' "$1" >&2; exit 2; }
 input=""
 IFS= read -r -d '' input
 
+# 0バイト入力は「JSON 破損」と違い jq が rc=0/空文字で通してしまうため .cwd 抽出の
+# 成否だけでは検知できない。入力自体が読めない状態は保護対象かどうかも判定できない
+# 「想定外入力」として、保護対象・非保護対象を問わず一律 deny する（安全側に倒す）。
+[ -n "$input" ] || deny "フック入力が空です"
+
 # 作業ディレクトリの決定（jq を使わずに済む経路を先に試す）
 proj="${CLAUDE_PROJECT_DIR:-}"
 if [ -z "$proj" ] && command -v jq >/dev/null 2>&1; then

@@ -307,6 +307,8 @@ export const APP_JS = `
     var line = el('div', 'facet-line');
     var lb = el('span', 'facet-label', label);
     lb.title = hint;
+    // 2つ以上選んだときだけ、その軸が OR か AND かを出す（普段は邪魔なので出さない）
+    if (active.length > 1) lb.appendChild(el('i', null, hint.indexOf('すべて') >= 0 ? 'すべて' : 'いずれか'));
     line.appendChild(lb);
     var box = el('div', 'facet-chips');
     var shown = isOpen ? items : items.slice(0, limit);

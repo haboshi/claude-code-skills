@@ -116,6 +116,7 @@ mark { background: transparent; color: var(--accent-ink); font-weight: 700; box-
 .facet-line { display: grid; grid-template-columns: 2.6rem minmax(0, 1fr); align-items: start; gap: .3rem; }
 .facet-chips { display: flex; flex-wrap: wrap; gap: .28rem; }
 .facet-label { font-size: 10px; font-weight: 700; letter-spacing: .1em; color: var(--ink-3); padding-top: .22rem; }
+.facet-label i { display: block; font-style: normal; font-weight: 600; font-size: 9px; letter-spacing: 0; color: var(--accent); }
 .chip {
   display: inline-flex; align-items: baseline; gap: .3rem; padding: .12rem .55rem;
   border: 1px solid var(--line); border-radius: 999px; font-size: 11.5px; color: var(--ink-2);

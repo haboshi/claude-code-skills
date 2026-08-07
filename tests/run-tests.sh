@@ -288,6 +288,55 @@ RC=$(cd "$R" && FAKE_CLI_ENV_OUT="$WORK/env2.json" AWS_HARNESS_LAUNCHED=1 \
 [ "$RC" = "0" ] && ok "既に shim 経由なら再検証せず素通しする（再帰防止）" \
   || bad "既に shim 経由なら再検証せず素通しする（再帰防止）" "rc=$RC"
 
+# --- Task 5: PreToolUse(Bash) ---
+# 保護対象かどうかは cwd のマーカーで判定する（環境変数の継承に依存しない）
+GUARDED="$WORK/repo-ok"          # .aws-harness を持つ（Task 1 で作成済み）
+UNGUARDED="$WORK/repo-nomarker"  # マーカーなし
+
+bashhook() { # $1: command 文字列, $2: cwd
+  printf '%s' "$1" \
+    | jq -Rs --arg n Bash --arg d "$2" \
+        '{hook_event_name:"PreToolUse", tool_name:$n, cwd:$d, tool_input:{command:.}}' \
+    | bash "$PLUG/scripts/hooks/guard-bash.sh" >/dev/null 2>&1
+  echo $?
+}
+
+for c in "aws --profile other s3 ls" \
+         "AWS_PROFILE=other aws s3 ls" \
+         "aws configure set x y" \
+         "aws sso login --profile other" \
+         "aws-vault exec other -- aws s3 ls" \
+         "echo x > ~/.aws/credentials" \
+         "cat ~/.aws/sso/cache/x.json" \
+         "claude --dangerously-skip-permissions"; do
+  [ "$(bashhook "$c" "$GUARDED")" = "2" ] && ok "deny: $c" || bad "deny: $c" "rc != 2"
+done
+
+for c in "aws s3 ls" \
+         "aws sts get-caller-identity" \
+         "git status" \
+         "PGPASSWORD=\"\$DB_PASS\" psql -c 'select 1'"; do
+  [ "$(bashhook "$c" "$GUARDED")" = "0" ] && ok "allow: $c" || bad "allow: $c" "rc != 0"
+done
+
+[ "$(bashhook "aws --profile other s3 ls" "$UNGUARDED")" = "0" ] \
+  && ok "マーカーのないリポジトリには干渉しない" \
+  || bad "マーカーのないリポジトリには干渉しない" "rc != 0"
+
+# fail-closed: 壊れた入力・依存不在は deny（cwd が読めない場合も含む）
+RC=$(printf 'not json' | bash "$PLUG/scripts/hooks/guard-bash.sh" >/dev/null 2>&1; echo $?)
+[ "$RC" = "2" ] && ok "JSON 破損は deny(exit 2)" || bad "JSON 破損は deny(exit 2)" "rc=$RC"
+
+# jq 不在（PATH を潰す。bash 自体は絶対パスで起動する）
+RC=$(jq -n --arg d "$GUARDED" '{hook_event_name:"PreToolUse", tool_name:"Bash", cwd:$d, tool_input:{command:"aws s3 ls"}}' \
+  | PATH="/nonexistent" CLAUDE_PROJECT_DIR="$GUARDED" /bin/bash "$PLUG/scripts/hooks/guard-bash.sh" >/dev/null 2>&1; echo $?)
+[ "$RC" = "2" ] && ok "保護対象で依存不在なら deny(exit 2)" || bad "保護対象で依存不在なら deny(exit 2)" "rc=$RC"
+
+# 保護対象でなければ jq 不在でも素通し（非 AWS プロジェクトを巻き込まない）
+RC=$(printf '{}' | PATH="/nonexistent" CLAUDE_PROJECT_DIR="$UNGUARDED" \
+  /bin/bash "$PLUG/scripts/hooks/guard-bash.sh" >/dev/null 2>&1; echo $?)
+[ "$RC" = "0" ] && ok "非保護対象は依存不在でも素通し" || bad "非保護対象は依存不在でも素通し" "rc=$RC"
+
 echo "----"
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

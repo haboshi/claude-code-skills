@@ -456,13 +456,15 @@ B=$(jq -S '[.plugins[] | select(.name=="aws-harness")]' "$REPO_ROOT/.claude-plug
 # --exclude=run-tests.sh: このテスト自身の検査パターン文字列（"/Users/" 等のリテラル）が
 # 自己マッチして誤検知するのを避ける（実リークの検出範囲は変えない）。
 LEAK=$(grep -rEn --exclude=run-tests.sh '(/Users/|/home/[^/]+/|[a-z0-9-]+\.awsapps\.com)' \
-  "$PLUG/scripts" "$PLUG/templates" "$PLUG/skills" "$PLUG/tests" 2>/dev/null \
+  "$PLUG/scripts" "$PLUG/templates" "$PLUG/skills" "$PLUG/tests" \
+  "$PLUG/hooks" "$PLUG/.claude-plugin" 2>/dev/null \
   | grep -v '\$HOME' | head -5)
 [ -z "$LEAK" ] && ok "個人パス・SSO URL がコミット対象に無い" \
   || bad "個人パス・SSO URL がコミット対象に無い" "$LEAK"
 
 ACCTLEAK=$(grep -rEn '(^|[^0-9a-zA-Z-])[0-9]{12}([^0-9a-zA-Z-]|$)' \
-  "$PLUG/scripts" "$PLUG/templates" "$PLUG/skills" 2>/dev/null \
+  "$PLUG/scripts" "$PLUG/templates" "$PLUG/skills" \
+  "$PLUG/hooks" "$PLUG/.claude-plugin" 2>/dev/null \
   | grep -v '000000000000' | head -5)
 [ -z "$ACCTLEAK" ] && ok "例示以外の Account ID がコミット対象に無い" \
   || bad "例示以外の Account ID がコミット対象に無い" "$ACCTLEAK"
@@ -490,6 +492,88 @@ RC=$(printf '{"hook_event_name":"UserPromptSubmit","prompt":"x"}' \
   || bad "guard-prompt: hook-lib.sh を読めなければ deny(exit 2)" "rc=$RC"
 
 chmod 755 "$HOOKCOPY/hook-lib.sh"  # trap の rm -rf が確実に効くよう明示的に戻す（保険）
+
+# --- Task 7 fix round 1: Grep/Glob 対応・$HOME 未設定 fail-closed ---
+
+# Important 1a: hooks.json の配線そのものに Grep/Glob が乗っているかの構造チェック。
+# 以下の filehook_tool テストは guard-files.sh を直接起動するため hooks.json の
+# matcher を経由せず、matcher の書き忘れだけでは検知できない。matcher 単体を
+# 別途 jq で確認する。
+jq -e '[.hooks.PreToolUse[] | select(.matcher | test("Read"))][0].matcher
+       | test("Grep") and test("Glob")' "$PLUG/hooks/hooks.json" >/dev/null 2>&1 \
+  && ok "hooks.json の PreToolUse matcher が Grep/Glob を含む" \
+  || bad "hooks.json の PreToolUse matcher が Grep/Glob を含む" "欠落"
+
+# Important 1b: matcher に無かった Grep/Glob を追加。この2ツールは file_path ではなく
+# path フィールドにパスを持つため、guard-files.sh の抽出も拡張している。
+filehook_tool() { # $1: tool_name, $2: field名(file_path|path), $3: 値, $4: cwd
+  jq -n --arg n "$1" --arg f "$2" --arg p "$3" --arg d "$4" \
+      '{hook_event_name:"PreToolUse", tool_name:$n, cwd:$d, tool_input:{($f):$p}}' \
+    | AWS_HARNESS_PLUGIN_ROOT="$PLUG" \
+      bash "$PLUG/scripts/hooks/guard-files.sh" >/dev/null 2>&1
+  echo $?
+}
+
+[ "$(filehook_tool Grep path "$HOME/.aws/credentials" "$GUARDED")" = "2" ] \
+  && ok "deny: Grep(path=~/.aws/credentials)" || bad "deny: Grep(path=~/.aws/credentials)" "rc != 2"
+[ "$(filehook_tool Glob path "$HOME/.aws/credentials" "$GUARDED")" = "2" ] \
+  && ok "deny: Glob(path=~/.aws/credentials)" || bad "deny: Glob(path=~/.aws/credentials)" "rc != 2"
+[ "$(filehook_tool Grep path "$GUARDED/README.md" "$GUARDED")" = "0" ] \
+  && ok "allow: Grep(path=通常のリポジトリファイル)" || bad "allow: Grep(path=通常のリポジトリファイル)" "rc != 0"
+
+# Important 2: $HOME 未設定でも3フックとも fail-closed（unset は $() サブシェル内に
+# 閉じ込め、テスト本体の環境には影響させない）
+
+# guard-files.sh: HOME・AWS_HARNESS_HOME の両方が未設定なら harness_root を
+# 決定できないため、通常ファイルへのアクセスも含め deny(exit 2) に倒す。
+RC=$(
+  unset HOME AWS_HARNESS_HOME
+  jq -n --arg d "$GUARDED" \
+      '{hook_event_name:"PreToolUse", tool_name:"Read", cwd:$d, tool_input:{file_path:($d+"/README.md")}}' \
+    | CLAUDE_PROJECT_DIR="$GUARDED" bash "$PLUG/scripts/hooks/guard-files.sh" >/dev/null 2>&1
+  echo $?
+)
+[ "$RC" = "2" ] && ok "guard-files: HOME・AWS_HARNESS_HOME 未設定なら deny(exit 2)" \
+  || bad "guard-files: HOME・AWS_HARNESS_HOME 未設定なら deny(exit 2)" "rc=$RC"
+
+# guard-files.sh: AWS_HARNESS_HOME が設定済みなら harness_root 決定は $HOME に
+# 触れずに完了する（if ブロックを通らない）。この経路で通常ファイルへのアクセスを
+# 判定するとき、case 文にまだ生の "$HOME/.aws/"* が残っていれば HOME 未設定で
+# set -u のクラッシュ（exit 1 = fail-open）を起こす。当初この case 文の削除は
+# 冗長コードの整理のつもりだったが、mutation 検証でこの経路特有の再発を確認した
+# ため、この組み合わせを専用テストとして固定する。
+RC=$(
+  unset HOME
+  jq -n --arg d "$GUARDED" \
+      '{hook_event_name:"PreToolUse", tool_name:"Read", cwd:$d, tool_input:{file_path:($d+"/README.md")}}' \
+    | CLAUDE_PROJECT_DIR="$GUARDED" bash "$PLUG/scripts/hooks/guard-files.sh" >/dev/null 2>&1
+  echo $?
+)
+[ "$RC" = "0" ] && ok "guard-files: AWS_HARNESS_HOME設定・HOME未設定でも通常ファイルはクラッシュせず判定できる" \
+  || bad "guard-files: AWS_HARNESS_HOME設定・HOME未設定でも通常ファイルはクラッシュせず判定できる" "rc=$RC"
+
+# guard-bash.sh / guard-prompt.sh は $HOME を参照しないため無関係のはずだが、
+# 未設定環境でも deny 判定そのものが壊れない（exit 1 に退化しない）ことを確認する。
+RC=$(
+  unset HOME
+  printf '%s' "aws configure set x y" \
+    | jq -Rs --arg n Bash --arg d "$GUARDED" \
+        '{hook_event_name:"PreToolUse", tool_name:$n, cwd:$d, tool_input:{command:.}}' \
+    | bash "$PLUG/scripts/hooks/guard-bash.sh" >/dev/null 2>&1
+  echo $?
+)
+[ "$RC" = "2" ] && ok "guard-bash: HOME 未設定でも deny 判定が壊れない" \
+  || bad "guard-bash: HOME 未設定でも deny 判定が壊れない" "rc=$RC"
+
+RC=$(
+  unset HOME
+  printf '{"hook_event_name":"UserPromptSubmit","prompt":"x"}' \
+    | CLAUDE_PROJECT_DIR="$GUARDED" AWS_HARNESS_CONTRACT_ID="" \
+      bash "$PLUG/scripts/hooks/guard-prompt.sh" >/dev/null 2>&1
+  echo $?
+)
+[ "$RC" = "2" ] && ok "guard-prompt: HOME 未設定でも deny 判定が壊れない" \
+  || bad "guard-prompt: HOME 未設定でも deny 判定が壊れない" "rc=$RC"
 
 echo "----"
 echo "PASS=$PASS FAIL=$FAIL"

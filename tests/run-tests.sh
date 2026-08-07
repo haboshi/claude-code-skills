@@ -349,6 +349,53 @@ RC=$(: | CLAUDE_PROJECT_DIR="$UNGUARDED" bash "$PLUG/scripts/hooks/guard-bash.sh
 [ "$RC" = "2" ] && ok "0バイト stdin は非保護対象でも deny(exit 2)" \
   || bad "0バイト stdin は非保護対象でも deny(exit 2)" "rc=$RC"
 
+# --- Task 6: ファイル deny と prompt enforcement ---
+filehook() { # $1: file_path, $2: cwd
+  jq -n --arg p "$1" --arg d "$2" \
+      '{hook_event_name:"PreToolUse", tool_name:"Read", cwd:$d, tool_input:{file_path:$p}}' \
+    | AWS_HARNESS_PLUGIN_ROOT="$PLUG" \
+      bash "$PLUG/scripts/hooks/guard-files.sh" >/dev/null 2>&1
+  echo $?
+}
+
+[ "$(filehook "$HOME/.aws/credentials" "$GUARDED")" = "2" ] && ok "deny: ~/.aws/credentials の読み取り" \
+  || bad "deny: ~/.aws/credentials の読み取り" "rc != 2"
+[ "$(filehook "$HOME/.aws/sso/cache/x.json" "$GUARDED")" = "2" ] && ok "deny: SSO キャッシュの読み取り" \
+  || bad "deny: SSO キャッシュの読み取り" "rc != 2"
+[ "$(filehook "$AWS_HARNESS_HOME/contracts/$CID/contract.json" "$GUARDED")" = "2" ] \
+  && ok "deny: 契約ファイルへのアクセス" || bad "deny: 契約ファイルへのアクセス" "rc != 2"
+[ "$(filehook "$PLUG/scripts/harness-launch.sh" "$GUARDED")" = "2" ] && ok "deny: shim 自身へのアクセス" \
+  || bad "deny: shim 自身へのアクセス" "rc != 2"
+[ "$(filehook "$GUARDED/README.md" "$GUARDED")" = "0" ] && ok "allow: 通常のリポジトリファイル" \
+  || bad "allow: 通常のリポジトリファイル" "rc != 0"
+[ "$(filehook "$HOME/.aws/credentials" "$UNGUARDED")" = "0" ] \
+  && ok "マーカーのないリポジトリには干渉しない（ファイル）" \
+  || bad "マーカーのないリポジトリには干渉しない（ファイル）" "rc != 0"
+
+RC=$(printf 'not json' | CLAUDE_PROJECT_DIR="$GUARDED" \
+  bash "$PLUG/scripts/hooks/guard-files.sh" >/dev/null 2>&1; echo $?)
+[ "$RC" = "2" ] && ok "ファイルフックの JSON 破損は deny" || bad "ファイルフックの JSON 破損は deny" "rc=$RC"
+
+prompthook() { # $1: cwd, $2: 契約 ID（空 = shim を経ていない起動）
+  printf '{"hook_event_name":"UserPromptSubmit","prompt":"x"}' \
+    | CLAUDE_PROJECT_DIR="$1" AWS_HARNESS_CONTRACT_ID="${2:-}" \
+      AWS_HARNESS_CONTRACT_DIR="$AWS_HARNESS_HOME/contracts/$CID" \
+      AWS_HARNESS_SCRIPT_DIR="$PLUG/scripts" \
+      bash "$PLUG/scripts/hooks/guard-prompt.sh" >/dev/null 2>&1
+  echo $?
+}
+
+[ "$(FAKE_AWS_ACCOUNT=$ACCT FAKE_AWS_ARN="arn:aws:sts::$ACCT:assumed-role/ExampleAgentReadOnly/s" prompthook "$GUARDED" "$CID")" = "0" ] \
+  && ok "照合が通ればプロンプトを通す" || bad "照合が通ればプロンプトを通す" "rc != 0"
+[ "$(FAKE_AWS_ACCOUNT=000000000001 FAKE_AWS_ARN="arn:aws:sts::000000000001:assumed-role/X/s" prompthook "$GUARDED" "$CID")" = "2" ] \
+  && ok "照合が崩れたらプロンプトを止める" || bad "照合が崩れたらプロンプトを止める" "rc != 2"
+[ "$(prompthook "$UNGUARDED" "")" = "0" ] && ok "マーカーのないリポジトリには干渉しない（プロンプト）" \
+  || bad "マーカーのないリポジトリには干渉しない（プロンプト）" "rc != 0"
+
+# shim バイパスの検出: 保護対象なのに shim を経ていなければ止める
+[ "$(prompthook "$GUARDED" "")" = "2" ] \
+  && ok "shim を経ない起動を検出して止める" || bad "shim を経ない起動を検出して止める" "rc != 2"
+
 echo "----"
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

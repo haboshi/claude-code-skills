@@ -4,39 +4,29 @@
 #
 # 保護対象かどうかは「cwd に .aws-harness があるか」で判定する。
 # shim が export する環境変数に依存しないため、shim を経ない起動でも作動する。
+# 入力の読み取り・保護対象の判定は hook-lib.sh に集約（3フックで共通）
 set -u
 
-deny() { printf 'aws-harness: %s\n' "$1" >&2; exit 2; }
+# 自身のディレクトリを解決する。dirname(1) は外部コマンドで PATH に依存するため使わず、
+# bash 組込みのパラメータ展開だけで求める（PATH が壊れた環境でも hook-lib.sh を
+# 読み込めるようにするため。cd/pwd はどちらもシェル組込みで PATH に依存しない）。
+case "$0" in
+  */*) HOOK_DIR=$(cd "${0%/*}" && pwd) ;;
+  *)   HOOK_DIR=$(pwd) ;;
+esac
+. "$HOOK_DIR/hook-lib.sh"
 
-# 標準入力の読み取りは外部コマンド（cat）に依存せず bash 組込みの read だけで行う。
-# jq や PATH が壊れた環境でも「保護対象でなければ素通しする」を成立させるため。
-input=""
-IFS= read -r -d '' input
-
-# 0バイト入力は「JSON 破損」と違い jq が rc=0/空文字で通してしまうため .cwd 抽出の
-# 成否だけでは検知できない。入力自体が読めない状態は保護対象かどうかも判定できない
-# 「想定外入力」として、保護対象・非保護対象を問わず一律 deny する（安全側に倒す）。
-[ -n "$input" ] || deny "フック入力が空です"
-
-# 作業ディレクトリの決定（jq を使わずに済む経路を先に試す）
-proj="${CLAUDE_PROJECT_DIR:-}"
-if [ -z "$proj" ] && command -v jq >/dev/null 2>&1; then
-  # cwd 欠落（空文字）は正常系として $PWD へフォールバックする一方、
-  # JSON 自体が壊れていて jq が解釈できない場合はフォールバックせず即座に deny する
-  # （「想定外入力は必ず exit 2」の原則。cwd を特定できないまま $PWD を信用しない）。
-  proj=$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null) \
-    || deny "フック入力を解析できません"
-fi
-[ -n "$proj" ] || proj="$PWD"
+hook_read_input                 # HOOK_INPUT に代入（サブシェルにしない）
+hook_project_dir                # HOOK_PROJECT_DIR に代入
 
 # 保護対象でなければ一切干渉しない（依存が無くてもここで抜ける）
-[ -f "$proj/.aws-harness" ] || exit 0
+[ -f "$HOOK_PROJECT_DIR/.aws-harness" ] || exit 0
 
 # ここから先は保護対象。判断できない状態はすべて deny に倒す
-command -v jq >/dev/null 2>&1 || deny "jq が無いため Bash の検査ができません"
+hook_require_jq "Bash の検査"
 
-printf '%s' "$input" | jq -e . >/dev/null 2>&1 || deny "フック入力が JSON ではありません"
-cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null) \
+printf '%s' "$HOOK_INPUT" | jq -e . >/dev/null 2>&1 || deny "フック入力が JSON ではありません"
+cmd=$(printf '%s' "$HOOK_INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null) \
   || deny "フック入力を解析できません"
 
 # コマンドが空なら検査対象なし

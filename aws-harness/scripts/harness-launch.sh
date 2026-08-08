@@ -49,7 +49,11 @@ fi
 command -v aws-vault >/dev/null 2>&1 || { harness_err "aws-vault が必要です"; exit 3; }
 
 # 1) 消毒（照合の前に行う。照合そのものの偽装を防ぐため）
-for v in $("$SCRIPT_DIR/build-scoped-config.sh" --list-unset); do
+# リストが取れない・空のときに黙って 0 回転させない（消毒なしで起動するのを防ぐ）
+unset_list=$("$SCRIPT_DIR/build-scoped-config.sh" --list-unset) \
+  || { harness_err "消毒リストを取得できません"; exit 3; }
+[ -n "$unset_list" ] || { harness_err "消毒リストが空です"; exit 3; }
+for v in $unset_list; do
   unset "$v" 2>/dev/null || true
 done
 

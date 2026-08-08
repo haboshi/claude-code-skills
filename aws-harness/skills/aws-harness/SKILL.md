@@ -27,12 +27,34 @@ SDK・CLI が名前で解決できない状態になる。契約が壊れてい�
 
 ## 起動元を shim に向ける
 
-shim は `~/.claude/aws-harness/bin/claude` に置く（プラグインの
-`scripts/harness-launch.sh` への symlink）。起動経路は3つあり、すべて向ける。
+shim は `~/.claude/aws-harness/bin/claude` に置く。**symlink ではなく wrapper script にする**。
+
+```bash
+mkdir -p ~/.claude/aws-harness/bin
+cat > ~/.claude/aws-harness/bin/claude <<'EOF'
+#!/usr/bin/env bash
+exec "<プラグインのインストール先>/scripts/harness-launch.sh" "$@"
+EOF
+chmod +x ~/.claude/aws-harness/bin/claude
+```
+
+`<プラグインのインストール先>` は実際のパスに置き換える。
+
+**symlink にしてはいけない**。symlink 経由だと `$0` が symlink のパスになり、
+`harness-launch.sh` が同じディレクトリにあるはずの他のスクリプトを見つけられず、
+**契約の無いプロジェクトを含むすべての起動が拒否される**。
+
+実 Agent CLI のパスは既定で `$HOME/.local/bin/claude`。異なる場合は
+環境変数 `AWS_HARNESS_REAL_CLI` で指定する。
+
+起動経路は3つあり、すべてこの wrapper に向ける。
 
 - **Operator Harness**: リポジトリの既定ターミナル設定の起動コマンドを shim パスにする
 - **対話シェルの alias**: alias の指す先を shim パスに変更する
 - **PATH**: shim のディレクトリを PATH 前段に置く（補助）
+
+設置後、**契約の無いディレクトリで一度起動して、通常どおり動くこと**を確認する。
+ここで拒否されるなら設置方法が誤っている。
 
 ## 起動が拒否されたとき
 

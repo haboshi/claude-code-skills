@@ -575,6 +575,33 @@ RC=$(
 [ "$RC" = "2" ] && ok "guard-prompt: HOME 未設定でも deny 判定が壊れない" \
   || bad "guard-prompt: HOME 未設定でも deny 判定が壊れない" "rc=$RC"
 
+# --- 最終修正: 消毒リストの fail-closed ---
+# cat が使えない環境でも消毒リストが取れること（printf 化の回帰）
+CATLESS=$(mktemp -d)
+for c in jq git awk sed grep bash env chmod mkdir cp; do
+  cp_path=$(command -v "$c" 2>/dev/null) && ln -sf "$cp_path" "$CATLESS/$c" 2>/dev/null
+done
+N=$(PATH="$CATLESS" bash "$PLUG/scripts/build-scoped-config.sh" --list-unset 2>/dev/null | wc -l | tr -d ' ')
+[ "$N" -ge 15 ] && ok "cat が無くても消毒リストを取得できる" \
+  || bad "cat が無くても消毒リストを取得できる" "取得数=$N"
+rm -rf "$CATLESS"
+
+# 消毒リストが空を返す状況では shim が起動を拒否すること
+FAKEDIR=$(mktemp -d)
+cp -f "$PLUG/scripts/harness-launch.sh" "$FAKEDIR/" 2>/dev/null
+cp -f "$PLUG/scripts/harness-lib.sh" "$FAKEDIR/" 2>/dev/null
+cp -f "$PLUG/scripts/resolve-contract.sh" "$FAKEDIR/" 2>/dev/null
+printf '#!/usr/bin/env bash\n[ "$1" = "--list-unset" ] && exit 0\nexit 3\n' > "$FAKEDIR/build-scoped-config.sh"
+chmod +x "$FAKEDIR"/*.sh
+R=$(make_repo repo-emptylist "contract_id: $CID
+required: true
+")
+RC=$(cd "$R" && AWS_HARNESS_REAL_CLI="$TESTS_DIR/fakes/claude" \
+  bash "$FAKEDIR/harness-launch.sh" >/dev/null 2>&1; echo $?)
+[ "$RC" = "3" ] && ok "消毒リストが空なら起動を拒否する" \
+  || bad "消毒リストが空なら起動を拒否する" "rc=$RC"
+rm -rf "$FAKEDIR"
+
 echo "----"
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

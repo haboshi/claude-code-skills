@@ -216,7 +216,7 @@ button.tag:hover { color: var(--accent-ink); text-decoration: underline; }
    1000px 未満はタグ1つ分も取れないので列ごと落とす（+N も消える段差を避け、
    それまでは「タグが減って +N が増える」形で連続的に変化する） */
 @media (max-width: 1280px) { .doc { grid-template-columns: 4.2rem minmax(0, 1fr) minmax(0, 13vw) 1.6rem; } }
-@media (max-width: 1000px) { .doc { grid-template-columns: 4.2rem minmax(0, 1fr); } .doc .tags, .doc .more { display: none; } }
+@media (max-width: 1220px) { .doc { grid-template-columns: 4.2rem minmax(0, 1fr); } .doc .tags, .doc .more { display: none; } }
 .empty { padding: 3.5rem 0; text-align: center; color: var(--ink-3); }
 .empty b { display: block; font-size: 15px; color: var(--ink-2); margin-bottom: .3rem; }
 .empty button { margin-top: .8rem; border: 1px solid var(--line-strong); border-radius: 999px; padding: .25rem .9rem; font-size: 12px; color: var(--ink-2); }
@@ -242,6 +242,8 @@ button.tag:hover { color: var(--accent-ink); text-decoration: underline; }
   .brand span { font-size: 10px; }
   .brand::after { content: "プロジェクト ▾"; flex: none; font-size: 10.5px; font-weight: 700; letter-spacing: .06em; color: var(--accent); }
   .side:not(.collapsed) .brand::after { content: "閉じる ▴"; color: var(--ink-3); }
+  .scope { padding: .62rem .55rem; } /* 指で押せる高さにする */
+  .grp-h { padding: .5rem .5rem .5rem .1rem; }
   .head, .facets-row, .list { padding-left: 1rem; padding-right: 1rem; }
   .head { flex-wrap: wrap; }
   .search { margin-left: 0; width: 100%; }

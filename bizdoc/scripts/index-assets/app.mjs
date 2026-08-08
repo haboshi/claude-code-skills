@@ -532,6 +532,8 @@ export const APP_JS = `
         if (ev.defaultPrevented || ev.button !== 0) return;
         if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
         if (t.contains(ev.target)) return;
+        // 文字を選択しただけのドラッグで開かない
+        if (window.getSelection && String(window.getSelection()).length) return;
         t.click();
       });
     }

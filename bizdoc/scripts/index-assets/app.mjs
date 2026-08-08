@@ -17,14 +17,15 @@ export const APP_JS = `
   };
   try {
     var saved = JSON.parse(localStorage.getItem(LS_KEY) || '{}');
-    ['scope', 'sort'].forEach(function (k) { if (typeof saved[k] === 'string') state[k] = saved[k]; });
+    if (typeof saved.sort === 'string') state.sort = saved.sort;
     if (saved.showHidden === true) state.showHidden = true;
     if (saved.collapsed && typeof saved.collapsed === 'object') state.collapsed = saved.collapsed;
   } catch (e) { /* localStorage が使えない環境でも動く */ }
   function save() {
     try {
+      // scope は保存しない（開くたびに全体から始める。今どこを見ているかは URL の # が持つ）
       localStorage.setItem(LS_KEY, JSON.stringify({
-        scope: state.scope, sort: state.sort,
+        sort: state.sort,
         showHidden: state.showHiddenIsTemporary ? false : state.showHidden,
         collapsed: state.collapsed
       }));
@@ -192,12 +193,16 @@ export const APP_JS = `
     if (narrowMq.matches) { sideEl.classList.add('collapsed'); syncBrand(); }
   }
 
-  function scopeButton(label, key, n, extraCls) {
+  function scopeButton(label, key, n, extraCls, note) {
     var b = el('button', 'scope' + (extraCls ? ' ' + extraCls : ''));
     b.type = 'button';
     b.dataset.key = 'scope:' + key;
     b.appendChild(el('span', 'nm', label));
     b.appendChild(el('span', 'n', n));
+    // 赤丸や斜体の意味を、見た目だけでなく言葉でも持たせる
+    var desc = label + '：' + n + '件' + (note ? '。' + note : '');
+    b.title = desc;
+    b.setAttribute('aria-label', desc);
     if (state.scope === key) b.setAttribute('aria-current', 'true');
     b.addEventListener('click', function () { setScope(key); });
     return b;
@@ -271,8 +276,12 @@ export const APP_JS = `
       var body = el('div', 'grp-b');
       body.id = 'grp-' + b.key;
       b.members.forEach(function (p) {
+        var notes = [];
+        if (p.broken) notes.push('project.json が壊れています');
+        if (p.hidden) notes.push('通常は一覧に出しません');
         body.appendChild(scopeButton(p.label, 'p:' + p.id, num(p),
-          (p.broken ? 'is-broken ' : '') + (p.hidden ? 'is-hidden ' : '') + (dim && !num(p) ? 'is-zero' : '')));
+          (p.broken ? 'is-broken ' : '') + (p.hidden ? 'is-hidden ' : '') + (dim && !num(p) ? 'is-zero' : ''),
+          notes.join('。')));
       });
       wrap.appendChild(body);
       side.appendChild(wrap);
@@ -291,6 +300,9 @@ export const APP_JS = `
     // グループ自体を選んでいるときは前置きを付けない（「JBR / JBR 全体」になる）
     if (grp && proj) crumb.appendChild(el('span', 'grp-of', grp.label));
     crumb.appendChild(el('span', 'nm', proj ? proj.label : grp ? grp.label + ' 全体' : 'すべてのドキュメント'));
+    // 見出しの位置で、そのプロジェクトの状態（破損・非表示）を言葉で示す
+    if (proj && proj.broken) crumb.appendChild(el('span', 'state broken', 'project.json 破損'));
+    if (proj && proj.hidden) crumb.appendChild(el('span', 'state', '非表示'));
 
     var shown = filtered().length, base = inScopeDocs().length;
     var cnt = el('span', 'cnt');
@@ -815,7 +827,9 @@ export const APP_JS = `
     if (s && s !== state.scope) setScope(s);
   });
 
-  state.scope = validScope(fromHash()) || validScope(state.scope) || 'all';
+  // ハッシュ無しで素に開いたときは全体から始める（前回の選択で始まると、
+  // 別プロジェクトの文書を探しに来たときに空振りする）。ハッシュ指定は従来どおり効く
+  state.scope = validScope(fromHash()) || 'all';
   ensureVisible(state.scope);
   hiddenToggle.checked = state.showHidden;
   renderAll();

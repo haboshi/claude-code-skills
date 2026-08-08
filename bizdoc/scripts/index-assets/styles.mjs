@@ -11,8 +11,8 @@ export const STYLES = `
      bizdoc 本体の #9ca3af は白地に 2.3:1 しかないため、4.5:1 を満たす濃さに置き換えている */
   --ink: #111827; --ink-2: #4b5563; --ink-3: #646e7d;
   /* line は面の区切り。操作要素（チップ・入力枠）の輪郭には line-ui を使う
-     — WCAG 1.4.11 の 3:1 を満たす濃さが要るため */
-  --line: #e5e7eb; --line-strong: #d1d5db; --line-ui: #8d97a5;
+     — WCAG 1.4.11 の 3:1 が要る。薄い方の背景 #f8fafc に対して 3.13:1（白地では 3.27:1） */
+  --line: #e5e7eb; --line-strong: #d1d5db; --line-ui: #868f9c;
   --bg: #ffffff; --bg-soft: #f8fafc; --bg-sink: #eef2f7;
   --danger: #b91c1c; --danger-soft: #fef2f7;
   --shadow: 0 1px 2px rgba(15,23,42,.06), 0 8px 24px -18px rgba(15,23,42,.35);
@@ -24,7 +24,7 @@ export const STYLES = `
     --accent: #6ea8ff; --accent-soft: #16263d; --accent-ink: #9cc4ff;
     --on-accent: #0a111c; --on-accent-2: rgba(10, 17, 28, .72);
     --ink: #e6eaf0; --ink-2: #a3aebd; --ink-3: #8894a6;
-    --line: #232c38; --line-strong: #33404f; --line-ui: #6f7d8f;
+    --line: #232c38; --line-strong: #33404f; --line-ui: #6f7d8f; /* 濃い方の背景 #131a23 に対して 4.17:1 */
     --bg: #0e131a; --bg-soft: #131a23; --bg-sink: #182029;
     --danger: #f87171; --danger-soft: #2a1618;
     --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -18px rgba(0,0,0,.8);
@@ -103,6 +103,9 @@ mark { background: transparent; color: inherit; font-weight: 700; box-shadow: in
 .crumb .grp-of::after { content: " /"; color: var(--line-strong); }
 .crumb .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .crumb .cnt { flex: none; font-size: 12px; font-weight: 400; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.crumb .state { flex: none; font-size: 10.5px; font-weight: 600; color: var(--ink-2);
+  border: 1px solid var(--line-ui); border-radius: 999px; padding: 0 .45rem; }
+.crumb .state.broken { color: var(--danger); border-color: var(--danger); background: var(--danger-soft); }
 .crumb .cnt b { font-size: 14px; font-weight: 700; color: var(--accent); }
 /* 幅が足りないときに削るのはパスの方（プロジェクト名を潰さない）。
    両方を同じ縮み率にすると比例配分になるので、パス側の shrink を大きく取る */
@@ -209,8 +212,11 @@ button.tag:hover { color: var(--accent-ink); text-decoration: underline; }
 .doc.broken { color: var(--danger); }
 .doc.broken .ttl, .doc.broken:hover .ttl, .doc.broken[data-cursor="1"] .ttl { color: var(--danger); }
 .doc.broken .kind { border-color: var(--danger); color: var(--danger); background: var(--danger-soft); }
-/* 狭いところではタグ列ごと畳む。1080〜1360px はタグを出せる下限に満たない */
-@media (max-width: 1180px) { .doc { grid-template-columns: 4.2rem minmax(0, 1fr); } .doc .tags, .doc .more { display: none; } }
+/* 幅が減るとタグ列も比例して細くなり、入らないタグは fitTags が +N に畳む。
+   1000px 未満はタグ1つ分も取れないので列ごと落とす（+N も消える段差を避け、
+   それまでは「タグが減って +N が増える」形で連続的に変化する） */
+@media (max-width: 1280px) { .doc { grid-template-columns: 4.2rem minmax(0, 1fr) minmax(0, 13vw) 1.6rem; } }
+@media (max-width: 1000px) { .doc { grid-template-columns: 4.2rem minmax(0, 1fr); } .doc .tags, .doc .more { display: none; } }
 .empty { padding: 3.5rem 0; text-align: center; color: var(--ink-3); }
 .empty b { display: block; font-size: 15px; color: var(--ink-2); margin-bottom: .3rem; }
 .empty button { margin-top: .8rem; border: 1px solid var(--line-strong); border-radius: 999px; padding: .25rem .9rem; font-size: 12px; color: var(--ink-2); }

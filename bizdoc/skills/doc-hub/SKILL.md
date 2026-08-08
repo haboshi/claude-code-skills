@@ -44,11 +44,41 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/hub.mjs" list [--project <path|id>] [--json]
 ### open — index.html を開く
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/hub.mjs" open [--project <path|id>]
+node "${CLAUDE_PLUGIN_ROOT}/scripts/hub.mjs" open [--project <path|id> | --group <key|label>]
 ```
 
 - hub 直下の `index.html` を開く。存在しなければ先に reindex してから開く
-- `--project` を付けると該当プロジェクトのセクション（`#p-<id>`）にジャンプする
+- `--project` を付けると該当プロジェクト（`#p-<id>`）を選択した状態で開く。グループは `#g-<key>`
+- 一覧ページ側の操作: `/` で検索（空白区切りは AND。タイトル・種別・タグ・プロジェクト名が対象）、`↑` `↓` で行移動、`Enter` で開く、`Esc` で絞り込み解除。左の一覧でプロジェクト／グループ／未分類を切り替え、上の期間・種別・タグのチップで絞り込む
+- 絞り込みの作法: 左の件数は検索・絞り込みに連動する（どのプロジェクトに何件あるかが同時に読める）。チップの件数は「押したら何件になるか」で、タグは選択済みと共起するものだけが残る。種別を選ぶと表記の近い種別（報告書 → ご報告 / 内部報告）が「同じ系統」として提案される。チップを全展開するとその場で絞れる入力が出る。期間チップは実際に絞れるときだけ、左一覧の名前フィルタはプロジェクトが 20 件以上のときだけ現れる
+
+### group — プロジェクトの名寄せ（グループ）
+
+ディレクトリ構成と案件の帰属は一致しないことがある（例: `~/Projects` 直下にあるが JBR 案件）。
+グループは `<hub>/overrides.json` に置く**非破壊の上書き層**で、`project.json` には一切書き込まない。
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/hub.mjs" group list [--json]
+node "${CLAUDE_PLUGIN_ROOT}/scripts/hub.mjs" group add <ラベル> <project...>   # 作成（既存ラベルなら追加）
+node "${CLAUDE_PLUGIN_ROOT}/scripts/hub.mjs" group remove <project...>          # 未分類へ戻す
+node "${CLAUDE_PLUGIN_ROOT}/scripts/hub.mjs" group rename <グループ> <新ラベル>
+node "${CLAUDE_PLUGIN_ROOT}/scripts/hub.mjs" group delete <グループ>            # メンバーは未分類へ
+node "${CLAUDE_PLUGIN_ROOT}/scripts/hub.mjs" group suggest                      # パス階層からの候補を表示（適用はしない）
+```
+
+- `<project>` は登録済みの project id またはパス。未登録を渡すと**中止**する（発番しない）
+- `<グループ>` はキー（`g_1`）でもラベル（`JBR`）でも引ける
+- `group suggest` は「親ディレクトリを 2 つ以上のプロジェクトが共有していれば候補」とし、他の候補の祖先にあたるディレクトリ（`~/Projects` のような汎用の置き場）は除く。**提案を出すだけ**で、反映は `group add` を実行したときのみ
+
+### project — 表示名・一覧掲載の調整
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/hub.mjs" project label <project> [表示名]   # 省略で上書き解除
+node "${CLAUDE_PLUGIN_ROOT}/scripts/hub.mjs" project hide <project...>
+node "${CLAUDE_PLUGIN_ROOT}/scripts/hub.mjs" project show <project...>
+```
+
+- `hide` は一覧から隠すだけでデータは消さない。一覧ページの「非表示のプロジェクトも出す」で確認でき、`open --project` で名指しされたときは自動的に表示される
 
 ### reindex — index.html を再生成
 
@@ -71,6 +101,12 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/hub.mjs" reindex
 | 「更新して」（同 slug で add がエラーになった後） | `--update` を付けて再実行 |
 | 「別ドキュメントとして残して」 | `--new` を付けて再実行 |
 | index.html が壊れている/消えている | `reindex` |
+| 「◯◯を JBR にまとめて」「名寄せして」「◯◯の下にぶら下げて」 | `group add "<親の名前>" <project...>`（対象が曖昧なら先に `group suggest` と `list` で確認） |
+| 「グループ分けの候補を出して」 | `group suggest`（提案のみ。適用は確認を取ってから） |
+| 「この一覧に出さないで」「非表示にして」 | `project hide <project>` |
+| 「表示名を変えて」 | `project label <project> "<表示名>"` |
+
+- グループ・表示名・非表示の変更は**それ自体は破壊的ではない**（`overrides.json` のみを書き、SSOT には触れない）が、ユーザーの見え方を変えるため、対象が推測になるときは実行前に確認する
 
 ## 3. データ設計の要点
 
@@ -78,6 +114,8 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/hub.mjs" reindex
 - `index.html` はこれら2つから機械的に導出される二次生成物。削除しても `reindex` で同一内容が再生成される（タイムスタンプは埋め込まない設計）
 - プロジェクトの id は初回発番後は不変。プロジェクトディレクトリが移動した場合は `project.json` の `abs_path` を手で書き換えて追随させる（id は変えない）
 - 壊れた `project.json` / `manifest.json` はエラーにせず「破損」エントリとして index 上に残る（データを黙って消さない設計）
+- `<hub>/overrides.json` はグループ・表示名・非表示だけを持つ**非破壊の上書き層**（`{version, groups:{g_N:{label}}, projects:{<id>:{group,label,hidden}}}`）。プロジェクト検出も `project.json` も無改変のまま、一覧の組み立て時にだけ効く。壊れていても警告して無視するだけで一覧は出る。手で編集してもよい（次の `reindex` で反映）
+- 一覧ページは埋め込んだ JSON からクライアント側で描画する。相対日付（「3日前」）は表示時に計算しており HTML には入らないため、`reindex` は同じ入力から同じバイト列を出す
 
 ## 4. manifest 公開契約（他スキルからの直接登録）
 

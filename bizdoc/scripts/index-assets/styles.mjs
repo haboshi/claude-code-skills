@@ -10,7 +10,9 @@ export const STYLES = `
   /* ink-3 は日付・件数・タグなど 11px 前後の小さい文字（タグは押せる操作要素）に使う。
      bizdoc 本体の #9ca3af は白地に 2.3:1 しかないため、4.5:1 を満たす濃さに置き換えている */
   --ink: #111827; --ink-2: #4b5563; --ink-3: #646e7d;
-  --line: #e5e7eb; --line-strong: #d1d5db;
+  /* line は面の区切り。操作要素（チップ・入力枠）の輪郭には line-ui を使う
+     — WCAG 1.4.11 の 3:1 を満たす濃さが要るため */
+  --line: #e5e7eb; --line-strong: #d1d5db; --line-ui: #8d97a5;
   --bg: #ffffff; --bg-soft: #f8fafc; --bg-sink: #eef2f7;
   --danger: #b91c1c; --danger-soft: #fef2f7;
   --shadow: 0 1px 2px rgba(15,23,42,.06), 0 8px 24px -18px rgba(15,23,42,.35);
@@ -22,7 +24,7 @@ export const STYLES = `
     --accent: #6ea8ff; --accent-soft: #16263d; --accent-ink: #9cc4ff;
     --on-accent: #0a111c; --on-accent-2: rgba(10, 17, 28, .72);
     --ink: #e6eaf0; --ink-2: #a3aebd; --ink-3: #8894a6;
-    --line: #232c38; --line-strong: #33404f;
+    --line: #232c38; --line-strong: #33404f; --line-ui: #6f7d8f;
     --bg: #0e131a; --bg-soft: #131a23; --bg-sink: #182029;
     --danger: #f87171; --danger-soft: #2a1618;
     --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -18px rgba(0,0,0,.8);
@@ -111,7 +113,7 @@ mark { background: transparent; color: inherit; font-weight: 700; box-shadow: in
 .search input {
   width: 20rem; padding: .42rem 2.1rem .42rem .8rem; font: inherit; font-size: 13px;
   color: var(--ink); background: var(--bg-soft);
-  border: 1px solid var(--line-strong); border-radius: 999px;
+  border: 1px solid var(--line-ui); border-radius: 999px;
 }
 .search input::placeholder { color: var(--ink-3); }
 .search input:focus { outline: none; border-color: var(--accent); background: var(--bg); box-shadow: 0 0 0 3px var(--accent-soft); }
@@ -122,10 +124,10 @@ mark { background: transparent; color: inherit; font-weight: 700; box-shadow: in
 }
 .search input:not(:placeholder-shown) + kbd { display: none; }
 .facet-actions { flex: none; align-self: flex-start; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .3rem; }
-.sortbtn, .clearbtn { font-size: 11.5px; color: var(--ink-2); padding: .1rem .55rem; border: 1px solid var(--line); border-radius: 999px; white-space: nowrap; }
+.sortbtn, .clearbtn { font-size: 11.5px; color: var(--ink-2); padding: .1rem .55rem; border: 1px solid var(--line-ui); border-radius: 999px; white-space: nowrap; }
 .sortbtn:hover { border-color: var(--line-strong); background: var(--bg-soft); }
 /* 解除は破壊的な操作ではないので中立色。赤は破損の意味に取っておく */
-.clearbtn { border-color: var(--line-strong); color: var(--ink-2); }
+.clearbtn { border-color: var(--line-ui); color: var(--ink-2); }
 .clearbtn:hover { border-color: var(--accent); color: var(--accent-ink); background: var(--accent-soft); }
 .clearbtn::before { content: "×"; margin-right: .25rem; opacity: .7; }
 
@@ -142,16 +144,16 @@ mark { background: transparent; color: inherit; font-weight: 700; box-shadow: in
 .facet-label i { display: block; font-style: normal; font-weight: 600; font-size: 9px; letter-spacing: 0; color: var(--accent); }
 .facet-note { align-self: center; margin-left: .35rem; padding-left: .55rem; border-left: 1px solid var(--line-strong); font-size: 9.5px; color: var(--ink-3); }
 .facet-filter { width: 7.5rem; padding: .1rem .6rem; font: inherit; font-size: 11.5px; color: var(--ink);
-  background: var(--bg-soft); border: 1px solid var(--line-strong); border-radius: 999px; }
+  background: var(--bg-soft); border: 1px solid var(--line-ui); border-radius: 999px; }
 .facet-filter:focus { outline: none; border-color: var(--accent); background: var(--bg); box-shadow: 0 0 0 3px var(--accent-soft); }
 .facet-none { align-self: center; font-size: 11px; color: var(--ink-3); }
 .side-filter { padding: .55rem .8rem .1rem; }
 .side-filter input { width: 100%; padding: .28rem .7rem; font: inherit; font-size: 12px; color: var(--ink);
-  background: var(--bg); border: 1px solid var(--line-strong); border-radius: 999px; }
+  background: var(--bg); border: 1px solid var(--line-ui); border-radius: 999px; }
 .side-filter input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .chip {
   display: inline-flex; align-items: baseline; gap: .3rem; padding: .12rem .55rem;
-  border: 1px solid var(--line); border-radius: 999px; font-size: 11.5px; color: var(--ink-2);
+  border: 1px solid var(--line-ui); border-radius: 999px; font-size: 11.5px; color: var(--ink-2);
   background: var(--bg); white-space: nowrap;
 }
 .chip:hover { border-color: var(--accent); color: var(--accent-ink); }
@@ -160,7 +162,7 @@ mark { background: transparent; color: inherit; font-weight: 700; box-shadow: in
 .chip[aria-pressed="true"] .n { color: var(--on-accent-2); }
 .chip.more { border-style: dashed; color: var(--ink-3); }
 .chip.rel { border-style: dashed; border-color: var(--accent); color: var(--accent-ink); background: var(--accent-soft); }
-.chip.clear { border-color: var(--line-strong); color: var(--ink-2); }
+.chip.clear { border-color: var(--line-ui); color: var(--ink-2); }
 .facet-sep { width: 1px; align-self: stretch; background: var(--line); margin: .1rem .45rem; }
 
 /* ── 右：一覧 ────────────────────────────────────── */
@@ -193,13 +195,9 @@ mark { background: transparent; color: inherit; font-weight: 700; box-shadow: in
 .doc .meta { display: flex; flex-wrap: nowrap; align-items: baseline; gap: .35rem; font-size: 11.5px; color: var(--ink-3); overflow: hidden; }
 .doc .kind { flex: none; padding: 0 .4rem; border: 1px solid var(--line-strong); border-radius: 999px; font-size: 10px; color: var(--ink-2); background: var(--bg-soft); }
 .doc .of { flex: none; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* タグは縮めない。幅に入らないものはフェードして消える（ellipsis で1文字だけ残ると
-   「提…」のように意味を失うため、途中で切らずに減衰させる）。
-   件数の +N は別の列に置き、何本隠れているかは常に読める */
-.doc .tags { display: flex; gap: .35rem; overflow: hidden; font-size: 11px;
-  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 1.6rem), transparent);
-  mask-image: linear-gradient(to right, #000 calc(100% - 1.6rem), transparent); }
-.doc .tags.fits { -webkit-mask-image: none; mask-image: none; }
+/* タグは切らない。幅に入らないものは JS 側（fitTags）が丸ごと非表示にし、
+   落とした本数は右の +N に足される。ellipsis で1文字だけ残すと意味を失うため */
+.doc .tags { display: flex; gap: .35rem; overflow: hidden; font-size: 11px; }
 .doc .tag { flex: none; color: var(--ink-3); white-space: nowrap; border-radius: 4px; }
 .doc .tag::before { content: "#"; opacity: .55; }
 .doc .more { color: var(--ink-3); font-size: 11px; text-align: right; }

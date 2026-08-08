@@ -539,6 +539,7 @@ export const APP_JS = `
     if (d.broken) meta.appendChild(el('span', 'why', 'manifest.json が壊れているため開けません'));
     body.appendChild(meta);
     a.appendChild(body);
+    // タグは切らない。入りきらないものは描かず、落とした本数を +N に足す（fitTags が調整する）
     var tw = el('div', 'tags');
     d.tags.slice(0, TAGS_IN_ROW).forEach(function (tag) {
       var s = el('button', 'tag');
@@ -553,9 +554,9 @@ export const APP_JS = `
       tw.appendChild(s);
     });
     a.appendChild(tw);
-    var hidden = d.tags.length - TAGS_IN_ROW;
-    var more = el('div', 'more', hidden > 0 ? '+' + hidden : '');
-    if (hidden > 0) more.title = d.tags.slice(TAGS_IN_ROW).join('、');
+    var more = el('div', 'more');
+    more.dataset.rest = String(Math.max(0, d.tags.length - TAGS_IN_ROW));
+    more.dataset.all = d.tags.join('、');
     a.appendChild(more);
     return a;
   }
@@ -603,18 +604,17 @@ export const APP_JS = `
       }
       list.insertBefore(frag, sentinel);
       sentinel.hidden = drawn >= docs.length;
+      fitTags(); // 描き足した行にも幅の調整を effect させる
     }
     var sentinel = el('div', 'sentinel');
     sentinel.textContent = '…';
     list.appendChild(sentinel);
     drawMore(PAGE);
-    // 収まっているタグ列はフェードを外す（切れていないのに霞ませない）
-    requestAnimationFrame(function () {
-      list.querySelectorAll('.tags').forEach(function (t) {
-        t.classList.toggle('fits', t.scrollWidth <= t.clientWidth + 1);
-      });
-    });
-    ensureRows = function (n) { if (drawn < n && drawn < docs.length) drawMore(n - drawn + PAGE); };
+    requestAnimationFrame(fitTags);
+    ensureRows = function (n) {
+      if (drawn >= docs.length) return;
+      drawMore(n === Infinity ? docs.length : Math.max(PAGE, n - drawn + PAGE));
+    };
     list.onscroll = function () {
       if (sentinel.hidden) return;
       if (list.scrollTop + list.clientHeight >= list.scrollHeight - 600) drawMore(PAGE);
@@ -634,6 +634,36 @@ export const APP_JS = `
   // 未描画の行へカーソルを進めたときに、そこまで描き足すためのフック（renderList が差し替える）
   var ensureRows = function () {};
 
+  // 各行のタグ列について、幅に入りきらないタグを非表示にし、落とした本数を +N に足す。
+  // 切って ellipsis を出すと「提…」のように意味を失うので、入らないものは丸ごと出さない。
+  // 描画直後だけでなく描き足しとリサイズでも呼ぶ（片方だけだと古い判定が残る）
+  function fitTags() {
+    list.querySelectorAll('.doc').forEach(function (row) {
+      var tags = row.querySelector('.tags');
+      var more = row.querySelector('.more');
+      if (!tags || !more) return;
+      var items = tags.querySelectorAll('.tag');
+      if (!items.length) { more.textContent = ''; return; }
+      if (tags.clientWidth === 0) return; // タグ列を畳んでいる幅では触らない
+      items.forEach(function (t) { t.classList.remove('hidden'); });
+      var dropped = 0;
+      // 右端からはみ出したものを後ろから落とす
+      for (var i = items.length - 1; i >= 0; i--) {
+        if (tags.scrollWidth <= tags.clientWidth + 1) break;
+        items[i].classList.add('hidden');
+        dropped++;
+      }
+      var rest = Number(more.dataset.rest || 0) + dropped;
+      more.textContent = rest > 0 ? '+' + rest : '';
+      more.title = rest > 0 ? more.dataset.all : '';
+    });
+  }
+  var fitTimer = null;
+  window.addEventListener('resize', function () {
+    clearTimeout(fitTimer);
+    fitTimer = setTimeout(fitTags, 100);
+  });
+
   function rows() { return list.querySelectorAll('.doc'); }
   function markCursor() {
     var rs = rows();
@@ -642,6 +672,9 @@ export const APP_JS = `
   }
   // 選択の実体は DOM フォーカス。カーソル表示はそれに追従させ、2 つの選択状態を持たない
   function moveCursor(delta) {
+    // 上向きで末尾へ回り込むときは、全件描き切ってから最終行を決める
+    // （描画済みの最後で止まると、真の最終行に辿り着けない）
+    if (state.cursor < 0 && delta < 0) ensureRows(Infinity);
     var next = state.cursor < 0 ? (delta > 0 ? 0 : rows().length - 1) : state.cursor + delta;
     ensureRows(next + 1); // 未描画の先へ進むときは、そこまで描き足す
     var rs = rows();

@@ -1,0 +1,9 @@
+{
+  "name": "aws-harness",
+  "version": "0.1.0",
+  "description": "契約のあるリポジトリで Agent CLI を起動したとき、AWS の Identity を起動前に固定する。追跡ファイルの不透明な契約 ID からローカル契約を解決し、環境を消毒し、契約専用の最小 AWS config に固定し、STS で実 Identity を照合してから起動する。契約が壊れているときは起動を拒否する（fail-closed）。Identity の誤選択を防ぐことが目的であり、prompt injection に対するセキュリティ境界ではない。",
+  "author": {
+    "name": "haboshi",
+    "email": "haboshi@allambitious.co.jp"
+  }
+}

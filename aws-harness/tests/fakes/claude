@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# fake claude — 起動時の環境を JSON で書き出して終了する
+#
+# FAKE_CLI_CHECK_VARS に改行区切りの変数名リストを渡すと、各変数の消毒状態を
+# "san_<変数名>" キーで書き出す（未設定と空文字を区別するため、未設定なら
+# 番兵 __UNSET__ を出す）。渡さなければ従来どおりの出力のみ。
+out="${FAKE_CLI_ENV_OUT:-/dev/stdout}"
+
+{
+  printf '{'
+  printf '"contract_id":"%s",' "${AWS_HARNESS_CONTRACT_ID:-}"
+  printf '"launched":"%s",' "${AWS_HARNESS_LAUNCHED:-}"
+  printf '"config_file":"%s",' "${AWS_CONFIG_FILE:-}"
+  printf '"creds_file":"%s",' "${AWS_SHARED_CREDENTIALS_FILE:-}"
+  printf '"profile":"%s",' "${AWS_PROFILE:-}"
+  printf '"endpoint":"%s",' "${AWS_ENDPOINT_URL:-}"
+  printf '"vault_profile":"%s",' "${FAKE_VAULT_PROFILE:-}"
+  printf '"args":"%s"' "$*"
+  if [ -n "${FAKE_CLI_CHECK_VARS:-}" ]; then
+    for _chk_var in $FAKE_CLI_CHECK_VARS; do
+      [ -n "$_chk_var" ] || continue
+      eval "_chk_is_set=\${${_chk_var}+x}"
+      if [ -z "$_chk_is_set" ]; then
+        _chk_val="__UNSET__"
+      else
+        eval "_chk_val=\${${_chk_var}}"
+      fi
+      printf ',"san_%s":"%s"' "$_chk_var" "$_chk_val"
+    done
+  fi
+  printf '}\n'
+} > "$out"
+exit 0

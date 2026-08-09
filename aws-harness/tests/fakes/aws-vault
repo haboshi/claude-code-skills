@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# fake aws-vault — exec <profile> -- <cmd...> だけを模擬する
+# FAKE_VAULT_FAIL=1 で credential 取得失敗を模擬。
+if [ "${FAKE_VAULT_FAIL:-0}" = "1" ]; then
+  echo "fake aws-vault: no credentials" >&2
+  exit 1
+fi
+if [ "${1:-}" = "exec" ]; then
+  shift
+  profile="${1:-}"; shift
+  [ "${1:-}" = "--" ] && shift
+  export FAKE_VAULT_PROFILE="$profile"
+  exec "$@"
+fi
+echo "fake aws-vault: unsupported: $*" >&2
+exit 64

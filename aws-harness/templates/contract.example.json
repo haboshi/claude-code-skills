@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "contract_id": "a3f1c9d2-7b64-4e0a-9c15-2d8ef60b71a4",
+  "project": "example-project",
+  "aws": {
+    "account_id": "000000000000",
+    "region": "ap-northeast-1",
+    "credential": {
+      "provider": "aws-vault",
+      "profile": "example-agent"
+    },
+    "expected_principal": {
+      "arn_prefix": "arn:aws:sts::000000000000:assumed-role/ExampleAgentReadOnly/"
+    }
+  },
+  "authority": {
+    "mode": "read-only"
+  }
+}

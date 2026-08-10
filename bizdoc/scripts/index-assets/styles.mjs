@@ -5,7 +5,7 @@
 export const STYLES = `
 :root {
   --accent: #2563eb; --accent-soft: #eef4ff; --accent-ink: #1d4ed8;
-  /* アクセント面の上に載る文字色。ダークのアクセントは明るいので暗い文字に入れ替える */
+  /* アクセント面（選択中チップ）の上に載る文字色 */
   --on-accent: #ffffff; --on-accent-2: rgba(255, 255, 255, .82);
   /* ink-3 は日付・件数・タグなど 11px 前後の小さい文字（タグは押せる操作要素）に使う。
      bizdoc 本体の #9ca3af は白地に 2.3:1 しかないため、4.5:1 を満たす濃さに置き換えている */
@@ -16,19 +16,11 @@ export const STYLES = `
   --bg: #ffffff; --bg-soft: #f8fafc; --bg-sink: #eef2f7;
   --danger: #b91c1c; --danger-soft: #fef2f7;
   --shadow: 0 1px 2px rgba(15,23,42,.06), 0 8px 24px -18px rgba(15,23,42,.35);
-  /* スクロールバーやフォーム部品もテーマに追随させる */
-  color-scheme: light dark;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --accent: #6ea8ff; --accent-soft: #16263d; --accent-ink: #9cc4ff;
-    --on-accent: #0a111c; --on-accent-2: rgba(10, 17, 28, .72);
-    --ink: #e6eaf0; --ink-2: #a3aebd; --ink-3: #8894a6;
-    --line: #232c38; --line-strong: #33404f; --line-ui: #6f7d8f; /* 濃い方の背景 #131a23 に対して 4.17:1 */
-    --bg: #0e131a; --bg-soft: #131a23; --bg-sink: #182029;
-    --danger: #f87171; --danger-soft: #2a1618;
-    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -18px rgba(0,0,0,.8);
-  }
+  /* ライト固定。ここからリンクで開く bizdoc 文書は白基調で固定されており
+     （templates/tokens.css にダーク指定が無い）、hub だけ OS のダーク設定に
+     追随させると、一覧が暗く・開いた文書が真っ白という断絶が起きる。
+     スクロールバーやフォーム部品も明色に固定する */
+  color-scheme: light;
 }
 * { box-sizing: border-box; }
 .hidden { display: none !important; }

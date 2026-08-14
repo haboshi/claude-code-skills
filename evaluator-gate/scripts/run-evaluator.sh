@@ -90,7 +90,7 @@ case "$kind" in
     run_with_timeout "$tsec" ${EG_SANDBOX[@]+"${EG_SANDBOX[@]}"} \
       "$GROK_BIN" \
       --prompt-file "$prompt" --output-format plain \
-      -m "${EVALUATOR_GATE_GROK_MODEL:-grok-4.5}" --cwd "$run_cwd" \
+      -m "${EVALUATOR_GATE_GROK_MODEL:-grok-4.6}" --cwd "$run_cwd" \
       --no-subagents --no-memory --disable-web-search --max-turns 8 \
       --deny Read --deny Write --deny Edit --deny Bash \
       > "$outf" 2>> "$logf"

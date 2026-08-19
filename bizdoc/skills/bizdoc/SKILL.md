@@ -189,7 +189,7 @@ subagent の要約（または縮退モードでの自前調査）を、スク�
 
 ## 7. Phase 3: SVG 図解
 
-`outline.json` の `blocks` のうち SVG 表現を選んだものについて、埋め込む前に必ず `${CLAUDE_PLUGIN_ROOT}/templates/svg-patterns/README.md`（全パターン共通の予防則8項目）と、該当パターンファイル（例: `${CLAUDE_PLUGIN_ROOT}/templates/svg-patterns/process-flow.md`）を Read してから書く。
+`outline.json` の `blocks` のうち SVG 表現を選んだものについて、埋め込む前に必ず `${CLAUDE_PLUGIN_ROOT}/templates/svg-patterns/README.md`（全パターン共通の予防則。現在10項目）と、該当パターンファイル（例: `${CLAUDE_PLUGIN_ROOT}/templates/svg-patterns/process-flow.md`）を Read してから書く。
 
 - 各パターンファイルが定めるラベル文字数上限を守る（超える場合はラベルを短くするか図を分割）
 - 色は `var(--accent)` 等 tokens.css の CSS 変数で参照する（アクセントは1色のみ）
@@ -281,7 +281,7 @@ Phase 5 の `add` に **`--accent "#rrggbb"` を渡すだけ**でよい。判断
 `outline.json` の `cover` → `.cover`、`exec_summary` → `.exec-summary`、`blocks` を順番どおりに `components.md` / `svg-patterns` のスニペットへ差し込んで本文を組み立てる。数値ブロックには `<p class="src">※ 出典: ...</p>` を必ず添える（Phase 1 で確認した出典）。
 
 - 表紙は `.kicker`（種別）→ `h1`（メッセージ性のあるタイトル）→ `.lede`（2文以内の機能記述。広告コピー調にしない）→ `.meta`（日付・読者・種別など）の定型で組む
-- 図は `<figure>` + `<figcaption>` で包む（枠と「図N」採番は tokens.css が自動付与）。SVG は `svg-patterns/README.md` 予防則9の規範（viewBox 幅 780 上限・文字 14.5 以上）に従う
+- 図は `<figure>` + `<figcaption>` で包む（枠と「図N」採番は tokens.css が自動付与）。SVG は `svg-patterns/README.md` 予防則9の規範（font-size 14.5 以上。viewBox 幅 780 以下なら無条件で合格し、超える場合は同項の式で実表示 14px 以上を確認する）に従う
 - **目次**: `<section>` が **5個以上**なら `.exec-summary` の直後に `<nav class="toc">` を置く（4個以下は省略）。
   各 `<section>` に `id="s-01"` 形式（`h2` の採番と同じゼロパディング）の id を振り、`<a href="#s-01">` で飛ばす。
   目次項目は `h2` の全文ではなく **25字程度に要約した短縮形**を使う（メッセージ見出しはそのままでは2カラムに収まらない）。
@@ -332,7 +332,7 @@ Read でスクリーンショットを開き、はみ出し・文字化け・ア
 - **表のセルが3行以上に折り返していないか** — 折り返していれば §6 の配置規範（1セル40字以内・4列以内）に
   戻り、長文セルを本文か `.card` へ移す
 
-さらに**図中テキストの実表示サイズを明示的に見る**: viewBox 幅が本文幅（約780px）より大きい SVG は縮小表示されるため、図中文字が本文と同等以上の大きさで読めるか・複数の図の間で文字サイズが揃っているかを確認する（縮小率の高い図は viewBox 座標系の font-size を上げる。svg-patterns/README.md 予防則9）。崩れがあれば HTML を修正し、`--update` を付けて `add` を再実行する。再保存後は再度 PNG 化 → Read の確認を、崩れがなくなるまで繰り返す（修正後の再検証なしで完了しない）。最後に保存先を `open` し、doc-hub 全体の一覧（`node "${CLAUDE_PLUGIN_ROOT}/scripts/hub.mjs" open --project "$(pwd)"` で開ける）の場所をユーザーに案内する。
+さらに**図中テキストの実表示サイズを明示的に見る**: viewBox 幅が figure の実幅（W=918px）より大きい SVG は縮小表示されるため、図中文字が本文と同等以上の大きさで読めるか・複数の図の間で文字サイズが揃っているかを確認する（縮小率の高い図は viewBox 座標系の font-size を上げる。svg-patterns/README.md 予防則9）。崩れがあれば HTML を修正し、`--update` を付けて `add` を再実行する。再保存後は再度 PNG 化 → Read の確認を、崩れがなくなるまで繰り返す（修正後の再検証なしで完了しない）。最後に保存先を `open` し、doc-hub 全体の一覧（`node "${CLAUDE_PLUGIN_ROOT}/scripts/hub.mjs" open --project "$(pwd)"` で開ける）の場所をユーザーに案内する。
 
 ## 10. Phase 6: PDF（要求時のみ）
 

@@ -32,6 +32,14 @@ export function escapeHtml(s) {
   ));
 }
 
+// インライン <script> へ値を埋めるためのリテラル化。HTML エスケープ（escapeHtml）は
+// JS 文字列文脈を守らないため、必ずこちらを使う。`<` を \u003c にするのは、値に
+// `</script>` が含まれたときにパーサが script を閉じてしまうのを防ぐため
+// （文書はメール添付で外部へ配布されるので、受信者側での任意 JS 実行につながる）。
+export function jsLiteral(value) {
+  return JSON.stringify(String(value)).replace(/</g, '\\u003c');
+}
+
 // accent（#rrggbb）を白で薄めた面色を決定論的に作る。CSS color-mix() に頼らず
 // ビルド時に計算する（古い環境でも確実に出るうえ、テストで固定できる）。
 export function blendWithWhite(hex, ratio = 0.08) {
@@ -119,7 +127,7 @@ ${items}${more}
   <a href="${escapeHtml(hubHref)}">← doc-hub 一覧</a>
   <span class="bizdoc-hubnav-proj">${escapeHtml(label || projectId)}</span>${details}
 </nav>
-<script>(function(){var n=document.querySelector('.bizdoc-hubnav');if(n&&decodeURIComponent(location.pathname).indexOf('/projects/${projectId}/docs/')>=0)n.hidden=false;})();</script>
+<script>(function(){var n=document.querySelector('.bizdoc-hubnav');var p=${jsLiteral(projectId)};if(n&&decodeURIComponent(location.pathname).indexOf('/projects/'+p+'/docs/')>=0)n.hidden=false;})();</script>
 ${NAV_END}`;
 }
 

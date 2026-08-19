@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { setup, runHub } from './helpers.mjs';
+import { jsLiteral, renderNav } from '../scripts/inject.mjs';
 
 const DOC = (title, body = '<p>本文</p>') =>
   `<!doctype html><html><head><title>${title}</title>` +
@@ -128,4 +129,24 @@ test('nav: sibling が上限を超えたら「一覧で見る」へ送る', () =
   const items = saved.match(/<li><a href="\.\.\/[^"]+\/index\.html">/g) || [];
   assert.equal(items.length, 8, `sibling リンクが ${items.length} 件（上限 8 を超えている）`);
   assert.match(saved, /…他 1 件を一覧で見る/);
+});
+
+test('nav: projectId は JS 文字列としてリテラル化される（script 脱出の防止）', () => {
+  // projectId は project.json の id、無ければ projects/ 配下のディレクトリ名に落ちるため
+  // 機械生成値とは限らない。注入先の文書は外部へ配布されるので、脱出を許すと受信者側で
+  // 任意 JS が走る。HTML エスケープは JS 文字列文脈を守らないので別経路で固定する。
+  const evil = 'x</script><script>alert(1)</script>';
+  const nav = renderNav({ projectId: evil, label: 'ラベル', docs: [], selfDir: 'self' });
+  assert.equal((nav.match(/<script/g) || []).length, 1, 'script タグが増えている（脱出した）');
+  assert.ok(!/<\/script><script>alert/.test(nav), '生の </script> が残っている');
+  assert.match(nav, /var p="x\\u003c\/script>/, 'JS リテラル化されていない');
+  // HTML 文脈側（戻りリンク・ラベル）もエスケープ済みであること
+  assert.ok(!nav.includes('#p-x</script>'), 'href が HTML エスケープされていない');
+});
+
+test('jsLiteral: 引用符・改行・行区切りを安全に畳む', () => {
+  assert.equal(jsLiteral('a"b'), '"a\\"b"');
+  assert.equal(jsLiteral('a\nb'), '"a\\nb"');
+  assert.equal(jsLiteral('<'), '"\\u003c"');
+  assert.equal(jsLiteral(''), '""');
 });

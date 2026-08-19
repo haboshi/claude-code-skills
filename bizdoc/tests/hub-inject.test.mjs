@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { setup, runHub } from './helpers.mjs';
-import { jsLiteral, renderNav } from '../scripts/inject.mjs';
+import { findNavAnchor, injectNavFrame, jsLiteral, maskNonContent, renderNav } from '../scripts/inject.mjs';
 
 const DOC = (title, body = '<p>本文</p>') =>
   `<!doctype html><html><head><title>${title}</title>` +
@@ -162,4 +162,30 @@ test('jsLiteral: 引用符・改行・行区切りを安全に畳む', () => {
   assert.equal(jsLiteral('a\nb'), '"a\\nb"');
   assert.equal(jsLiteral('<'), '"\\u003c"');
   assert.equal(jsLiteral(''), '""');
+});
+
+test('アンカー探索: コメント・script・style 内の偽タグを本文要素と誤認しない', () => {
+  // これらを誤認すると、コメントやコード文字列の途中へ nav を挿して HTML を壊す
+  const cases = [
+    ['コメント内', '<title>t</title><!-- <div>ダミー</div> --><p>本物</p>', '<p>本物</p>'],
+    ['script 内', '<title>t</title><script>var s="<p>ダミー</p>";</script><div>本物</div>', '<div>本物</div>'],
+    ['style 内', '<title>t</title><style>/* <section> */body{color:#333}</style><main>本物</main>', '<main>本物</main>'],
+    ['コメント内の body', '<title>t</title><!-- <body> --><p>本物</p>', '<p>本物</p>'],
+  ];
+  for (const [name, html, expected] of cases) {
+    const at = findNavAnchor(html);
+    assert.ok(at >= 0, `${name}: アンカーが見つからない`);
+    assert.equal(html.slice(at, at + expected.length), expected, `${name}: 偽タグを誤認している`);
+    const { html: out, injected } = injectNavFrame(html);
+    assert.ok(injected, `${name}: 注入されていない`);
+    assert.ok(out.includes('<!-- <div>ダミー</div> -->') || !html.includes('<!-- <div>'), `${name}: コメントが壊れた`);
+  }
+});
+
+test('maskNonContent: 長さを保つ（index がずれない）', () => {
+  const src = '<title>t</title><!-- xx --><script>a</script><p>本文</p>';
+  const masked = maskNonContent(src);
+  assert.equal(masked.length, src.length, '長さが変わっている');
+  assert.ok(!masked.includes('<script'), 'script がマスクされていない');
+  assert.ok(masked.includes('<p>本文</p>'), '本文までマスクされている');
 });

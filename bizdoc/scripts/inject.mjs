@@ -24,11 +24,19 @@ const NAV_START = '<!-- bizdoc:nav:start -->';
 const NAV_END = '<!-- bizdoc:nav:end -->';
 const NAV_RE = /<!-- bizdoc:nav:start -->[\s\S]*?<!-- bizdoc:nav:end -->/;
 const BODY_RE = /<body\b[^>]*>/i;
-// head 相当の終わりを示す目印。ここより後ろで最初の flow content を探す
-const PRELUDE_RE = /<\/(?:head|style|title)>/gi;
 // nav を差し込める最初の本文要素。<body> も </head> も持たない最小構成の文書
 // （<title> + <style> + いきなり <div> という形。実在する）を拾うためのフォールバック
 const FLOW_RE = /<(?:div|main|header|section|article|nav|h1|h2|p|table|ul|ol|figure)\b[^>]*>/i;
+// タグに見えるが要素ではない領域（コメント・script/style/template の中身）
+const NON_CONTENT_RE = /<!--[\s\S]*?-->|<script\b[^>]*>[\s\S]*?<\/script>|<style\b[^>]*>[\s\S]*?<\/style>|<template\b[^>]*>[\s\S]*?<\/template>/gi;
+
+// アンカー探索用に、要素ではない領域を同じ長さの空白へ潰す。長さを保つので、
+// マスク後に得た index はそのまま元の文字列へ使える。
+// これが無いと `<!-- <div> -->` や `<script>var s='<p>'</script>` を本文要素と誤認し、
+// コメントやコード文字列の途中へ nav を挿して HTML を壊す。
+export function maskNonContent(html) {
+  return html.replace(NON_CONTENT_RE, (m) => ' '.repeat(m.length));
+}
 
 // 一覧に載せる sibling の上限。超えた分は「一覧で見る」へ送る
 export const NAV_SIBLING_LIMIT = 8;
@@ -81,18 +89,19 @@ export function injectTokens(html, css, accent) {
 
 // nav を差し込む位置を決める。HTML は <body> の省略が許されるため、実在の文書には
 // <html>/<head>/<body> をすべて省いた最小構成（<title> + <style> + いきなり <div>）がある。
-// 優先順: <body> 直後 → </head> 直後 → prelude（</head></style></title>）以降で最初の本文要素の直前。
+// 優先順: <body> 直後 → </head> 直後 → 最初の本文要素の直前。
 // どれも見つからなければ挿さない（呼び出し側が false を受けてスキップする）。
 export function findNavAnchor(html) {
-  const body = BODY_RE.exec(html);
+  // 探索はマスク後の文字列で行う（index は元と一致する）
+  const masked = maskNonContent(html);
+  const body = BODY_RE.exec(masked);
   if (body) return body.index + body[0].length;
-  const head = /<\/head>/i.exec(html);
+  const head = /<\/head>/i.exec(masked);
   if (head) return head.index + head[0].length;
-  let from = 0;
-  PRELUDE_RE.lastIndex = 0;
-  for (let m; (m = PRELUDE_RE.exec(html)); ) from = m.index + m[0].length;
-  const flow = FLOW_RE.exec(html.slice(from));
-  return flow ? from + flow.index : -1;
+  // head 内の要素（title / meta / link）は FLOW_RE に一致しないため、
+  // マスク後に最初に見つかる flow content が本文の先頭になる
+  const flow = FLOW_RE.exec(masked);
+  return flow ? flow.index : -1;
 }
 
 // 決めた位置に空のマーカー対を挿す。既にあれば何もしない。

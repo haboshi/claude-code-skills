@@ -90,3 +90,17 @@ test('--accent: 確定時の貼り直しはマーカーを持たない文書に�
   runHub(hub, ['add', write(base, 'y2.html', DOC('新規')), '--project', proj, '--slug', 'newer', '--accent', '#ff9900']);
   assert.equal(fs.readFileSync(legacy, 'utf8'), raw, 'マーカー無しの取込品が書き換えられた');
 });
+
+test('--accent: 貼り直しが失敗しても、確定した accent は今回の文書に適用される', () => {
+  // 失敗注入: 既存文書の index.html を読めない状態（ディレクトリ）にして rethemeProject を失敗させる。
+  // project.json への永続化は済んでいるので、新規文書まで既定色に落ちてはいけない。
+  const { base, hub, proj } = setup();
+  const first = runHub(hub, ['add', write(base, 'z1.html', DOC('先に保存')), '--project', proj, '--slug', 'earlier']).trim();
+  fs.rmSync(first);
+  fs.mkdirSync(first); // index.html をディレクトリにして読み取りを失敗させる
+
+  const second = runHub(hub, ['add', write(base, 'z2.html', DOC('後から保存')), '--project', proj, '--slug', 'later', '--accent', '#ff9900']).trim();
+  assert.equal(projectJson(second).accent, '#ff9900', 'accent が永続化されていない');
+  assert.match(fs.readFileSync(second, 'utf8'), /--accent:\s*#ff9900\s*;/, '貼り直し失敗で新規文書が既定色に落ちた');
+  assert.equal(second.split('\n').length, 1, 'stdout が汚れている');
+});

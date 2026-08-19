@@ -7,7 +7,10 @@
 // **マーカー区間だけ**は導出領域として hub 側が書き換える（詳細は inject.mjs のヘッダ）。
 //   - <style data-bizdoc="tokens">      … add 時に tokens.css を注入
 //   - <!-- bizdoc:nav:start/end -->     … add で枠を作り、reindex が中身を貼り直す
-// マーカーの外には決して触れない。マーカーを持たない文書は 1 バイトも変えずに素通りする。
+// マーカーの外には決して触れない。2 つは適用条件が違う（詳細は inject.mjs のヘッダ）:
+//   - tokens はマーカーを持つ文書だけが対象。持たない文書（旧文書・取込品）は 1 バイトも変えない
+//   - nav は保存される全文書が対象（差し込める本文要素があれば入れる）。既存文書への後付けだけは
+//     opt-in（nav apply）にして、明示の操作なしに過去の文書を書き換えない
 //
 // stdout 契約: add が印字するのは保存先 index.html の絶対パス 1 行のみ。
 // 注入まわりの診断は必ず console.warn（stderr）へ出す（console.log を足すと契約が壊れる）。
@@ -183,22 +186,32 @@ function applyAccent(proj, requested) {
     return null;
   }
   const value = requested.toLowerCase();
+  // (1) accent の永続化。ここが失敗したときだけ「確定できなかった」と扱う
+  let effective;
   try {
     const cur = JSON.parse(fs.readFileSync(projJson, 'utf8'));
     if (!cur.accent) {
       cur.accent = value;
       fs.writeFileSync(projJson, JSON.stringify(cur, null, 2) + '\n');
-      // 既定色のまま保存済みの文書を同じ色へ揃える。これをしないと「今回の文書だけ新色」
-      // という状態が残り、「文書間でぶれさせない」という約束が破れる
-      const n = rethemeProject(proj.id, cur.accent);
-      if (n) console.warn(`info: アクセントの確定に伴い既存 ${n} 件を ${cur.accent} で貼り直しました`);
     }
-    proj.accent = cur.accent;
-    return cur.accent;
+    effective = cur.accent;
   } catch {
     console.warn('warn: project.json を更新できなかったため accent を既定のまま保存します');
     return null;
   }
+  proj.accent = effective;
+
+  // (2) 既定色のまま保存済みの文書を同じ色へ揃える。ここが失敗しても (1) は確定済みなので、
+  //     今回の文書には必ず effective を使う（落とすと project.json と文書の色がずれる）。
+  //     取りこぼしは retheme コマンドでいつでも直せるため、警告に留めて処理を続ける。
+  try {
+    const n = rethemeProject(proj.id, effective);
+    if (n) console.warn(`info: アクセントの確定に伴い既存 ${n} 件を ${effective} で貼り直しました`);
+  } catch (e) {
+    console.warn(`warn: 既存文書の貼り直しに失敗しました（今回の文書には ${effective} を適用します）。`
+      + `後で \`hub.mjs retheme\` を実行してください: ${e?.message ?? e}`);
+  }
+  return effective;
 }
 
 function cmdAdd(htmlPath, opts) {

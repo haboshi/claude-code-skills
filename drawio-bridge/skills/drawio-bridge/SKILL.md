@@ -53,15 +53,17 @@ draw.io 公式の AI 生成ルールを機械検査可能にしたもの。**「
 
 主な検査: 整形式 / 構造セル `id="0"` `id="1"` の存在 / id 一意性 / parent 実在 / `vertex` と `edge` の排他 / 辺の source・target 解決 / 辺の `mxGeometry relative="1"`（自己閉じの辺は描画が壊れる）/ 頂点の width・height / 負の寸法 / 圧縮 / XML コメント（公式が禁止）/ `html=1` 無しの HTML ラベル / リテラルの `\n`。
 
-### `export --in <file> --out <file> [--format svg|png|pdf|xml] [--border 10] [--layout <preset>] [--page 2] [--no-embed]`
+### `export --in <file> --out <file> [--format svg|png|pdf|jpg|xml] [--border 10] [--layout <preset>] [--page 2] [--no-embed]`
 
-draw.io Desktop CLI を呼ぶ。既定で `-e`（編集用の原本を埋め込む）を付けるので、**書き出した SVG/PNG/PDF は draw.io で開き直して編集できる**。
+draw.io Desktop CLI を呼ぶ。既定で `-e`（編集用の原本を埋め込む）を付けるので、**書き出した SVG/PNG/PDF は draw.io で開き直して編集できる**。`jpg` は原本を埋め込めないため、後で編集する可能性があるなら使わない。
+
+`inline` と違い **`export` は入力を検証しない**（画像化したいだけの用途を妨げないため）。壊れた図を弾きたいときは先に `validate` を通す。
 
 `--layout` に `verticalFlow` / `horizontalFlow` / `verticalTree` / `horizontalTree` / `radialTree` / `organic` を渡すと ELK で自動整列する。座標を自前で詰めるより安定する。
 
 複数ページの `.drawio` は既定で**1ページ目だけ**が出る。`--page`（1 始まり）で選ぶ。`inline` でも同じように使える。
 
-### `inline --in <file.drawio|file.svg> [--out <file>] [--id-prefix <p>] [--page 2] [--max-width 780] [--no-font-fallback]`
+### `inline --in <file.drawio|file.svg> [--out <file>] [--id-prefix <p>] [--page 2] [--max-width 780] [--no-font-fallback] [--color-scheme light|dark|auto]`
 
 HTML に inline 埋め込みできる SVG に整えて stdout（または `--out`）へ出す。`.drawio` を渡した場合は内部で SVG に変換してから処理する。
 

@@ -192,6 +192,24 @@ test('読めない入力で生のスタックトレースを出さない', () =>
   assert.ok(!result.stderr.includes('at '), 'スタックトレースが漏れている')
 })
 
+test('inline の入力不在メッセージが validate と揃っている', () => {
+  const missing = '/nonexistent/nope.drawio'
+  const a = runCli(['validate', '--in', missing])
+  const b = runCli(['inline', '--in', missing])
+  assert.equal(a.status, 1)
+  assert.equal(b.status, 1)
+  assert.match(b.stderr, /入力を読めません/)
+  assert.ok(!b.stderr.includes('    at '), 'スタックトレースが漏れている')
+})
+
+test('--format jpg を受け付ける（エラーメッセージと署名の齟齬を防ぐ）', () => {
+  withDiagram(({ dir, path }) => {
+    // FORMATS に jpg があるのに USAGE/SKILL.md が列挙していない齟齬があった
+    const result = runCli(['export', '--in', path, '--out', join(dir, 'o.jpg'), '--format', 'jpg'])
+    assert.notEqual(result.status, 2, 'jpg が引数検証で弾かれている')
+  })
+})
+
 test('SVG でないものを inline に渡しても生のスタックトレースを出さない', () => {
   withDiagram(({ dir }) => {
     const junk = join(dir, 'junk.svg')

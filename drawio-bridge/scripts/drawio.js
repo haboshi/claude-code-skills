@@ -38,7 +38,7 @@ const USAGE = `drawio-bridge — .drawio の検証・変換・HTML 埋め込み�
       公式の AI 生成ルールに沿って機械検証する。
       error があれば exit 1（warn のみなら exit 0）。
 
-  export --in <file.drawio> --out <file.svg> [--format svg|png|pdf|xml]
+  export --in <file.drawio> --out <file.svg> [--format svg|png|pdf|jpg|xml]
          [--border 10] [--layout verticalFlow] [--page 2] [--no-embed]
       draw.io Desktop CLI で変換する。既定は編集用の原本を埋め込む（-e）。
       複数ページの図は既定で1ページ目のみ。--page（1 始まり）で選ぶ。
@@ -194,11 +194,20 @@ function cmdExport(values) {
 
 /** .drawio なら CLI で SVG に変換してから、.svg ならそのまま後処理に渡す。 */
 function loadSvg(input, pageIndex) {
-  if (extname(input).toLowerCase() === '.svg') return readFileSync(input, 'utf8')
+  let source
+  try {
+    source = readFileSync(input, 'utf8')
+  } catch (e) {
+    const error = new Error(`入力を読めません: ${e.message}`)
+    error.code = 'DRAWIO_INPUT_UNREADABLE'
+    throw error
+  }
+
+  if (extname(input).toLowerCase() === '.svg') return source
 
   // 壊れた .drawio は draw.io が「空の SVG」を返すため、変換前に検証する。
   // ここを通さないと、図が抜けた HTML が黙って出来上がる
-  const check = validateDrawio(readFileSync(input, 'utf8'))
+  const check = validateDrawio(source)
   if (!check.ok) {
     reportIssues(check.issues)
     const error = new Error('入力の .drawio に検証エラーがあります（validate で詳細を確認してください）')

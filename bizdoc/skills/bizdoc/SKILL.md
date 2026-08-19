@@ -239,19 +239,30 @@ MMD
 "$DRAWIO" -x -f svg -e -b 10 -o "<scratch>/fig1.svg" "<scratch>/fig1.drawio"
 
 # 3) 白基調の 1 枚 HTML へ貼れる形に整える（この工程を飛ばすと図が壊れる）
-node "${CLAUDE_PLUGIN_ROOT}/scripts/drawio-embed.mjs" "<scratch>/fig1.svg" \
-  --id-prefix fig1 --title "<図の説明>" \
-  --accent "<文書のアクセント色>" --accent-soft "<同・薄色>" > "<scratch>/fig1-embed.svg"
+#    drawio-bridge の inlineSvg に委ねる（自前で整形しない）。
+#    パスは環境で異なるので探し、見つからなければ drawio-bridge スキルに整形を依頼する
+BRIDGE=$(ls -d "$HOME"/.claude/plugins/cache/*/drawio-bridge/*/scripts/svg-inline.js 2>/dev/null | head -1)
+node -e "
+import('$BRIDGE').then(async m => {
+  const fs = await import('node:fs');
+  const { svg, warnings } = m.inlineSvg(fs.readFileSync('<scratch>/fig1.svg','utf8'), {
+    idPrefix: 'fig1',              // 図ごとに違う値にする（id 衝突の防止）
+    accent: '<文書のアクセント色>',   // 既定の紫を文書の色へ寄せる
+    accentSoft: '<同・薄色>',
+  });
+  warnings.forEach(w => console.error('warn: ' + w));
+  fs.writeFileSync('<scratch>/fig1-embed.svg', svg);
+});
+"
 ```
 
-**3 の整形を省略してはいけない**。draw.io の素の SVG をそのまま貼ると実測で4つ壊れる:
-ダーク環境で線が消える（`light-dark()` 指定）／同一文書に2枚貼ると id が衝突する（`id="0"` を含む）／
-日本語フォントのフォールバックが無い／配色が drawio 既定の紫のままでアクセント1色の原則が崩れる。
-`--id-prefix` は**図ごとに違う値**にする。`--accent` は §8 で決めた色（未確定なら `#2563eb`）、
-`--accent-soft` はそれを白で薄めた色を渡す（`inject.mjs` の `blendWithWhite` と同じ値）。
+**3 の整形を省略してはいけない**。draw.io の素の SVG をそのまま貼るとダーク環境で線が消え
+（`color-scheme: light dark`）、同一文書に2枚貼ると id が衝突し、配色が既定の紫のままになる。
+`inlineSvg` はこれらをまとめて処理する（`drawio-bridge` プラグイン。実装の正はそちら）。
 
-**viewBox が 918 より広い図は font-size を上げる**（予防則9）。Mermaid 変換の既定は 16px で、
-横長の図（幅 1100 前後）だと実表示が 12〜13px に落ちて違反する。式で必要値を出して置換する。
+`warnings` は必ず読む。**viewBox 幅が本文幅の目安を超えると警告が出る** — その図は縮小表示されて
+図中文字が小さくなるので、予防則9 の式で必要な font-size を出して上げるか、図を分割する
+（実測: Mermaid 既定の 16px は幅 1168 の図だと実表示 12.6px で違反した）。
 
 整形後の SVG をそのまま `<figure>` の中へ貼る。viewBox 基準になっているので
 `figure svg { width:100% }` が効き、予防則9 の判定もそのまま適用できる。

@@ -1,0 +1,9 @@
+{
+  "name": "drawio-bridge",
+  "version": "0.2.0",
+  "description": ".drawio ファイルの機械検証・SVG export・HTML 埋め込み用後処理。他スキルからプログラム的に呼ばれる部品。図の生成そのものは公式 drawio スキルが担当。",
+  "author": {
+    "name": "haboshi",
+    "email": "haboshi@allambitious.co.jp"
+  }
+}

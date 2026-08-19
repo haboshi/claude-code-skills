@@ -337,6 +337,26 @@
         "アカウント固定",
         "誤操作防止"
       ]
+    },
+    {
+      "name": "drawio-bridge",
+      "description": "既にある .drawio の機械検証・SVG化・HTML埋め込み整形。他スキルから呼ばれる部品で、図の生成そのものは公式 drawio スキルが担当。「drawio を検証」「drawio を SVG にして」「drawio を HTML に埋め込む」で発動。",
+      "source": "./drawio-bridge",
+      "strict": false,
+      "version": "0.1.0",
+      "category": "image-conversion",
+      "keywords": [
+        "drawio",
+        "diagrams.net",
+        "mxgraph",
+        "svg",
+        "validation",
+        "html-embed",
+        "aws-architecture",
+        "図解",
+        "アーキテクチャ図",
+        "検証"
+      ]
     }
   ]
 }

@@ -147,6 +147,26 @@ function svgGate(html) {
   });
 }
 
+// 指定プロジェクトの、tokens マーカーを持つ保存済み文書へ現在の tokens.css を貼り直す。
+// 戻り値は書き換えた件数。
+function rethemeProject(projectId, accent) {
+  const docsDir = path.join(PROJECTS, projectId, 'docs');
+  if (!fs.existsSync(docsDir)) return 0;
+  const css = readTokensCss();
+  let n = 0;
+  for (const name of fs.readdirSync(docsDir)) {
+    const indexPath = path.join(docsDir, name, 'index.html');
+    if (!fs.existsSync(indexPath)) continue;
+    const html = fs.readFileSync(indexPath, 'utf8');
+    if (!hasTokensMarker(html)) continue;
+    const next = injectTokens(html, css, accent);
+    if (next === html) continue;
+    fs.writeFileSync(indexPath, next);
+    n++;
+  }
+  return n;
+}
+
 // project.json の accent を解決する。既存値があれば維持し、未設定のときだけ --accent を採用して
 // 書き戻す（同一プロジェクトの文書間でアクセントがぶれるのを防ぐ現行の約束をそのまま守る）。
 function applyAccent(proj, requested) {
@@ -168,6 +188,10 @@ function applyAccent(proj, requested) {
     if (!cur.accent) {
       cur.accent = value;
       fs.writeFileSync(projJson, JSON.stringify(cur, null, 2) + '\n');
+      // 既定色のまま保存済みの文書を同じ色へ揃える。これをしないと「今回の文書だけ新色」
+      // という状態が残り、「文書間でぶれさせない」という約束が破れる
+      const n = rethemeProject(proj.id, cur.accent);
+      if (n) console.warn(`info: アクセントの確定に伴い既存 ${n} 件を ${cur.accent} で貼り直しました`);
     }
     proj.accent = cur.accent;
     return cur.accent;
@@ -385,6 +409,8 @@ function cmdRetheme(opts) {
     changed.push({ indexPath, label: p.label, dir: d.dir, html: next });
     return true;
   });
+  // 注: 1 プロジェクト分の同じ処理は rethemeProject() にもある（accent 確定時に呼ぶ）。
+  // こちらは全プロジェクト走査 + --dry-run + 一覧表示を担当する。
   if (changed.length === 0) {
     console.log(`更新の要るドキュメントはありません（走査 ${total} 件）`);
     return;

@@ -62,3 +62,31 @@ test('blendWithWhite: 決定論で、既定 accent から既定 soft 相当の�
   assert.equal(blendWithWhite('#000000', 1), '#000000', '比率 1 で元色に一致しない');
   assert.equal(blendWithWhite('not-a-color'), null, '不正入力に null を返さない');
 });
+
+test('--accent: 後から確定したとき、既定色で保存済みの文書も同じ色に揃う', () => {
+  // accent 未設定のまま文書を保存すると既定 #2563eb で焼かれる。後から --accent を
+  // 初めて指定したとき、新しい文書だけ新色になると「文書間でぶれさせない」約束が破れる。
+  const { base, hub, proj } = setup();
+  const first = runHub(hub, ['add', write(base, 'x1.html', DOC('先に保存')), '--project', proj, '--slug', 'earlier']).trim();
+  assert.match(fs.readFileSync(first, 'utf8'), /--accent:\s*#2563eb\s*;/, '前提: 既定色で保存されている');
+  assert.equal(projectJson(first).accent, null);
+
+  const second = runHub(hub, ['add', write(base, 'x2.html', DOC('後から保存')), '--project', proj, '--slug', 'later', '--accent', '#ff9900']).trim();
+  assert.match(fs.readFileSync(second, 'utf8'), /--accent:\s*#ff9900\s*;/, '新しい文書に反映されていない');
+  assert.match(fs.readFileSync(first, 'utf8'), /--accent:\s*#ff9900\s*;/, '既存文書が既定色のまま取り残された');
+  assert.equal(projectJson(second).accent, '#ff9900');
+});
+
+test('--accent: 確定時の貼り直しはマーカーを持たない文書に触れない', () => {
+  const { base, hub, proj } = setup();
+  const seed = runHub(hub, ['add', write(base, 'y1.html', DOC('起点')), '--project', proj, '--slug', 'seed']).trim();
+  const pid = projectJson(seed).accent === null ? JSON.parse(fs.readFileSync(path.join(path.dirname(seed), 'manifest.json'), 'utf8')).project_id : null;
+  const dir = path.join(hub, 'projects', pid, 'docs', '20260101-legacy');
+  fs.mkdirSync(dir, { recursive: true });
+  const legacy = path.join(dir, 'index.html');
+  const raw = '<!doctype html><html><head><title>取込品</title><style>body{color:#333}</style></head><body><p>本文</p></body></html>';
+  fs.writeFileSync(legacy, raw);
+
+  runHub(hub, ['add', write(base, 'y2.html', DOC('新規')), '--project', proj, '--slug', 'newer', '--accent', '#ff9900']);
+  assert.equal(fs.readFileSync(legacy, 'utf8'), raw, 'マーカー無しの取込品が書き換えられた');
+});

@@ -12,10 +12,10 @@
   --line-strong: #d1d5db;
   --bg: #ffffff;
   --bg-soft: #f4f6fa;
-  /* 本文の行長。em 基準なので font-size が違う要素でも「約40字/行」に揃い、
+  /* 本文の行長。em 基準なので font-size が違う要素でも「約42字/行」に揃い、
      body の max-width を変えても影響を受けない。図・表・カードには適用せず、
      「本文は狭く・視覚要素は広く」の二段構えにする（器 64rem のとき図表は約 953px）*/
-  --measure: 40em;
+  --measure: 42em;
 }
 * { box-sizing: border-box; }
 html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -25,8 +25,18 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
   font-size: 16px; line-height: 1.85;
   font-feature-settings: "palt"; -webkit-font-smoothing: antialiased;
+  /* 行組版 — 日本語の禁則を強め、長い英数字は折り、折返し位置は行末バランス優先。
+     これが無いと「〜を誰も見て/いない」のような不自然な位置で折れる（v0.7.1 で実指摘） */
+  line-break: strict;
+  overflow-wrap: anywhere;
   counter-reset: fig;
 }
+p, li, .sec-lede, figcaption, .lede { text-wrap: pretty; }
+h1, h2, h3 { text-wrap: balance; }
+/* 日本語の文節折返し（BudouX）。「〜を誰も見てい/ない」型の途中折れを文節境界へ移す。
+   短いまとまりのテキストだけに適用する — 本文段落全体に掛けると行末の凸凹が過剰になる */
+h1, h2, h3, .sec-lede, figcaption, .lede, .exec-summary ol li, .conclusion ol li, .kpi .label,
+.card h3, .cover .kicker { word-break: auto-phrase; }
 body::before { content: ""; display: block; height: 6px; background: var(--accent); margin: 0 -2.2rem 2.4rem; }
 p { margin: .55rem 0; }
 a { color: var(--accent); text-decoration: none; }
@@ -107,6 +117,18 @@ tr.pick td:first-child { box-shadow: inset 3px 0 var(--accent); font-weight: 650
 .card ul { margin: .2rem 0 0; padding-left: 1.15rem; font-size: 14px; color: var(--ink-2); }
 .card li { margin: .18rem 0; }
 
+/* ── 結論パネル（文書終端専用。exec-summary の再利用は不可 — 冒頭の地図と終端の締めを視覚で区別する）── */
+.conclusion { margin: 3rem 0 0; padding: 1.5rem 1.7rem 1.3rem; background: var(--ink); color: #e5e7eb; border-radius: 14px; }
+.conclusion h2 { font-size: 12.5px; letter-spacing: .16em; color: #9ca3af; margin: 0 0 .7rem; border: none; padding: 0; }
+.conclusion ol { margin: 0; padding: 0; list-style: none; counter-reset: cc; }
+.conclusion ol li { counter-increment: cc; position: relative; padding: .4rem 0 .4rem 2.15rem; font-weight: 650; font-size: 15px; color: #f9fafb; max-width: var(--measure); }
+.conclusion ol li::before {
+  content: counter(cc); position: absolute; left: 0; top: .52rem;
+  width: 1.35rem; height: 1.35rem; border-radius: 50%; background: var(--accent); color: #fff;
+  font-size: .78rem; font-weight: 700; display: flex; align-items: center; justify-content: center;
+}
+.conclusion strong { color: #ffffff; }
+
 /* ── コールアウト ─────────────────────── */
 .callout { background: var(--bg-soft); border-left: 4px solid var(--accent); border-radius: 6px; padding: .75rem 1.05rem; margin: 1.05rem 0; font-size: 15px; }
 .callout-warn { background: #fdf7ec; border-left: 4px solid #c2740a; border-radius: 6px; padding: .75rem 1.05rem; margin: 1.05rem 0; font-size: 15px; }
@@ -142,7 +164,12 @@ footer { margin-top: 3.2rem; padding-top: .9rem; border-top: 1px solid var(--lin
   body { padding: 0 6mm; max-width: none; font-size: 10pt; line-height: 1.65; }
   /* 紙は1段組で幅が既に狭い。画面用の行長制限を解除しないとページ数が増える */
   section > p, section > ul, section > ol:not(.steps), .sec-lede, .callout, .callout-warn,
-  .exec-summary ol li, .cover .lede { max-width: none; }
+  .exec-summary ol li, .conclusion ol li, .cover .lede { max-width: none; }
+  /* ダーク地はトナーを食い紙面で浮くため、印刷では白地+枠に反転する */
+  .conclusion { background: #fff; color: var(--ink); border: 2px solid var(--ink); break-inside: avoid; }
+  .conclusion h2 { color: var(--ink-2); }
+  .conclusion ol li { color: var(--ink); }
+  .conclusion strong { color: var(--ink); }
   figure, .kpi, .card, .compare-cols .col { box-shadow: none; }
   /* ページ番号を持たないため紙では目次を出さない */
   .toc { display: none; }

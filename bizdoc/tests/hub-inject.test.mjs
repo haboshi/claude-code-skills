@@ -208,3 +208,13 @@ test('maskNonContent: 長さを保つ（index がずれない）', () => {
   assert.ok(!masked.includes('<script'), 'script がマスクされていない');
   assert.ok(masked.includes('<p>本文</p>'), '本文までマスクされている');
 });
+
+test('tokens: figure 内のラスタ画像も枠に収まる指定を持つ', () => {
+  // SVG だけを想定した指定だったため、生成画像を貼ると実寸で描画されて枠からはみ出した。
+  // 図解手段にラスタを正式に加えた v0.6.0 で顕在化した欠陥。
+  const css = fs.readFileSync(new URL('../templates/tokens.css', import.meta.url), 'utf8');
+  const rule = css.match(/figure[^{}]*\bimg\b[^{}]*\{[^}]*\}/);
+  assert.ok(rule, 'figure img の指定が無い');
+  assert.match(rule[0], /width:\s*100%/, '幅が枠に追随しない');
+  assert.match(rule[0], /height:\s*auto/, '縦横比が保たれない');
+});

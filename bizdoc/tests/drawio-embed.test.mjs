@@ -7,6 +7,7 @@ import {
   fixFonts,
   prefixIds,
   normalizeRoot,
+  retint,
   stripEmbeddedXml,
   prepareForEmbed,
 } from '../scripts/drawio-embed.mjs';
@@ -86,4 +87,23 @@ test('prepareForEmbed: 一連の整形を通しても XML の骨格を保つ', (
   assert.match(out, /role="img"/);
   assert.match(out, /<title>テスト図<\/title>/);
   assert.match(out, /viewBox="0 0 400 300"/);
+});
+
+test('retint: drawio 既定の紫を文書のアクセント色へ寄せる', () => {
+  // Mermaid 変換で付く既定スタイル（#9370db / #ececff）のままだと、
+  // 文書のアクセント1色の原則が崩れる。線と面だけ置き換え、文字色は残す。
+  const svg = '<g stroke="rgb(147, 112, 219)" fill="rgb(236, 236, 255)"/><text fill="rgb(51, 51, 51)">文字</text>';
+  const out = retint(svg, '#2563eb', '#eef3fd');
+  assert.ok(!out.includes('147, 112, 219'), '線色が残っている');
+  assert.ok(!out.includes('236, 236, 255'), '面色が残っている');
+  assert.match(out, /stroke="#2563eb"/);
+  assert.match(out, /fill="#eef3fd"/);
+  assert.match(out, /fill="rgb\(51, 51, 51\)"/, '文字色まで置き換えている');
+  // hex 表記でも効く
+  assert.match(retint('<g stroke="#9370db"/>', '#2563eb', '#eef3fd'), /#2563eb/);
+});
+
+test('retint: accent 未指定なら何もしない', () => {
+  const svg = '<g stroke="rgb(147, 112, 219)"/>';
+  assert.equal(retint(svg, '', ''), svg);
 });

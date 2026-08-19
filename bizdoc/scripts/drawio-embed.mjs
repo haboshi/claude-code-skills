@@ -13,7 +13,7 @@
 // role="img" と <title> を付ける）。
 import fs from 'node:fs';
 
-const HELP = 'usage: drawio-embed.mjs <in.svg> [--id-prefix <prefix>] [--title <text>]';
+const HELP = 'usage: drawio-embed.mjs <in.svg> [--id-prefix <prefix>] [--title <text>] [--accent #rrggbb] [--accent-soft #rrggbb]';
 
 // 日本語フォールバックを持つスタック。tokens.css の body と同じ系統に揃える
 const FONT_STACK =
@@ -81,6 +81,25 @@ export function fixFonts(svg) {
   ));
 }
 
+// 図の配色を文書のアクセント色に合わせる。drawio の既定スタイル（Mermaid 変換で付く
+// 紫系 #9370db / #ececff）のままだと、文書のアクセント1色の原則が崩れる。
+// 面は accent を白で薄めた色、線は accent、文字色（濃グレー）はそのまま残す。
+export function retint(svg, accent, soft) {
+  if (!accent) return svg;
+  const map = new Map([
+    ['rgb(147, 112, 219)', accent],   // Mermaid 既定の線色（紫）
+    ['#9370db', accent],
+    ['rgb(236, 236, 255)', soft],     // 同・面色（淡い紫）
+    ['#ececff', soft],
+  ]);
+  let out = svg;
+  for (const [from, to] of map) {
+    if (!to) continue;
+    out = out.split(from).join(to);
+  }
+  return out;
+}
+
 // ルート <svg> を bizdoc の規範に合わせる:
 // width/height の px 直書きを外し（figure svg { width:100% } を効かせる）、
 // color-scheme をライト固定にし、role="img" と <title> を持たせる。
@@ -109,11 +128,12 @@ export function stripEmbeddedXml(svg) {
   return svg.replace(/(<svg\b[^>]*?)\scontent="(?:[^"\\]|\\.)*"/i, '$1');
 }
 
-export function prepareForEmbed(svg, { idPrefix = 'dg', title = '' } = {}) {
+export function prepareForEmbed(svg, { idPrefix = 'dg', title = '', accent = '', accentSoft = '' } = {}) {
   // XML 宣言と DOCTYPE はインライン埋め込みでは不要（あると HTML パーサが警告を出す）
   let out = svg.replace(/<\?xml[^>]*\?>\s*/i, '').replace(/<!DOCTYPE[^>]*>\s*/i, '');
   out = stripEmbeddedXml(out);
   out = foldLightDark(out);
+  out = retint(out, accent, accentSoft);
   out = fixFonts(out);
   out = prefixIds(out, idPrefix);
   out = normalizeRoot(out, title);
@@ -128,5 +148,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const get = (name) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };
   if (!fs.existsSync(input)) { console.error(`SVG が見つかりません: ${input}`); process.exit(1); }
   const svg = fs.readFileSync(input, 'utf8');
-  process.stdout.write(prepareForEmbed(svg, { idPrefix: get('--id-prefix') || 'dg', title: get('--title') || '' }));
+  process.stdout.write(prepareForEmbed(svg, {
+    idPrefix: get('--id-prefix') || 'dg',
+    title: get('--title') || '',
+    accent: get('--accent') || '',
+    accentSoft: get('--accent-soft') || '',
+  }));
 }

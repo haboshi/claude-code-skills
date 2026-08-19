@@ -240,12 +240,18 @@ MMD
 
 # 3) 白基調の 1 枚 HTML へ貼れる形に整える（この工程を飛ばすと図が壊れる）
 node "${CLAUDE_PLUGIN_ROOT}/scripts/drawio-embed.mjs" "<scratch>/fig1.svg" \
-  --id-prefix fig1 --title "<図の説明>" > "<scratch>/fig1-embed.svg"
+  --id-prefix fig1 --title "<図の説明>" \
+  --accent "<文書のアクセント色>" --accent-soft "<同・薄色>" > "<scratch>/fig1-embed.svg"
 ```
 
-**3 の整形を省略してはいけない**。draw.io の素の SVG をそのまま貼ると実測で3つ壊れる:
+**3 の整形を省略してはいけない**。draw.io の素の SVG をそのまま貼ると実測で4つ壊れる:
 ダーク環境で線が消える（`light-dark()` 指定）／同一文書に2枚貼ると id が衝突する（`id="0"` を含む）／
-日本語フォントのフォールバックが無い。`--id-prefix` は**図ごとに違う値**にする。
+日本語フォントのフォールバックが無い／配色が drawio 既定の紫のままでアクセント1色の原則が崩れる。
+`--id-prefix` は**図ごとに違う値**にする。`--accent` は §8 で決めた色（未確定なら `#2563eb`）、
+`--accent-soft` はそれを白で薄めた色を渡す（`inject.mjs` の `blendWithWhite` と同じ値）。
+
+**viewBox が 918 より広い図は font-size を上げる**（予防則9）。Mermaid 変換の既定は 16px で、
+横長の図（幅 1100 前後）だと実表示が 12〜13px に落ちて違反する。式で必要値を出して置換する。
 
 整形後の SVG をそのまま `<figure>` の中へ貼る。viewBox 基準になっているので
 `figure svg { width:100% }` が効き、予防則9 の判定もそのまま適用できる。

@@ -77,7 +77,8 @@ h3 { font-size: 16.5px; margin: 1.4rem 0 .5rem; }
 
 /* ── 図版（枠＋採番キャプション）─────────── */
 figure { margin: 1.35rem 0; counter-increment: fig; border: 1px solid var(--line); border-radius: 12px; padding: 1.05rem 1.05rem .7rem; background: #fff; box-shadow: 0 1px 2px rgba(17,24,39,.05); }
-figure svg { width: 100%; height: auto; display: block; }
+figure svg, figure img { width: 100%; height: auto; display: block; }
+figure img { border-radius: 6px; }
 figcaption { margin-top: .6rem; padding-top: .55rem; border-top: 1px dashed var(--line); color: var(--ink-2); font-size: 13px; }
 figcaption::before { content: "図" counter(fig) " ｜ "; color: var(--accent); font-weight: 700; }
 

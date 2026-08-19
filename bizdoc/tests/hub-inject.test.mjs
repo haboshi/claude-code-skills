@@ -32,7 +32,7 @@ test('add: マーカーを持たない文書は 1 バイトも変えない（tok
   const saved = fs.readFileSync(out, 'utf8');
   assert.ok(!saved.includes('--measure:'), 'マーカーなしなのに tokens が注入された');
   // nav は <body> があるので入る。nav 区間を取り除けば原文と一致するはず
-  const stripped = saved.replace(/\n?<!-- bizdoc:nav:start -->[\s\S]*?<!-- bizdoc:nav:end -->/, '');
+  const stripped = saved.replace(/<!-- bizdoc:nav:start -->[\s\S]*?<!-- bizdoc:nav:end -->\n?/, '');
   assert.equal(stripped, raw);
 });
 
@@ -41,7 +41,7 @@ test('add: nav 枠が <body> 直後に入り、戻りリンクが hub 一覧を�
   const out = runHub(hub, ['add', write(base, 'c.html', DOC('文書C')), '--project', proj]).trim();
   const saved = fs.readFileSync(out, 'utf8');
   const projectId = JSON.parse(fs.readFileSync(path.join(path.dirname(out), 'manifest.json'), 'utf8')).project_id;
-  assert.match(saved, /<body[^>]*>\s*<!-- bizdoc:nav:start -->/, '<body> 直後にマーカーが無い');
+  assert.match(saved, /<body[^>]*><!-- bizdoc:nav:start -->/, '<body> 直後にマーカーが無い');
   assert.ok(saved.includes(`href="../../../../index.html#p-${projectId}"`), '戻りリンクが不正');
   // 相対パスが実在の hub index に解決すること
   const resolved = path.resolve(path.dirname(out), '../../../../index.html');
@@ -92,13 +92,26 @@ test('reindex: 2 回目は書き込みが発生しない（mtime 不変）', () 
   assert.equal(fs.readFileSync(out, 'utf8'), bytes);
 });
 
-test('add: <body> の無い HTML は nav をスキップし stdout を汚さない', () => {
+test('add: <body> を省いた文書でも最初の本文要素の直前に入る（実在する最小構成）', () => {
+  // <html>/<head>/<body> をすべて省いた文書は doc-hub に実在する（113 件中 15 件）。
+  // HTML は <body> の省略を許すので、スキップせず本文の先頭に差し込む。
   const { base, hub, proj } = setup();
-  const raw = '<!doctype html><title>断片</title><p>本文</p>';
+  const raw = '<title>断片</title><style>p{color:#333}</style><p>本文</p>';
   const out = runHub(hub, ['add', write(base, 'h.html', raw), '--project', proj]);
   assert.equal(out.trim().split('\n').length, 1, 'stdout が 1 行でない');
   const saved = fs.readFileSync(out.trim(), 'utf8');
-  assert.ok(!saved.includes('bizdoc:nav'), 'body が無いのに nav が入った');
+  assert.match(saved, /<\/style><!-- bizdoc:nav:start -->/, '本文要素の直前に入っていない');
+  assert.match(saved, /<!-- bizdoc:nav:end -->\n<p>本文<\/p>/, '本文が後ろに残っていない');
+  assert.ok(saved.includes('p{color:#333}'), '元の CSS が失われている');
+});
+
+test('add: 差し込み位置が無い文書（本文要素なし）はスキップする', () => {
+  const { base, hub, proj } = setup();
+  const raw = '<title>タイトルだけ</title>';
+  const out = runHub(hub, ['add', write(base, 'h2.html', raw), '--project', proj, '--slug', 'title-only']);
+  assert.equal(out.trim().split('\n').length, 1, 'stdout が 1 行でない');
+  const saved = fs.readFileSync(out.trim(), 'utf8');
+  assert.ok(!saved.includes('bizdoc:nav'), 'アンカーが無いのに nav が入った');
   assert.equal(saved, raw, '原文が変更されている');
 });
 

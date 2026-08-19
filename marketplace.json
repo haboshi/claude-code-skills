@@ -303,7 +303,7 @@
       "description": "ビジネス白基調・SVG図解付き1枚HTML文書の生成と doc-hub 統合管理",
       "source": "./bizdoc",
       "strict": false,
-      "version": "0.4.0",
+      "version": "0.5.0",
       "category": "document-generation",
       "keywords": [
         "business-document",

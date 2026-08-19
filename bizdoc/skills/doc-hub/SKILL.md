@@ -21,7 +21,11 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/hub.mjs" <add|list|open|reindex> ...
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/hub.mjs" add <html> --project <path> \
-  [--title <t>] [--slug <s>] [--type <t>] [--tags a,b] [--assets <dir>] [--update|--new]
+  [--title <t>] [--slug <s>] [--type <t>] [--tags a,b] [--assets <dir>] [--accent #rrggbb] [--update|--new]
+
+# 既存文書への遡及（opt-in。--dry-run で対象だけ確認できる）
+node "${CLAUDE_PLUGIN_ROOT}/scripts/hub.mjs" nav apply [--dry-run]   # 一覧への戻り導線を後から入れる
+node "${CLAUDE_PLUGIN_ROOT}/scripts/hub.mjs" retheme [--dry-run]     # tokens.css の更新を貼り直す
 ```
 
 - 成功時、stdout に保存先 `index.html` の絶対パスが1行だけ出る。後続操作（open・PDF化等）はこのパスを使う

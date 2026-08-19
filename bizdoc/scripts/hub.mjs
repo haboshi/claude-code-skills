@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { projectIdFromPath, resolveMainWorktreeRoot, slugify } from './project-id.mjs';
 import { renderIndex } from './render-index.mjs';
-import { injectNavFrame, injectTokens, readTokensCss, refreshNavFile } from './inject.mjs';
+import { hasNavFrame, hasTokensMarker, injectNavFrame, injectTokens, readTokensCss, refreshNavFile } from './inject.mjs';
 import {
   applyOverrides,
   createGroup,
@@ -219,7 +219,9 @@ function cmdAdd(htmlPath, opts) {
   if (!framed.injected) console.warn('warn: <body> が無いため hub ナビを注入しませんでした');
   outHtml = framed.html;
   fs.writeFileSync(path.join(docDir, 'index.html'), outHtml);
-  if (opts.assets) fs.cpSync(opts.assets, path.join(docDir, 'assets'), { recursive: true });
+  // 同梱ディレクトリは**元の名前のまま**コピーする（HTML 内の相対参照 images/... をそのまま活かす）。
+  // 従来どおり assets/ を渡せば assets/ に入るので、既存の使い方は変わらない。
+  if (opts.assets) fs.cpSync(opts.assets, path.join(docDir, path.basename(opts.assets)), { recursive: true });
 
   const now = new Date().toISOString();
   const manifest = {
@@ -295,7 +297,6 @@ function refreshNavs(data) {
   let written = 0;
   for (const p of data.projects) {
     for (const d of p.docs) {
-      if (d.broken) continue;
       const indexPath = path.join(PROJECTS, p.dir, 'docs', d.dir, 'index.html');
       const r = refreshNavFile(indexPath, {
         projectId: p.id,
@@ -317,6 +318,84 @@ function cmdReindex() {
   fs.writeFileSync(tmp, html);
   fs.renameSync(tmp, path.join(HUB, 'index.html')); // 原子書き込み（iCloud 同期・並行実行への防御）
   refreshNavs(data);
+}
+
+// 保存済みドキュメントを走査する共通処理。fn(indexPath, project, doc) が真を返した件数を数える。
+// manifest が壊れている／無いドキュメントも対象に含める — 壊れているのはメタデータであって
+// HTML 本体ではなく、むしろそういう文書ほど一覧へ戻る導線が要る（sibling 一覧からは除外される）。
+function eachDoc(fn) {
+  const { projects } = buildIndexData();
+  let hit = 0;
+  let total = 0;
+  for (const p of projects) {
+    for (const d of p.docs) {
+      total++;
+      const indexPath = path.join(PROJECTS, p.dir, 'docs', d.dir, 'index.html');
+      if (!fs.existsSync(indexPath)) continue;
+      if (fn(indexPath, p, d)) hit++;
+    }
+  }
+  return { hit, total };
+}
+
+// 既存・取込文書へ nav 枠を後から入れる（opt-in）。別デザインの取込品を勝手に書き換えないため、
+// add と違って自動では走らせない。--dry-run で対象だけ確認できる。
+function cmdNav(sub, opts) {
+  ensureHub();
+  if (sub !== 'apply') die(`不明なサブコマンド: nav ${sub ?? '(なし)'}（apply）`);
+  const dry = !!opts['dry-run'];
+  const targets = [];
+  const { total } = eachDoc((indexPath, p, d) => {
+    const html = fs.readFileSync(indexPath, 'utf8');
+    if (hasNavFrame(html)) return false;
+    const framed = injectNavFrame(html);
+    if (!framed.injected) {
+      console.warn(`skip: 差し込める本文要素が無いため対象外 — ${p.label} / ${d.dir}`);
+      return false;
+    }
+    targets.push({ indexPath, label: p.label, dir: d.dir, html: framed.html });
+    return true;
+  });
+  if (targets.length === 0) {
+    console.log(`nav 枠の無いドキュメントはありません（走査 ${total} 件）`);
+    return;
+  }
+  if (dry) {
+    console.log(`nav 枠を入れる対象 ${targets.length} 件（走査 ${total} 件）— --dry-run のため書き込みません:`);
+    for (const t of targets) console.log(`  ${t.label} / ${t.dir}`);
+    return;
+  }
+  for (const t of targets) fs.writeFileSync(t.indexPath, t.html);
+  cmdReindex(); // 枠に中身を入れるのは reindex の役目（描画経路は 1 本）
+  console.log(`nav を ${targets.length} 件に入れました（走査 ${total} 件）`);
+}
+
+// tokens マーカーを持つ文書へ、現在の tokens.css を貼り直す（テンプレ更新の遡及）。
+// マーカーを持たない文書（フル CSS を焼き込んだ旧文書・取込品）は対象外。
+function cmdRetheme(opts) {
+  ensureHub();
+  const dry = !!opts['dry-run'];
+  const css = readTokensCss();
+  const changed = [];
+  const { total } = eachDoc((indexPath, p, d) => {
+    const html = fs.readFileSync(indexPath, 'utf8');
+    if (!hasTokensMarker(html)) return false;
+    const next = injectTokens(html, css, p.accent);
+    if (next === html) return false;
+    changed.push({ indexPath, label: p.label, dir: d.dir, html: next });
+    return true;
+  });
+  if (changed.length === 0) {
+    console.log(`更新の要るドキュメントはありません（走査 ${total} 件）`);
+    return;
+  }
+  if (dry) {
+    console.log(`tokens を貼り直す対象 ${changed.length} 件（走査 ${total} 件）— --dry-run のため書き込みません:`);
+    for (const c of changed) console.log(`  ${c.label} / ${c.dir}`);
+    return;
+  }
+  for (const c of changed) fs.writeFileSync(c.indexPath, c.html);
+  console.log(`tokens を ${changed.length} 件に貼り直しました（走査 ${total} 件）`);
 }
 
 function cmdList(opts) {
@@ -472,7 +551,7 @@ function parseArgs(argv) {
   const args = { _: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--update' || a === '--new' || a === '--json') args[a.slice(2)] = true;
+    if (a === '--update' || a === '--new' || a === '--json' || a === '--dry-run') args[a.slice(2)] = true;
     else if (a.startsWith('--')) args[a.slice(2)] = argv[++i];
     else args._.push(a);
   }
@@ -485,6 +564,8 @@ if (cmd === 'add') cmdAdd(args._[1], args);
 else if (cmd === 'reindex') cmdReindex();
 else if (cmd === 'list') cmdList(args);
 else if (cmd === 'open') cmdOpen(args);
+else if (cmd === 'nav') cmdNav(args._[1], args);
+else if (cmd === 'retheme') cmdRetheme(args);
 else if (cmd === 'group') cmdGroup(args._[1], args._.slice(2), args);
 else if (cmd === 'project') cmdProject(args._[1], args._.slice(2));
-else die(`使い方: hub.mjs <add|list|reindex|open|group|project> ...（不明なコマンド: ${cmd ?? '(なし)'}）`);
+else die(`使い方: hub.mjs <add|list|reindex|open|nav|retheme|group|project> ...（不明なコマンド: ${cmd ?? '(なし)'}）`);

@@ -18,6 +18,11 @@ const NAV_START = '<!-- bizdoc:nav:start -->';
 const NAV_END = '<!-- bizdoc:nav:end -->';
 const NAV_RE = /<!-- bizdoc:nav:start -->[\s\S]*?<!-- bizdoc:nav:end -->/;
 const BODY_RE = /<body\b[^>]*>/i;
+// head 相当の終わりを示す目印。ここより後ろで最初の flow content を探す
+const PRELUDE_RE = /<\/(?:head|style|title)>/gi;
+// nav を差し込める最初の本文要素。<body> も </head> も持たない最小構成の文書
+// （<title> + <style> + いきなり <div> という形。実在する）を拾うためのフォールバック
+const FLOW_RE = /<(?:div|main|header|section|article|nav|h1|h2|p|table|ul|ol|figure)\b[^>]*>/i;
 
 // 一覧に載せる sibling の上限。超えた分は「一覧で見る」へ送る
 export const NAV_SIBLING_LIMIT = 8;
@@ -68,18 +73,36 @@ export function injectTokens(html, css, accent) {
   return html.replace(TOKENS_RE, (_m, open, _old, close) => open + '\n' + body + close);
 }
 
-// <body> 直後に空のマーカー対を挿す。既にあれば何もしない。
-// <body> を持たない HTML（取込品の断片など）は注入せず、呼び出し側に false を返す。
+// nav を差し込む位置を決める。HTML は <body> の省略が許されるため、実在の文書には
+// <html>/<head>/<body> をすべて省いた最小構成（<title> + <style> + いきなり <div>）がある。
+// 優先順: <body> 直後 → </head> 直後 → prelude（</head></style></title>）以降で最初の本文要素の直前。
+// どれも見つからなければ挿さない（呼び出し側が false を受けてスキップする）。
+export function findNavAnchor(html) {
+  const body = BODY_RE.exec(html);
+  if (body) return body.index + body[0].length;
+  const head = /<\/head>/i.exec(html);
+  if (head) return head.index + head[0].length;
+  let from = 0;
+  PRELUDE_RE.lastIndex = 0;
+  for (let m; (m = PRELUDE_RE.exec(html)); ) from = m.index + m[0].length;
+  const flow = FLOW_RE.exec(html.slice(from));
+  return flow ? from + flow.index : -1;
+}
+
+// 決めた位置に空のマーカー対を挿す。既にあれば何もしない。
 export function injectNavFrame(html) {
   if (NAV_RE.test(html)) return { html, injected: true };
-  const m = BODY_RE.exec(html);
-  if (!m) return { html, injected: false };
-  const at = m.index + m[0].length;
-  return { html: html.slice(0, at) + '\n' + NAV_START + NAV_END + html.slice(at), injected: true };
+  const at = findNavAnchor(html);
+  if (at < 0) return { html, injected: false };
+  return { html: html.slice(0, at) + NAV_START + NAV_END + '\n' + html.slice(at), injected: true };
 }
 
 export function hasNavFrame(html) {
   return NAV_RE.test(html);
+}
+
+export function hasTokensMarker(html) {
+  return TOKENS_RE.test(html);
 }
 
 // nav の中身を描く。時刻・乱数を含めない（同じ入力なら同じバイト列になる）。
@@ -112,7 +135,7 @@ ${items}${more}
   // [hidden] 側を !important で必ず併記する（これが無いと持ち出しコピーで nav が消えない）
   return `${NAV_START}
 <style>
-.bizdoc-hubnav{display:flex;gap:.5rem 1rem;align-items:center;flex-wrap:wrap;margin:0 0 1.6rem;padding:.5rem .8rem;border:1px solid var(--line,#e5e7eb);border-radius:8px;background:var(--bg-soft,#f4f6fa);font-size:13px;line-height:1.6}
+.bizdoc-hubnav{display:flex;gap:.5rem 1rem;align-items:center;flex-wrap:wrap;margin:0 0 1.6rem;padding:.5rem .8rem;border:1px solid var(--line,#e5e7eb);border-radius:8px;background:var(--bg-soft,var(--paper,#f4f6fa));font-size:13px;line-height:1.6}
 .bizdoc-hubnav[hidden]{display:none!important}
 .bizdoc-hubnav a{color:var(--accent,#2563eb);text-decoration:none}
 .bizdoc-hubnav a:hover{text-decoration:underline}

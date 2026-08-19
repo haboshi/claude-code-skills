@@ -175,7 +175,9 @@ function rethemeProject(projectId, accent) {
 function applyAccent(proj, requested) {
   const projJson = path.join(PROJECTS, proj.id, 'project.json');
   if (proj.accent) {
-    if (requested && requested !== proj.accent) {
+    // 保存値は小文字化して持つため、比較も正規化してから行う
+    // （#FF9900 と #ff9900 は同じ色。生比較すると無用な警告が出る）
+    if (requested && requested.trim().toLowerCase() !== String(proj.accent).trim().toLowerCase()) {
       console.warn(`warn: このプロジェクトの accent は ${proj.accent} で確定済みのため --accent は無視します`);
     }
     return proj.accent;

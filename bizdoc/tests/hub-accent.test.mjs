@@ -107,3 +107,12 @@ test('--accent: 貼り直しが失敗しても、確定した accent は今回�
   assert.match(fs.readFileSync(second, 'utf8'), /--accent:\s*#ff9900\s*;/, '貼り直し失敗で新規文書が既定色に落ちた');
   assert.equal(second.split('\n').length, 1, 'stdout が汚れている');
 });
+
+test('--accent: 大文字指定でも確定済みの同色なら警告しない', () => {
+  const { base, hub, proj } = setup();
+  runHub(hub, ['add', write(base, 'w1.html', DOC('一本目')), '--project', proj, '--slug', 'first', '--accent', '#ff9900']);
+  // 同じ色を大文字で指定しても「無視します」と言われない（stdout は常に 1 行）
+  const out = runHub(hub, ['add', write(base, 'w2.html', DOC('二本目')), '--project', proj, '--slug', 'second', '--accent', '#FF9900']);
+  assert.equal(out.trim().split('\n').length, 1);
+  assert.match(fs.readFileSync(out.trim(), 'utf8'), /--accent:\s*#ff9900\s*;/);
+});

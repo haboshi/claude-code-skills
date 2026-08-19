@@ -187,6 +187,20 @@ test('アンカー探索: コメント・script・style 内の偽タグを本文
   }
 });
 
+test('maskNonContent: 開閉タグの大小が混在してもマスクする', () => {
+  // NON_CONTENT_RE は後方参照 \1 で閉じタグを対応させている。JS では i フラグが
+  // 後方参照の照合にも効く（ECMAScript の Canonicalize）ため大小混在でも一致する。
+  // 非自明な仕様依存なので、ここで固定しておく。
+  for (const [name, html, expected] of [
+    ['大文字 TITLE', '<TITLE><div>ダミー</div></TITLE><p>本物</p>', '<p>本物</p>'],
+    ['開閉で大小混在', '<Title><div>ダミー</div></title><p>本物</p>', '<p>本物</p>'],
+    ['大文字 TEXTAREA', '<style>a{}</style><TEXTAREA><section>ダミー</section></textarea><main>本物</main>', '<main>本物</main>'],
+  ]) {
+    const at = findNavAnchor(html);
+    assert.equal(html.slice(at, at + expected.length), expected, `${name}: マスクされていない`);
+  }
+});
+
 test('maskNonContent: 長さを保つ（index がずれない）', () => {
   const src = '<title>t</title><!-- xx --><script>a</script><p>本文</p>';
   const masked = maskNonContent(src);

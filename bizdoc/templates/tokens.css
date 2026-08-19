@@ -11,15 +11,19 @@
   --line: #e5e7eb;
   --line-strong: #d1d5db;
   --bg: #ffffff;
-  --bg-soft: #f8fafc;
+  --bg-soft: #f4f6fa;
+  /* 本文の行長。em 基準なので font-size が違う要素でも「約40字/行」に揃い、
+     body の max-width を変えても影響を受けない。図・表・カードには適用せず、
+     「本文は狭く・視覚要素は広く」の二段構えにする（器 64rem のとき図表は約 953px）*/
+  --measure: 40em;
 }
 * { box-sizing: border-box; }
 html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 body {
-  margin: 0 auto; padding: 0 2.2rem 4rem; max-width: 54rem;
+  margin: 0 auto; padding: 0 2.2rem 4rem; max-width: 64rem;
   background: var(--bg); color: var(--ink);
   font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
-  font-size: 15.5px; line-height: 1.85;
+  font-size: 16px; line-height: 1.85;
   font-feature-settings: "palt"; -webkit-font-smoothing: antialiased;
   counter-reset: fig;
 }
@@ -32,7 +36,7 @@ strong { font-weight: 700; }
 .kicker { font-size: 11.5px; letter-spacing: .18em; font-weight: 700; color: var(--accent); }
 .cover { margin: 0 0 2.4rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--line-strong); }
 .cover h1 { font-size: 32px; line-height: 1.45; letter-spacing: .01em; margin: .55rem 0 .8rem; }
-.cover .lede { color: var(--ink-2); font-size: 14.5px; line-height: 1.9; max-width: 46rem; margin: 0 0 1.25rem; }
+.cover .lede { color: var(--ink-2); font-size: 14.5px; line-height: 1.9; max-width: var(--measure); margin: 0 0 1.25rem; }
 .cover .meta { display: flex; flex-wrap: wrap; gap: .4rem 2.2rem; font-size: 12.5px; color: var(--ink-2); }
 .cover .meta b { color: var(--ink-3); font-weight: 600; font-size: 11px; letter-spacing: .1em; margin-right: .55em; }
 
@@ -40,34 +44,46 @@ strong { font-weight: 700; }
 .exec-summary { background: var(--accent-soft); border-radius: 12px; padding: 1.2rem 1.45rem 1.1rem; margin: 1.9rem 0; }
 .exec-summary h2 { font-size: 12.5px; letter-spacing: .16em; color: var(--accent); margin: 0 0 .65rem; border: none; padding: 0; }
 .exec-summary ol { margin: 0; padding: 0; list-style: none; counter-reset: es; }
-.exec-summary ol li { counter-increment: es; position: relative; padding: .34rem 0 .34rem 2.15rem; font-weight: 650; font-size: 14.5px; }
+.exec-summary ol li { counter-increment: es; position: relative; padding: .34rem 0 .34rem 2.15rem; font-weight: 650; font-size: 14.5px; max-width: var(--measure); }
 .exec-summary ol li::before {
   content: counter(es); position: absolute; left: 0; top: .48rem;
   width: 1.35rem; height: 1.35rem; border-radius: 50%; background: var(--accent); color: #fff;
   font-size: .78rem; font-weight: 700; display: flex; align-items: center; justify-content: center;
 }
-.exec-summary ol li small { display: block; font-weight: 400; color: var(--ink-2); font-size: 13px; line-height: 1.75; margin-top: .1rem; }
+.exec-summary ol li small { display: block; font-weight: 400; color: var(--ink-2); font-size: 14px; line-height: 1.75; margin-top: .1rem; }
 
 /* ── セクション（番号つきメッセージ見出し）── */
 main { counter-reset: sec; }
-section { margin: 2.7rem 0; }
-section > h2 { counter-increment: sec; font-size: 19.5px; line-height: 1.5; margin: 0 0 .4rem; display: flex; gap: .7rem; align-items: baseline; }
+section { margin: 3.4rem 0; }
+section > h2 { counter-increment: sec; font-size: 23px; line-height: 1.5; margin: 0 0 .4rem; display: flex; gap: .7rem; align-items: baseline; }
 section > h2::before {
   content: counter(sec, decimal-leading-zero); flex: none; transform: translateY(-2px);
   font-size: 11.5px; font-weight: 700; letter-spacing: .1em; color: var(--accent);
   border: 1px solid var(--accent); border-radius: 4px; padding: .08rem .42rem;
 }
-.sec-lede { color: var(--ink-2); font-size: 13.5px; margin: 0 0 1rem; }
-h3 { font-size: 15px; margin: 1.4rem 0 .5rem; }
+.sec-lede { color: var(--ink-2); font-size: 15px; margin: 0 0 1rem; }
+/* 本文の行長を絞る。figure / table / .kpi-grid / .cols-2 / .compare-cols / .steps は
+   意図的に対象外（視覚要素は紙面いっぱいを使う） */
+section > p, section > ul, section > ol:not(.steps), .sec-lede, .callout, .callout-warn { max-width: var(--measure); }
+h3 { font-size: 16.5px; margin: 1.4rem 0 .5rem; }
+
+/* ── 目次（section 5個以上のとき exec-summary の直後に置く）── */
+.toc { border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.25rem .9rem; margin: 1.6rem 0; }
+.toc h2 { font-size: 12.5px; letter-spacing: .16em; color: var(--accent); margin: 0 0 .55rem; }
+.toc ol { margin: 0; padding-left: 1.2rem; columns: 2; column-gap: 2rem; font-size: 13.5px; }
+.toc li { margin: .18rem 0; break-inside: avoid; }
+.toc a { color: var(--ink); }
+.toc a:hover { color: var(--accent); text-decoration: underline; }
 
 /* ── 図版（枠＋採番キャプション）─────────── */
-figure { margin: 1.35rem 0; counter-increment: fig; border: 1px solid var(--line); border-radius: 12px; padding: 1.05rem 1.05rem .7rem; background: #fff; }
-figure svg { width: 100%; height: auto; display: block; }
-figcaption { margin-top: .6rem; padding-top: .55rem; border-top: 1px dashed var(--line); color: var(--ink-2); font-size: 12.5px; }
+figure { margin: 1.35rem 0; counter-increment: fig; border: 1px solid var(--line); border-radius: 12px; padding: 1.05rem 1.05rem .7rem; background: #fff; box-shadow: 0 1px 2px rgba(17,24,39,.05); }
+figure svg, figure img { width: 100%; height: auto; display: block; }
+figure img { border-radius: 6px; }
+figcaption { margin-top: .6rem; padding-top: .55rem; border-top: 1px dashed var(--line); color: var(--ink-2); font-size: 13px; }
 figcaption::before { content: "図" counter(fig) " ｜ "; color: var(--accent); font-weight: 700; }
 
 /* ── 表 ──────────────────────────────── */
-table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin: 1.15rem 0; font-variant-numeric: tabular-nums; }
+table { width: 100%; border-collapse: collapse; font-size: 14.5px; margin: 1.15rem 0; font-variant-numeric: tabular-nums; }
 th { text-align: left; font-size: 12px; letter-spacing: .05em; color: var(--ink-2); background: var(--bg-soft);
      border-top: 1px solid var(--line-strong); border-bottom: 1px solid var(--line-strong); padding: .55rem .7rem; }
 td { border-bottom: 1px solid var(--line); padding: .62rem .7rem; vertical-align: top; }
@@ -76,7 +92,7 @@ tr.pick td:first-child { box-shadow: inset 3px 0 var(--accent); font-weight: 650
 
 /* ── KPI カード ───────────────────────── */
 .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr)); gap: .9rem; margin: 1.25rem 0; }
-.kpi { border: 1px solid var(--line); border-top: 3px solid var(--accent); border-radius: 10px; padding: .9rem 1.05rem .7rem; background: #fff; }
+.kpi { border: 1px solid var(--line); border-top: 3px solid var(--accent); border-radius: 10px; padding: .9rem 1.05rem .7rem; background: #fff; box-shadow: 0 1px 2px rgba(17,24,39,.05); }
 .kpi .value { font-size: 31px; font-weight: 750; color: var(--accent); line-height: 1.15; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
 .kpi .label { font-size: 12.5px; font-weight: 650; margin-top: .18rem; }
 .kpi .src { margin-top: .3rem; }
@@ -84,16 +100,16 @@ tr.pick td:first-child { box-shadow: inset 3px 0 var(--accent); font-weight: 650
 /* ── 2カラム・カード ──────────────────── */
 .cols-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.25rem 0; }
 .compare-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.25rem 0; }
-.card, .compare-cols .col { border: 1px solid var(--line); border-radius: 10px; padding: .95rem 1.15rem; background: var(--bg-soft); }
+.card, .compare-cols .col { border: 1px solid var(--line); border-radius: 10px; padding: .95rem 1.15rem; background: var(--bg-soft); box-shadow: 0 1px 2px rgba(17,24,39,.05); }
 .compare-cols .col.pick, .card.pick { border-color: var(--accent); background: var(--accent-soft); }
 .card h3, .compare-cols h3 { margin: 0 0 .45rem; font-size: 14px; display: flex; align-items: center; gap: .5rem; }
 .card .tag { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; color: #fff; background: var(--accent); border-radius: 3px; padding: .1rem .4rem; }
-.card ul { margin: .2rem 0 0; padding-left: 1.15rem; font-size: 13px; color: var(--ink-2); }
+.card ul { margin: .2rem 0 0; padding-left: 1.15rem; font-size: 14px; color: var(--ink-2); }
 .card li { margin: .18rem 0; }
 
 /* ── コールアウト ─────────────────────── */
-.callout { background: var(--bg-soft); border-left: 4px solid var(--accent); border-radius: 6px; padding: .75rem 1.05rem; margin: 1.05rem 0; font-size: 13.5px; }
-.callout-warn { background: #fdf7ec; border-left: 4px solid #c2740a; border-radius: 6px; padding: .75rem 1.05rem; margin: 1.05rem 0; font-size: 13.5px; }
+.callout { background: var(--bg-soft); border-left: 4px solid var(--accent); border-radius: 6px; padding: .75rem 1.05rem; margin: 1.05rem 0; font-size: 15px; }
+.callout-warn { background: #fdf7ec; border-left: 4px solid #c2740a; border-radius: 6px; padding: .75rem 1.05rem; margin: 1.05rem 0; font-size: 15px; }
 
 /* ── 手順 ─────────────────────────────── */
 .steps { counter-reset: step; list-style: none; padding: 0; margin: 1.2rem 0; }
@@ -104,7 +120,7 @@ tr.pick td:first-child { box-shadow: inset 3px 0 var(--accent); font-weight: 650
   font-size: .85rem; font-weight: 700; display: flex; align-items: center; justify-content: center;
 }
 .steps li b { display: block; font-size: 14.5px; }
-.steps li small { color: var(--ink-2); font-size: 13px; }
+.steps li small { color: var(--ink-2); font-size: 14px; }
 
 .src { color: var(--ink-3); font-size: 11.5px; display: block; }
 code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .88em; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 4px; padding: .06em .38em; }
@@ -124,6 +140,12 @@ footer { margin-top: 3.2rem; padding-top: .9rem; border-top: 1px solid var(--lin
      21mm になる（PDF 実測で確認すること）。0 にすると罫線・表・コールアウトの枠が
      紙の端に寄って窮屈な紙面になるため、内側にも余白を置いている。 */
   body { padding: 0 6mm; max-width: none; font-size: 10pt; line-height: 1.65; }
+  /* 紙は1段組で幅が既に狭い。画面用の行長制限を解除しないとページ数が増える */
+  section > p, section > ul, section > ol:not(.steps), .sec-lede, .callout, .callout-warn,
+  .exec-summary ol li, .cover .lede { max-width: none; }
+  figure, .kpi, .card, .compare-cols .col { box-shadow: none; }
+  /* ページ番号を持たないため紙では目次を出さない */
+  .toc { display: none; }
   /* 上部のアクセント帯は本文の padding を打ち消して全幅に伸ばす（画面と同じ意匠） */
   body::before { margin: 0 -6mm 1.2rem; height: 5px; }
   p { margin: .4rem 0; }
@@ -138,7 +160,7 @@ footer { margin-top: 3.2rem; padding-top: .9rem; border-top: 1px solid var(--lin
   section { margin: 1.5rem 0; }
   section > h2 { font-size: 13pt; margin-bottom: .3rem; }
   .sec-lede { font-size: 9pt; margin-bottom: .6rem; }
-  h3 { margin: .9rem 0 .35rem; }
+  h3 { font-size: 11pt; margin: .9rem 0 .35rem; }
   figure { margin: .9rem 0; padding: .7rem .7rem .45rem; }
   figcaption { margin-top: .4rem; padding-top: .35rem; font-size: 8.5pt; }
   table { font-size: 9pt; margin: .8rem 0; }

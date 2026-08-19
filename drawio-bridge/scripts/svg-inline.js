@@ -116,10 +116,28 @@ function injectFontFallback(svg, fallback) {
   return { found }
 }
 
+/** Mermaid 変換で付く draw.io 既定のテーマ色（紫系）。貼り先のアクセントへ寄せる対象。 */
+const DEFAULT_THEME_COLORS = {
+  stroke: ['rgb(147, 112, 219)', '#9370db', '#9370DB'],
+  fill: ['rgb(236, 236, 255)', '#ececff', '#ECECFF'],
+}
+
+/**
+ * 図の既定色を貼り先のアクセント色へ置き換える。線と面だけを対象にし、
+ * 文字色（濃グレー）は本文との調和のため触らない。
+ * アクセント1色を原則にする文書に貼るとき、紫のままだと原則が崩れるため。
+ */
+function retint(svgText, accent, accentSoft) {
+  let out = svgText
+  if (accent) for (const from of DEFAULT_THEME_COLORS.stroke) out = out.split(from).join(accent)
+  if (accentSoft) for (const from of DEFAULT_THEME_COLORS.fill) out = out.split(from).join(accentSoft)
+  return out
+}
+
 /**
  * @param {string} svgText draw.io が export した SVG
  * @param {{idPrefix?: string, maxViewBoxWidth?: number, fontFallback?: string|false,
- *          colorScheme?: 'light'|'dark'|'auto'}} [options]
+ *          colorScheme?: 'light'|'dark'|'auto', accent?: string, accentSoft?: string}} [options]
  * @returns {{svg: string, warnings: string[]}}
  */
 export function inlineSvg(svgText, options = {}) {
@@ -128,13 +146,16 @@ export function inlineSvg(svgText, options = {}) {
     maxViewBoxWidth = DEFAULT_MAX_VIEWBOX_WIDTH,
     fontFallback = DEFAULT_FONT_FALLBACK,
     colorScheme = DEFAULT_COLOR_SCHEME,
+    accent = '',
+    accentSoft = '',
   } = options
 
   const warnings = []
 
   // xmldom は既定のエラーハンドラで stderr へ直接書き出す。呼び出し側には
   // 例外のメッセージだけを見せたいので、内部ログは握って捨てる
-  const doc = new DOMParser({ onError: () => {} }).parseFromString(svgText, 'image/svg+xml')
+  const tinted = accent || accentSoft ? retint(svgText, accent, accentSoft) : svgText
+  const doc = new DOMParser({ onError: () => {} }).parseFromString(tinted, 'image/svg+xml')
   const svg = doc.documentElement
 
   if (!svg || svg.nodeName !== 'svg') {

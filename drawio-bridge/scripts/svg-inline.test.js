@@ -177,3 +177,30 @@ test('--color-scheme auto なら draw.io の指定をそのまま残す', () => 
 test('SVG でないものは例外にする', () => {
   assert.throws(() => inlineSvg('<html><body/></html>'), /SVG のルート要素/)
 })
+
+test('inlineSvg: accent を渡すと既定のテーマ色を貼り先の色へ寄せる', () => {
+  // Mermaid 変換で付く draw.io 既定色（紫系）のままだと、アクセント1色を原則にする
+  // 文書に貼ったとき原則が崩れる。線と面だけ寄せ、文字色は本文との調和のため残す。
+  const src = '<svg viewBox="0 0 100 50" xmlns="http://www.w3.org/2000/svg">'
+    + '<rect stroke="rgb(147, 112, 219)" fill="rgb(236, 236, 255)"/>'
+    + '<text fill="rgb(51, 51, 51)">文字</text></svg>'
+  const { svg } = inlineSvg(src, { idPrefix: 'f1', accent: '#2563eb', accentSoft: '#eef3fd' })
+  assert.ok(!svg.includes('147, 112, 219'), '線色が残っている')
+  assert.ok(!svg.includes('236, 236, 255'), '面色が残っている')
+  assert.match(svg, /#2563eb/)
+  assert.match(svg, /#eef3fd/)
+  assert.match(svg, /rgb\(51, 51, 51\)/, '文字色まで置き換えている')
+})
+
+test('inlineSvg: hex 表記の既定色にも効く', () => {
+  const src = '<svg viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg"><rect stroke="#9370db"/></svg>'
+  const { svg } = inlineSvg(src, { idPrefix: 'f2', accent: '#2563eb' })
+  assert.match(svg, /#2563eb/)
+  assert.ok(!svg.toLowerCase().includes('9370db'))
+})
+
+test('inlineSvg: accent 未指定なら色に手を触れない', () => {
+  const src = '<svg viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg"><rect stroke="rgb(147, 112, 219)"/></svg>'
+  const { svg } = inlineSvg(src, { idPrefix: 'f3' })
+  assert.match(svg, /rgb\(147, 112, 219\)/, 'accent 未指定なのに置き換わった')
+})

@@ -51,3 +51,13 @@ test('add: --assets でディレクトリを同梱コピーする', () => {
   const out = runHub(hub, ['add', doc, '--project', proj, '--assets', assets]).trim();
   assert.ok(fs.existsSync(path.join(path.dirname(out), 'assets', 'x.png')));
 });
+
+test('add: --assets はディレクトリ名を保つ（相対参照を壊さない）', () => {
+  const { base, hub, proj, doc } = setup();
+  const images = path.join(base, 'images');
+  fs.mkdirSync(images);
+  fs.writeFileSync(path.join(images, 'concept-01.png'), 'fake');
+  const out = runHub(hub, ['add', doc, '--project', proj, '--assets', images]).trim();
+  assert.ok(fs.existsSync(path.join(path.dirname(out), 'images', 'concept-01.png')), 'images/ が保たれていない');
+  assert.ok(!fs.existsSync(path.join(path.dirname(out), 'assets')), 'assets/ に改名されている');
+});

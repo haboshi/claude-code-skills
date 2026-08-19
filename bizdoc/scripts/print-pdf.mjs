@@ -166,5 +166,16 @@ try {
   ws.close();
 } finally {
   chrome.kill();
-  fs.rmSync(userDataDir, { recursive: true, force: true });
+  // Chrome は kill 直後もプロファイルへ書き込みを続けるため、待たずに消すと
+  // ENOTEMPTY で落ちる（recursive/force では防げない — force が抑えるのは ENOENT だけ）。
+  // PDF は既に書き出して stdout にパスも出した後なので、**後片付けの失敗で終了コードを
+  // 変えてはいけない**（実測: 並列実行で 6/6 の PDF が生成できているのにコマンドが失敗した）。
+  try {
+    fs.rmSync(userDataDir, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+  } catch (e) {
+    // 握りつぶすのは「Chrome がまだ掴んでいる」系だけに限る。権限・パス誤りのような
+    // 別の失敗まで飲み込むと、消し残しに気づけなくなる
+    if (!['ENOTEMPTY', 'EBUSY', 'EPERM', 'ENOENT'].includes(e?.code)) throw e;
+    console.warn(`warn: 一時プロファイルを削除できませんでした（PDF の生成は完了しています）: ${userDataDir} — ${e.code}`);
+  }
 }

@@ -2,6 +2,18 @@
 // hub.mjs — doc-hub CLI（add / list / reindex / open）
 // SSOT は projects/**（project.json / manifest.json）。index.html は使い捨て導出物であり、
 // 消しても reindex で同一内容が再生成される（タイムスタンプを埋め込まない）。
+//
+// ドキュメント本体（projects/**/docs/**/index.html）は SSOT だが、その中の 2 つの
+// **マーカー区間だけ**は導出領域として hub 側が書き換える（詳細は inject.mjs のヘッダ）。
+//   - <style data-bizdoc="tokens">      … add 時に tokens.css を注入
+//   - <!-- bizdoc:nav:start/end -->     … add で枠を作り、reindex が中身を貼り直す
+// マーカーの外には決して触れない。2 つは適用条件が違う（詳細は inject.mjs のヘッダ）:
+//   - tokens はマーカーを持つ文書だけが対象。持たない文書（旧文書・取込品）は 1 バイトも変えない
+//   - nav は保存される全文書が対象（差し込める本文要素があれば入れる）。既存文書への後付けだけは
+//     opt-in（nav apply）にして、明示の操作なしに過去の文書を書き換えない
+//
+// stdout 契約: add が印字するのは保存先 index.html の絶対パス 1 行のみ。
+// 注入まわりの診断は必ず console.warn（stderr）へ出す（console.log を足すと契約が壊れる）。
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -9,6 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { projectIdFromPath, resolveMainWorktreeRoot, slugify } from './project-id.mjs';
 import { renderIndex } from './render-index.mjs';
+import { hasNavFrame, hasTokensMarker, injectNavFrame, injectTokens, readTokensCss, refreshNavFile } from './inject.mjs';
 import {
   applyOverrides,
   createGroup,
@@ -137,6 +150,72 @@ function svgGate(html) {
   });
 }
 
+// 指定プロジェクトの、tokens マーカーを持つ保存済み文書へ現在の tokens.css を貼り直す。
+// 戻り値は書き換えた件数。
+function rethemeProject(projectId, accent) {
+  const docsDir = path.join(PROJECTS, projectId, 'docs');
+  if (!fs.existsSync(docsDir)) return 0;
+  const css = readTokensCss();
+  let n = 0;
+  for (const name of fs.readdirSync(docsDir)) {
+    const indexPath = path.join(docsDir, name, 'index.html');
+    if (!fs.existsSync(indexPath)) continue;
+    const html = fs.readFileSync(indexPath, 'utf8');
+    if (!hasTokensMarker(html)) continue;
+    const next = injectTokens(html, css, accent);
+    if (next === html) continue;
+    fs.writeFileSync(indexPath, next);
+    n++;
+  }
+  return n;
+}
+
+// project.json の accent を解決する。既存値があれば維持し、未設定のときだけ --accent を採用して
+// 書き戻す（同一プロジェクトの文書間でアクセントがぶれるのを防ぐ現行の約束をそのまま守る）。
+function applyAccent(proj, requested) {
+  const projJson = path.join(PROJECTS, proj.id, 'project.json');
+  if (proj.accent) {
+    // 保存値は小文字化して持つため、比較も正規化してから行う
+    // （#FF9900 と #ff9900 は同じ色。生比較すると無用な警告が出る）
+    if (requested && requested.trim().toLowerCase() !== String(proj.accent).trim().toLowerCase()) {
+      console.warn(`warn: このプロジェクトの accent は ${proj.accent} で確定済みのため --accent は無視します`);
+    }
+    return proj.accent;
+  }
+  if (!requested) return null;
+  if (!/^#[0-9a-fA-F]{6}$/.test(requested)) {
+    console.warn(`warn: --accent は #rrggbb 形式で指定してください（無視しました）: ${requested}`);
+    return null;
+  }
+  const value = requested.toLowerCase();
+  // (1) accent の永続化。ここが失敗したときだけ「確定できなかった」と扱う
+  let effective;
+  try {
+    const cur = JSON.parse(fs.readFileSync(projJson, 'utf8'));
+    if (!cur.accent) {
+      cur.accent = value;
+      fs.writeFileSync(projJson, JSON.stringify(cur, null, 2) + '\n');
+    }
+    effective = cur.accent;
+  } catch {
+    console.warn('warn: project.json を更新できなかったため accent を既定のまま保存します');
+    return null;
+  }
+  proj.accent = effective;
+
+  // (2) 既定色のまま保存済みの文書を同じ色へ揃える。ここが失敗しても (1) は確定済みなので、
+  //     今回の文書には必ず effective を使う（落とすと project.json と文書の色がずれる）。
+  //     取りこぼしは retheme コマンドでいつでも直せるため、警告に留めて処理を続ける。
+  try {
+    const n = rethemeProject(proj.id, effective);
+    if (n) console.warn(`info: アクセントの確定に伴い既存 ${n} 件を ${effective} で貼り直しました`);
+  } catch (e) {
+    console.warn(`warn: 既存文書の貼り直しに失敗しました（今回の文書には ${effective} を適用します）。`
+      + `後で \`hub.mjs retheme\` を実行してください: ${e?.message ?? e}`);
+  }
+  return effective;
+}
+
 function cmdAdd(htmlPath, opts) {
   ensureHub();
   if (!htmlPath || !fs.existsSync(htmlPath)) die(`HTML が見つかりません: ${htmlPath}`);
@@ -168,8 +247,20 @@ function cmdAdd(htmlPath, opts) {
   }
   const docDir = path.join(docsDir, name);
   fs.mkdirSync(docDir, { recursive: true });
-  fs.copyFileSync(htmlPath, path.join(docDir, 'index.html'));
-  if (opts.assets) fs.cpSync(opts.assets, path.join(docDir, 'assets'), { recursive: true });
+
+  // アクセント色: project.json に既存値があればそれを優先（文書間でぶれさせない）。
+  // 未設定のときだけ --accent を採用し、project.json へ書き戻す。
+  const accent = applyAccent(proj, opts.accent);
+
+  // 導出領域の注入。svgGate は上で注入前の原文に対して実行済み（原文検証の意味を保つ）
+  let outHtml = injectTokens(html, readTokensCss(), accent);
+  const framed = injectNavFrame(outHtml);
+  if (!framed.injected) console.warn('warn: 差し込める本文要素が無いため hub ナビを注入しませんでした（<body>・</head>・本文要素のいずれも見つからない）');
+  outHtml = framed.html;
+  fs.writeFileSync(path.join(docDir, 'index.html'), outHtml);
+  // 同梱ディレクトリは**元の名前のまま**コピーする（HTML 内の相対参照 images/... をそのまま活かす）。
+  // 従来どおり assets/ を渡せば assets/ に入るので、既存の使い方は変わらない。
+  if (opts.assets) fs.cpSync(opts.assets, path.join(docDir, path.basename(opts.assets)), { recursive: true });
 
   const now = new Date().toISOString();
   const manifest = {
@@ -238,12 +329,114 @@ function buildIndexData() {
   return applyOverrides(collectIndex(), ov);
 }
 
+// nav マーカーを持つ全ドキュメントの中身を貼り直す。nav を描く経路をここ 1 本に集約することで、
+// 新規追加（add → reindex）と既存の鮮度更新が同じコードを通り、冪等性が自明になる。
+// バイト列が変わるときだけ書き込む（無変更なら mtime も動かさない）。
+function refreshNavs(data) {
+  let written = 0;
+  for (const p of data.projects) {
+    for (const d of p.docs) {
+      const indexPath = path.join(PROJECTS, p.dir, 'docs', d.dir, 'index.html');
+      const r = refreshNavFile(indexPath, {
+        projectId: p.id,
+        label: p.label,
+        docs: p.docs,
+        selfDir: d.dir,
+      });
+      if (r === 'written') written++;
+    }
+  }
+  if (written) console.warn(`info: hub ナビを更新しました（${written}件）`);
+}
+
 function cmdReindex() {
   ensureHub();
-  const html = renderIndex(buildIndexData());
+  const data = buildIndexData();
+  const html = renderIndex(data);
   const tmp = path.join(HUB, `.index-${process.pid}.tmp`);
   fs.writeFileSync(tmp, html);
   fs.renameSync(tmp, path.join(HUB, 'index.html')); // 原子書き込み（iCloud 同期・並行実行への防御）
+  refreshNavs(data);
+}
+
+// 保存済みドキュメントを走査する共通処理。fn(indexPath, project, doc) が真を返した件数を数える。
+// manifest が壊れている／無いドキュメントも対象に含める — 壊れているのはメタデータであって
+// HTML 本体ではなく、むしろそういう文書ほど一覧へ戻る導線が要る（sibling 一覧からは除外される）。
+function eachDoc(fn) {
+  const { projects } = buildIndexData();
+  let hit = 0;
+  let total = 0;
+  for (const p of projects) {
+    for (const d of p.docs) {
+      total++;
+      const indexPath = path.join(PROJECTS, p.dir, 'docs', d.dir, 'index.html');
+      if (!fs.existsSync(indexPath)) continue;
+      if (fn(indexPath, p, d)) hit++;
+    }
+  }
+  return { hit, total };
+}
+
+// 既存・取込文書へ nav 枠を後から入れる（opt-in）。別デザインの取込品を勝手に書き換えないため、
+// add と違って自動では走らせない。--dry-run で対象だけ確認できる。
+function cmdNav(sub, opts) {
+  ensureHub();
+  if (sub !== 'apply') die(`不明なサブコマンド: nav ${sub ?? '(なし)'}（apply）`);
+  const dry = !!opts['dry-run'];
+  const targets = [];
+  const { total } = eachDoc((indexPath, p, d) => {
+    const html = fs.readFileSync(indexPath, 'utf8');
+    if (hasNavFrame(html)) return false;
+    const framed = injectNavFrame(html);
+    if (!framed.injected) {
+      console.warn(`skip: 差し込める本文要素が無いため対象外 — ${p.label} / ${d.dir}`);
+      return false;
+    }
+    targets.push({ indexPath, label: p.label, dir: d.dir, html: framed.html });
+    return true;
+  });
+  if (targets.length === 0) {
+    console.log(`nav 枠の無いドキュメントはありません（走査 ${total} 件）`);
+    return;
+  }
+  if (dry) {
+    console.log(`nav 枠を入れる対象 ${targets.length} 件（走査 ${total} 件）— --dry-run のため書き込みません:`);
+    for (const t of targets) console.log(`  ${t.label} / ${t.dir}`);
+    return;
+  }
+  for (const t of targets) fs.writeFileSync(t.indexPath, t.html);
+  cmdReindex(); // 枠に中身を入れるのは reindex の役目（描画経路は 1 本）
+  console.log(`nav を ${targets.length} 件に入れました（走査 ${total} 件）`);
+}
+
+// tokens マーカーを持つ文書へ、現在の tokens.css を貼り直す（テンプレ更新の遡及）。
+// マーカーを持たない文書（フル CSS を焼き込んだ旧文書・取込品）は対象外。
+function cmdRetheme(opts) {
+  ensureHub();
+  const dry = !!opts['dry-run'];
+  const css = readTokensCss();
+  const changed = [];
+  const { total } = eachDoc((indexPath, p, d) => {
+    const html = fs.readFileSync(indexPath, 'utf8');
+    if (!hasTokensMarker(html)) return false;
+    const next = injectTokens(html, css, p.accent);
+    if (next === html) return false;
+    changed.push({ indexPath, label: p.label, dir: d.dir, html: next });
+    return true;
+  });
+  // 注: 1 プロジェクト分の同じ処理は rethemeProject() にもある（accent 確定時に呼ぶ）。
+  // こちらは全プロジェクト走査 + --dry-run + 一覧表示を担当する。
+  if (changed.length === 0) {
+    console.log(`更新の要るドキュメントはありません（走査 ${total} 件）`);
+    return;
+  }
+  if (dry) {
+    console.log(`tokens を貼り直す対象 ${changed.length} 件（走査 ${total} 件）— --dry-run のため書き込みません:`);
+    for (const c of changed) console.log(`  ${c.label} / ${c.dir}`);
+    return;
+  }
+  for (const c of changed) fs.writeFileSync(c.indexPath, c.html);
+  console.log(`tokens を ${changed.length} 件に貼り直しました（走査 ${total} 件）`);
 }
 
 function cmdList(opts) {
@@ -399,7 +592,7 @@ function parseArgs(argv) {
   const args = { _: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--update' || a === '--new' || a === '--json') args[a.slice(2)] = true;
+    if (a === '--update' || a === '--new' || a === '--json' || a === '--dry-run') args[a.slice(2)] = true;
     else if (a.startsWith('--')) args[a.slice(2)] = argv[++i];
     else args._.push(a);
   }
@@ -412,6 +605,8 @@ if (cmd === 'add') cmdAdd(args._[1], args);
 else if (cmd === 'reindex') cmdReindex();
 else if (cmd === 'list') cmdList(args);
 else if (cmd === 'open') cmdOpen(args);
+else if (cmd === 'nav') cmdNav(args._[1], args);
+else if (cmd === 'retheme') cmdRetheme(args);
 else if (cmd === 'group') cmdGroup(args._[1], args._.slice(2), args);
 else if (cmd === 'project') cmdProject(args._[1], args._.slice(2));
-else die(`使い方: hub.mjs <add|list|reindex|open|group|project> ...（不明なコマンド: ${cmd ?? '(なし)'}）`);
+else die(`使い方: hub.mjs <add|list|reindex|open|nav|retheme|group|project> ...（不明なコマンド: ${cmd ?? '(なし)'}）`);

@@ -120,6 +120,19 @@ test('viewBox が無ければ width/height を残して警告する', () => {
   assert.ok(warnings.some((w) => w.includes('viewBox')))
 })
 
+test('既にフォールバックがある指定では警告を出さない', () => {
+  // Mermaid 変換の出力は "Trebuchet MS, Verdana, Arial, sans-serif" のように
+  // sans-serif で終わる。注入不要なだけで異常ではないので警告してはいけない
+  const body = `<g style="font-family: 'Trebuchet MS', Verdana, Arial, sans-serif;"><text>日本語</text></g>`
+  const { warnings } = inlineSvg(svgOf({ body }), { idPrefix: 'fig1' })
+  assert.deepEqual(warnings, [])
+})
+
+test('font-family の指定が本当に無いときは警告する', () => {
+  const { warnings } = inlineSvg(svgOf({ body: '<text>日本語</text>' }), { idPrefix: 'fig1' })
+  assert.ok(warnings.some((w) => w.includes('font-family')))
+})
+
 test('色をライト固定にして白背景で線が消えるのを防ぐ', () => {
   // draw.io は color-scheme: light dark を書き出すため、閲覧側がダークだと
   // light-dark(#000000, #ffffff) が白を選び、白背景の文書で線が消える

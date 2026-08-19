@@ -12,6 +12,13 @@ import { DOMParser, onErrorStopParsing } from '@xmldom/xmldom'
 const ROOT_CELL_ID = '0'
 const LAYER_CELL_ID = '1'
 
+/**
+ * ラベルやカスタム属性を持つセルは <UserObject>/<object> でラップされ、
+ * id はラッパー側に載って mxCell が入れ子の子になる（Mermaid 変換の出力がこの形）。
+ * 検査ではラッパーと中身を1つのセルとして扱う。
+ */
+const WRAPPER_TAGS = new Set(['UserObject', 'object'])
+
 const err = (code, message) => ({ severity: 'error', code, message })
 const warn = (code, message) => ({ severity: 'warn', code, message })
 
@@ -78,6 +85,45 @@ function collectModels(doc, issues) {
   return models
 }
 
+/**
+ * root 直下の内容セルを集める。UserObject/object でラップされたものは
+ * 「id はラッパー、属性は入れ子の mxCell」という合成ビューにして返す。
+ */
+function collectCells(root) {
+  const cells = []
+
+  for (let node = root.firstChild; node; node = node.nextSibling) {
+    if (node.nodeType !== 1) continue
+
+    if (node.nodeName === 'mxCell') {
+      cells.push({ el: node, attrEl: node, geometryHost: node })
+      continue
+    }
+
+    if (WRAPPER_TAGS.has(node.nodeName)) {
+      const inner = elementsByTag(node, 'mxCell')[0]
+      if (inner) {
+        // id はラッパー、vertex/edge/parent/style は内側の mxCell にある
+        cells.push({ el: node, attrEl: inner, geometryHost: inner, wrapper: node })
+      } else {
+        cells.push({ el: node, attrEl: node, geometryHost: node, wrapper: node })
+      }
+    }
+  }
+  return cells
+}
+
+/** ラッパーを優先して属性を引く（id・value はラッパー、それ以外は mxCell 側）。 */
+function attr(cell, name) {
+  if (name === 'id') return cell.el.getAttribute('id')
+  if (name === 'value') {
+    return cell.el.getAttribute('value')
+      ?? cell.el.getAttribute('label')
+      ?? cell.attrEl.getAttribute('value')
+  }
+  return cell.attrEl.getAttribute(name) ?? cell.el.getAttribute(name)
+}
+
 function checkComments(doc, issues) {
   for (const n of walk(doc)) {
     if (n.nodeType === 8) {
@@ -108,11 +154,11 @@ function checkModel(model, issues, pageLabel) {
     return
   }
 
-  const cells = elementsByTag(roots[0], 'mxCell')
+  const cells = collectCells(roots[0])
   const ids = new Set()
 
   for (const cell of cells) {
-    const id = cell.getAttribute('id')
+    const id = attr(cell, 'id')
     if (id === null || id === '') {
       issues.push(err('CELL_NO_ID', at('id を持たない mxCell があります')))
       continue
@@ -126,10 +172,10 @@ function checkModel(model, issues, pageLabel) {
   if (!ids.has(ROOT_CELL_ID)) {
     issues.push(err('MISSING_ROOT_CELL', at(`<mxCell id="${ROOT_CELL_ID}"/> がありません。図が空で開きます`)))
   }
-  const layer = cells.find((c) => c.getAttribute('id') === LAYER_CELL_ID)
+  const layer = cells.find((c) => attr(c, 'id') === LAYER_CELL_ID)
   if (!layer) {
     issues.push(err('MISSING_LAYER_CELL', at(`<mxCell id="${LAYER_CELL_ID}" parent="0"/> がありません。図が空で開きます`)))
-  } else if (layer.getAttribute('parent') !== ROOT_CELL_ID) {
+  } else if (attr(layer, 'parent') !== ROOT_CELL_ID) {
     issues.push(err(
       'LAYER_BAD_PARENT',
       at(`id="${LAYER_CELL_ID}" の parent は "${ROOT_CELL_ID}" である必要があります`),
@@ -139,15 +185,15 @@ function checkModel(model, issues, pageLabel) {
   // 頂点 id を先に集める（辺の参照解決に要る）
   const vertexIds = new Set()
   for (const cell of cells) {
-    if (cell.getAttribute('vertex') === '1') vertexIds.add(cell.getAttribute('id'))
+    if (attr(cell, 'vertex') === '1') vertexIds.add(attr(cell, 'id'))
   }
 
   for (const cell of cells) {
-    const id = cell.getAttribute('id')
+    const id = attr(cell, 'id')
     if (id === ROOT_CELL_ID || id === LAYER_CELL_ID) continue
 
-    const isVertex = cell.getAttribute('vertex') === '1'
-    const isEdge = cell.getAttribute('edge') === '1'
+    const isVertex = attr(cell, 'vertex') === '1'
+    const isEdge = attr(cell, 'edge') === '1'
 
     if (isVertex && isEdge) {
       issues.push(err('VERTEX_AND_EDGE', at(`id="${id}" が vertex と edge を両方 1 にしています（排他）`)))
@@ -156,14 +202,14 @@ function checkModel(model, issues, pageLabel) {
       issues.push(warn('NEITHER_VERTEX_NOR_EDGE', at(`id="${id}" が vertex でも edge でもありません`)))
     }
 
-    const parent = cell.getAttribute('parent')
+    const parent = attr(cell, 'parent')
     if (parent === null || parent === '') {
       issues.push(err('CELL_NO_PARENT', at(`id="${id}" に parent がありません`)))
     } else if (!ids.has(parent)) {
       issues.push(err('DANGLING_PARENT', at(`id="${id}" の parent="${parent}" が存在しません`)))
     }
 
-    const geometries = elementsByTag(cell, 'mxGeometry')
+    const geometries = elementsByTag(cell.geometryHost, 'mxGeometry')
     const geometry = geometries[0]
 
     if (isEdge) {
@@ -178,7 +224,7 @@ function checkModel(model, issues, pageLabel) {
       }
 
       for (const end of ['source', 'target']) {
-        const ref = cell.getAttribute(end)
+        const ref = attr(cell, end)
         if (ref === null || ref === '') {
           issues.push(warn(
             'EDGE_ENDPOINT_MISSING',
@@ -211,8 +257,8 @@ function checkModel(model, issues, pageLabel) {
     }
 
     // value に生タグが入っているのに html=1 が無いと、タグがそのまま表示される
-    const value = cell.getAttribute('value') || ''
-    const style = cell.getAttribute('style') || ''
+    const value = attr(cell, 'value') || ''
+    const style = attr(cell, 'style') || ''
     if (/<[a-zA-Z/]/.test(value) && !/(^|;)\s*html\s*=\s*1/.test(style)) {
       issues.push(warn(
         'HTML_LABEL_WITHOUT_FLAG',

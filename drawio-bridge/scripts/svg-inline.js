@@ -77,6 +77,7 @@ function prefixIds(svg, prefix) {
 /** font-family の指定に日本語フォントのフォールバックを足す。 */
 function injectFontFallback(svg, fallback) {
   let injected = 0
+  let found = 0
 
   const addTo = (value) => {
     // 既に日本語フォントらしきものが並んでいれば触らない
@@ -87,6 +88,7 @@ function injectFontFallback(svg, fallback) {
   eachElement(svg, (el) => {
     const fontAttr = el.getAttribute('font-family')
     if (fontAttr) {
+      found += 1
       const next = addTo(fontAttr)
       if (next) {
         el.setAttribute('font-family', next)
@@ -97,6 +99,7 @@ function injectFontFallback(svg, fallback) {
     const style = el.getAttribute('style')
     if (style && style.includes('font-family')) {
       const next = style.replace(/font-family:\s*([^;]+)/g, (m, fonts) => {
+        found += 1
         const merged = addTo(fonts.trim())
         if (!merged) return m
         injected += 1
@@ -106,7 +109,7 @@ function injectFontFallback(svg, fallback) {
     }
   })
 
-  return injected
+  return { injected, found }
 }
 
 /**
@@ -168,8 +171,10 @@ export function inlineSvg(svgText, options = {}) {
   else warnings.push('--id-prefix が未指定です。同じ HTML に複数の図を貼ると id が衝突します')
 
   if (fontFallback && JAPANESE.test(svgText)) {
-    const injected = injectFontFallback(svg, fontFallback)
-    if (injected === 0) warnings.push('日本語テキストがありますが font-family の指定が見つかりませんでした')
+    // 指定が1つも無いときだけ警告する。指定があってフォールバック済み
+    // （Mermaid 変換の出力は Trebuchet MS, …, sans-serif）なら注入不要で正常
+    const { found } = injectFontFallback(svg, fontFallback)
+    if (found === 0) warnings.push('日本語テキストがありますが font-family の指定が見つかりませんでした')
   }
 
   // HTML に貼るので XML 宣言・DOCTYPE・コメントは落とす

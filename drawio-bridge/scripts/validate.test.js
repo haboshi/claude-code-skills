@@ -33,6 +33,65 @@ test('mxfile でラップした形も通る', () => {
   assert.equal(validateDrawio(wrapped).ok, true)
 })
 
+// draw.io がラベル付きセルを書き出すときの正規形。Mermaid 変換の出力がこの形になる。
+// id はラッパー側、vertex/edge/parent/style は入れ子の mxCell 側に載る。
+const WRAPPED = `<mxGraphModel>
+  <root>
+    <mxCell id="0"/>
+    <mxCell id="1" parent="0"/>
+    <UserObject label="開始" mermaidId="n:A" id="2">
+      <mxCell parent="1" style="rounded=1;html=1;" vertex="1">
+        <mxGeometry x="40" y="40" width="140" height="60" as="geometry"/>
+      </mxCell>
+    </UserObject>
+    <UserObject label="終了" id="3">
+      <mxCell parent="1" style="rounded=1;html=1;" vertex="1">
+        <mxGeometry x="280" y="40" width="140" height="60" as="geometry"/>
+      </mxCell>
+    </UserObject>
+    <UserObject label="次へ" id="4">
+      <mxCell parent="1" style="html=1;" edge="1" source="2" target="3">
+        <mxGeometry relative="1" as="geometry"/>
+      </mxCell>
+    </UserObject>
+  </root>
+</mxGraphModel>`
+
+test('UserObject でラップされたセルを正しく読む', () => {
+  // 公式スキルの Mermaid 変換が出す形式。ここを誤ると draw.io 自身の出力を不合格にする
+  const result = validateDrawio(WRAPPED)
+  assert.equal(result.ok, true, `issues: ${JSON.stringify(result.issues)}`)
+  assert.deepEqual(result.issues, [])
+})
+
+test('object タグでラップされた形も読む', () => {
+  assert.equal(validateDrawio(WRAPPED.replace(/UserObject/g, 'object')).ok, true)
+})
+
+test('ラップされていても id 重複を検出する', () => {
+  const codes = codesOf(WRAPPED.replace('id="3"', 'id="2"'))
+  assert.ok(codes.includes('DUPLICATE_ID'))
+})
+
+test('ラップされていても辺の未解決端点を検出する', () => {
+  const codes = codesOf(WRAPPED.replace('source="2" target="3"', 'source="2" target="nope"'))
+  assert.ok(codes.includes('EDGE_DANGLING_ENDPOINT'))
+})
+
+test('ラップされていても自己閉じの辺を検出する', () => {
+  const broken = WRAPPED.replace(
+    /<mxCell parent="1" style="html=1;" edge="1" source="2" target="3">\s*<mxGeometry relative="1" as="geometry"\/>\s*<\/mxCell>/,
+    '<mxCell parent="1" style="html=1;" edge="1" source="2" target="3"/>',
+  )
+  assert.notEqual(broken, WRAPPED, 'ミューテーションが効いていない')
+  assert.ok(codesOf(broken).includes('EDGE_NO_GEOMETRY'))
+})
+
+test('ラップされたラベルの \\n も警告する', () => {
+  const result = validateDrawio(WRAPPED.replace('label="開始"', 'label="開始\\n続き"'))
+  assert.ok(result.issues.some((i) => i.code === 'LITERAL_BACKSLASH_N'))
+})
+
 test('1: 整形式でない XML を落とす', () => {
   const result = validateDrawio('<mxGraphModel><root><mxCell id="0"/></mxGraphModel>')
   assert.equal(result.ok, false)

@@ -33,10 +33,10 @@ body {
 }
 p, li, .sec-lede, figcaption, .lede { text-wrap: pretty; }
 h1, h2, h3 { text-wrap: balance; }
-/* 日本語の文節折返し（BudouX）。「〜を誰も見てい/ない」型の途中折れを文節境界へ移す。
-   短いまとまりのテキストだけに適用する — 本文段落全体に掛けると行末の凸凹が過剰になる */
+/* 日本語の文節折返し（BudouX）。「〜が加わったた/めです」型の途中折れを文節境界へ移す。
+   本文段落にも適用する — 実測で行末の凸凹は許容範囲で、文節折返しの利得が上回った（v0.7.3） */
 h1, h2, h3, .sec-lede, figcaption, .lede, .exec-summary ol li, .conclusion ol li, .kpi .label,
-.card h3, .cover .kicker { word-break: auto-phrase; }
+.card h3, .cover .kicker, section > p, section li { word-break: auto-phrase; }
 body::before { content: ""; display: block; height: 6px; background: var(--accent); margin: 0 -2.2rem 2.4rem; }
 p { margin: .55rem 0; }
 a { color: var(--accent); text-decoration: none; }

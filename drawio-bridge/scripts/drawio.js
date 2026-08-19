@@ -39,11 +39,13 @@ const USAGE = `drawio-bridge — .drawio の検証・変換・HTML 埋め込み�
       error があれば exit 1（warn のみなら exit 0）。
 
   export --in <file.drawio> --out <file.svg> [--format svg|png|pdf|xml]
-         [--border 10] [--layout verticalFlow] [--no-embed]
+         [--border 10] [--layout verticalFlow] [--page 2] [--no-embed]
       draw.io Desktop CLI で変換する。既定は編集用の原本を埋め込む（-e）。
+      複数ページの図は既定で1ページ目のみ。--page（1 始まり）で選ぶ。
 
   inline --in <file.drawio|file.svg> [--out <file.svg>] [--id-prefix fig1]
-         [--max-width 780] [--no-font-fallback] [--color-scheme light|dark|auto]
+         [--page 2] [--max-width 780] [--no-font-fallback]
+         [--color-scheme light|dark|auto]
       HTML に inline 埋め込みできる SVG に整えて stdout（または --out）に出す。
       width/height を外して viewBox を残し、id を接頭辞で衝突回避し、
       日本語のフォントフォールバックを足す。既定で色をライト固定にする
@@ -62,6 +64,7 @@ const OPTIONS = {
   format: { type: 'string' },
   border: { type: 'string' },
   layout: { type: 'string' },
+  page: { type: 'string' },
   'id-prefix': { type: 'string' },
   'max-width': { type: 'string' },
   'color-scheme': { type: 'string' },
@@ -74,6 +77,16 @@ const OPTIONS = {
 function fail(message, code = 1) {
   process.stderr.write(`${message}\n`)
   process.exit(code)
+}
+
+/** --page を 1 始まりの整数として読む。未指定なら undefined。 */
+function parsePage(values) {
+  if (values.page === undefined) return undefined
+  const page = Number(values.page)
+  if (!Number.isInteger(page) || page < 1) {
+    fail(`--page は 1 以上の整数で指定してください（指定値: ${values.page}）`, 2)
+  }
+  return page
 }
 
 function requireIn(values) {
@@ -119,6 +132,7 @@ function cmdExport(values) {
       border: values.border === undefined ? 10 : Number(values.border),
       embedDiagram: !values['no-embed'],
       layout: values.layout,
+      pageIndex: parsePage(values),
     })
     process.stderr.write(`変換しました: ${values.out}\n`)
     if (result.stderr) process.stderr.write(`${result.stderr}\n`)
@@ -128,7 +142,7 @@ function cmdExport(values) {
 }
 
 /** .drawio なら CLI で SVG に変換してから、.svg ならそのまま後処理に渡す。 */
-function loadSvg(input) {
+function loadSvg(input, pageIndex) {
   if (extname(input).toLowerCase() === '.svg') return readFileSync(input, 'utf8')
 
   if (!findDrawioBin()) {
@@ -140,7 +154,7 @@ function loadSvg(input) {
   const workDir = mkdtempSync(join(tmpdir(), 'drawio-bridge-'))
   const svgPath = join(workDir, 'diagram.svg')
   try {
-    runExport({ input, output: svgPath, format: 'svg' })
+    runExport({ input, output: svgPath, format: 'svg', pageIndex })
     return readFileSync(svgPath, 'utf8')
   } finally {
     rmSync(workDir, { recursive: true, force: true })
@@ -150,9 +164,11 @@ function loadSvg(input) {
 function cmdInline(values) {
   const input = requireIn(values)
 
+  const pageIndex = parsePage(values)
+
   let svgText
   try {
-    svgText = loadSvg(input)
+    svgText = loadSvg(input, pageIndex)
   } catch (e) {
     fail(e.message, e.code === 'DRAWIO_CLI_NOT_FOUND' ? 3 : 1)
   }

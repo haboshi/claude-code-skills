@@ -42,7 +42,7 @@ export function findDrawioBin(env = process.env) {
 /**
  * .drawio / .mmd を指定フォーマットへ変換する。
  * @param {{input: string, output: string, format?: string, border?: number,
- *          embedDiagram?: boolean, layout?: string, bin?: string}} options
+ *          embedDiagram?: boolean, layout?: string, pageIndex?: number, bin?: string}} options
  * @returns {{ok: boolean, bin: string, args: string[], stderr: string}}
  */
 export function runExport(options) {
@@ -53,6 +53,7 @@ export function runExport(options) {
     border = 10,
     embedDiagram = true,
     layout,
+    pageIndex,
     bin = findDrawioBin(),
   } = options
 
@@ -66,6 +67,15 @@ export function runExport(options) {
   // 埋め込みは PNG/SVG/PDF のみ。xml 出力（Mermaid 変換・レイアウト）に付けると無意味
   if (embedDiagram && format !== 'xml') args.push('-e')
   if (layout) args.push('--layout', layout)
+  // 複数ページの .drawio は既定で1ページ目だけが出る。-p は 1 始まり
+  if (pageIndex !== undefined) {
+    if (!Number.isInteger(pageIndex) || pageIndex < 1) {
+      const error = new Error(`--page は 1 以上の整数で指定してください（指定値: ${pageIndex}）`)
+      error.code = 'DRAWIO_BAD_PAGE'
+      throw error
+    }
+    args.push('-p', String(pageIndex))
+  }
   args.push('-o', output, input)
 
   const result = spawnSync(bin, args, {

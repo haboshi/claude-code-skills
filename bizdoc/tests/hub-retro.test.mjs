@@ -151,3 +151,15 @@ test('nav apply: manifest が無い文書にも入る（sibling には出さな�
   assert.ok(fs.readFileSync(orphan, 'utf8').includes('bizdoc-hubnav'), 'manifest 無し文書に入っていない');
   assert.ok(fs.readFileSync(seedOut, 'utf8').includes('20260101-nomanifest') === false, '破損 doc が sibling に出ている');
 });
+
+test('reindex: nav 枠を持たない既存文書を黙って書き換えない（後付けは nav apply の opt-in）', () => {
+  // ヘッダで「既存文書への後付けは opt-in」と約束している。reindex がそれを破ると、
+  // 明示の操作なしに過去の文書が書き換わる。
+  const { base, hub, proj } = setup();
+  const seedOut = runHub(hub, ['add', write(base, 'r1.html', DOC('起点')), '--project', proj, '--slug', 'seed']).trim();
+  const legacy = seedLegacy(hub, projectIdOf(seedOut), '20260101-untouched-by-reindex', LEGACY('取込品'));
+  const before = fs.readFileSync(legacy, 'utf8');
+  runHub(hub, ['reindex']);
+  assert.equal(fs.readFileSync(legacy, 'utf8'), before, 'reindex が nav 未注入の文書を書き換えた');
+  assert.ok(!fs.readFileSync(legacy, 'utf8').includes('bizdoc:nav'), 'nav が勝手に入った');
+});

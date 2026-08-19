@@ -173,6 +173,9 @@ try {
   try {
     fs.rmSync(userDataDir, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
   } catch (e) {
-    console.warn(`warn: 一時プロファイルを削除できませんでした（PDF の生成は完了しています）: ${userDataDir} — ${e?.code ?? e}`);
+    // 握りつぶすのは「Chrome がまだ掴んでいる」系だけに限る。権限・パス誤りのような
+    // 別の失敗まで飲み込むと、消し残しに気づけなくなる
+    if (!['ENOTEMPTY', 'EBUSY', 'EPERM', 'ENOENT'].includes(e?.code)) throw e;
+    console.warn(`warn: 一時プロファイルを削除できませんでした（PDF の生成は完了しています）: ${userDataDir} — ${e.code}`);
   }
 }

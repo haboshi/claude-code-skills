@@ -137,6 +137,72 @@ test('runExport は不正な pageIndex を例外にする', () => {
   )
 })
 
+test('数値・列挙の不正な引数を exit 2 で弾く', () => {
+  withDiagram(({ dir, path }) => {
+    const out = join(dir, 'o.svg')
+    const cases = [
+      [['inline', '--in', path, '--max-width', 'abc'], /--max-width/],
+      [['inline', '--in', path, '--max-width', '0'], /--max-width/],
+      [['inline', '--in', path, '--color-scheme', 'ligth'], /--color-scheme/],
+      [['export', '--in', path, '--out', out, '--format', 'bogus'], /--format/],
+      [['export', '--in', path, '--out', out, '--border', 'abc'], /--border/],
+    ]
+    for (const [args, pattern] of cases) {
+      const result = runCli(args)
+      assert.equal(result.status, 2, `${args.join(' ')} が弾かれていない`)
+      assert.match(result.stderr, pattern)
+      assert.equal(existsSync(out), false, '不正な指定なのに出力を作っている')
+    }
+  })
+})
+
+test('--max-width が不正でも検査を無音で消さない', () => {
+  // Number('abc') = NaN で比較が常に false になり、幅超過の警告が消える経路
+  withDiagram(({ path }) => {
+    const result = runCli(['inline', '--in', path, '--max-width', 'abc'])
+    assert.notEqual(result.status, 0, '不正値を受け入れて成功している')
+  })
+})
+
+test('範囲外の --page を変換前に弾く', () => {
+  withDiagram(({ dir, path }) => {
+    const out = join(dir, 'oob.svg')
+    const result = runCli(['export', '--in', path, '--out', out, '--page', '99'])
+    assert.equal(result.status, 2, `stderr: ${result.stderr}`)
+    assert.match(result.stderr, /範囲外/)
+    assert.equal(existsSync(out), false, '範囲外なのに出力を作っている')
+  })
+})
+
+test('壊れた .drawio を inline に渡すと検証で止まる', () => {
+  withDiagram(({ dir }) => {
+    const broken = join(dir, 'broken.drawio')
+    writeFileSync(broken, MINIMAL.replace('<mxCell id="0"/>', ''))
+    const result = runCli(['inline', '--in', broken, '--id-prefix', 'x'])
+    assert.equal(result.status, 1)
+    assert.match(result.stderr, /MISSING_ROOT_CELL/)
+    assert.equal(result.stdout, '', '検証に落ちたのに SVG を出している')
+  })
+})
+
+test('読めない入力で生のスタックトレースを出さない', () => {
+  const result = runCli(['validate', '--in', '/nonexistent/nope.drawio'])
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /入力を読めません/)
+  assert.ok(!result.stderr.includes('at '), 'スタックトレースが漏れている')
+})
+
+test('SVG でないものを inline に渡しても生のスタックトレースを出さない', () => {
+  withDiagram(({ dir }) => {
+    const junk = join(dir, 'junk.svg')
+    writeFileSync(junk, 'これは SVG ではない')
+    const result = runCli(['inline', '--in', junk])
+    assert.equal(result.status, 1)
+    assert.match(result.stderr, /SVG として読めません/)
+    assert.ok(!result.stderr.includes('xmldom'), '内部実装の詳細が漏れている')
+  })
+})
+
 // 以下は draw.io Desktop がある環境でのみ実行する
 const bin = findDrawioBin()
 

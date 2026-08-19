@@ -245,10 +245,16 @@ function checkModel(model, issues, pageLabel) {
       if (!geometry) {
         issues.push(err('VERTEX_NO_GEOMETRY', at(`id="${id}" は vertex ですが mxGeometry がありません`)))
       } else {
+        // 辺ラベル（矢印に付けたラベル）は辺の子頂点で、位置を relative + offset で
+        // 決めるため width/height を持たない。draw.io 自身がこの形で保持する正規形。
+        const isRelative = geometry.getAttribute('relative') === '1'
+
         for (const dim of ['width', 'height']) {
           const raw = geometry.getAttribute(dim)
           if (raw === null || raw === '') {
-            issues.push(err('VERTEX_NO_SIZE', at(`id="${id}" の mxGeometry に ${dim} がありません`)))
+            if (!isRelative) {
+              issues.push(err('VERTEX_NO_SIZE', at(`id="${id}" の mxGeometry に ${dim} がありません`)))
+            }
           } else if (Number(raw) < 0) {
             issues.push(err('NEGATIVE_SIZE', at(`id="${id}" の ${dim} が負の値です（${raw}）`)))
           }
@@ -298,4 +304,22 @@ export function validateDrawio(xml) {
   })
 
   return { ok: !issues.some((i) => i.severity === 'error'), issues }
+}
+
+/**
+ * .drawio のページ数を数える。裸の mxGraphModel は 1 ページ。
+ * @param {string} xml
+ * @returns {number} 数えられないときは 0
+ */
+export function countPages(xml) {
+  try {
+    const doc = new DOMParser({ onError: onErrorStopParsing }).parseFromString(xml, 'text/xml')
+    const root = doc.documentElement
+    if (!root) return 0
+    if (root.nodeName === 'mxGraphModel') return 1
+    if (root.nodeName === 'mxfile') return elementsByTag(root, 'diagram').length
+    return 0
+  } catch {
+    return 0
+  }
 }

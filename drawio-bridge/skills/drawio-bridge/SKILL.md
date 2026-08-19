@@ -69,7 +69,7 @@ HTML に inline 埋め込みできる SVG に整えて stdout（または `--out
 
 - `width` / `height` を外し `viewBox` を残す（`max-width: 100%` で本文幅に追随する）
 - XML 宣言・DOCTYPE・コメントを落とす
-- `--id-prefix` で全 id と `url(#…)` / `href="#…"` 参照を付け替える — **同じ HTML に複数の図を貼るなら必須**（draw.io は mxCell の id をそのまま SVG の id にするため `id="0"` `id="1"` が確実に衝突する）
+- `--id-prefix` で全 id と、それを指す `url(#…)` / `href="#…"` / `<style>` 内のセレクタを付け替える — 同じ HTML に複数の図を貼るときの衝突回避（ルート svg と defs の gradient / marker が id を持つ）
 - 日本語があれば `font-family` に日本語フォントのフォールバックを足す（draw.io の export は `Helvetica` しか書かない）
 - 色をライト固定にする（`--color-scheme dark|auto` で変更可）。draw.io の SVG は
   `color-scheme: light dark` を持ち閲覧環境のダーク設定に追随するため、白基調の文書に
@@ -102,7 +102,7 @@ node "$DB_SCRIPTS/drawio.js" inline --in diagram.drawio --id-prefix fig1 > fig1.
 |---|---|
 | 0 | 成功（warn は stderr に出るが成功） |
 | 1 | 検証エラー、または変換失敗 |
-| 2 | 引数が不正 |
+| 2 | 引数が不正（未知の値・範囲外の `--page` を含む） |
 | 3 | draw.io Desktop が見つからない（stderr に導入手順を出す） |
 | 4 | npm 依存が入っていない（stderr に `npm install` の手順を出す） |
 

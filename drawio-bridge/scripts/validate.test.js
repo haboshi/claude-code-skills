@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { validateDrawio } from './validate.js'
+import { validateDrawio, countPages } from './validate.js'
 
 /** 正常な図。各テストはここから1箇所だけ壊して、その違反が出ることを見る。 */
 const VALID = `<mxGraphModel adaptiveColors="auto">
@@ -90,6 +90,39 @@ test('ラップされていても自己閉じの辺を検出する', () => {
 test('ラップされたラベルの \\n も警告する', () => {
   const result = validateDrawio(WRAPPED.replace('label="開始"', 'label="開始\\n続き"'))
   assert.ok(result.issues.some((i) => i.code === 'LITERAL_BACKSLASH_N'))
+})
+
+// 矢印にラベルを付けると辺の子頂点として生成される。位置は relative + offset で
+// 決まるので width/height を持たない。draw.io 自身が往復でこの形を保持する。
+const EDGE_LABEL = VALID.replace('</root>', `    <mxCell id="e1lbl" value="はい" style="edgeLabel;html=1;resizable=0;" vertex="1" connectable="0" parent="e1">
+      <mxGeometry x="-0.1" y="1" relative="1" as="geometry"><mxPoint as="offset"/></mxGeometry>
+    </mxCell>
+  </root>`)
+
+test('辺ラベル（width/height を持たない子頂点）を誤って落とさない', () => {
+  assert.notEqual(EDGE_LABEL, VALID, 'fixture が組み立てられていない')
+  const result = validateDrawio(EDGE_LABEL)
+  assert.equal(result.ok, true, `issues: ${JSON.stringify(result.issues)}`)
+  assert.deepEqual(result.issues, [])
+})
+
+test('relative でない通常の頂点は width/height 必須のまま', () => {
+  const codes = codesOf(VALID.replace('width="140" height="60"', ''))
+  assert.ok(codes.includes('VERTEX_NO_SIZE'))
+})
+
+test('relative な頂点でも負の寸法は落とす', () => {
+  const codes = codesOf(EDGE_LABEL.replace(
+    '<mxGeometry x="-0.1" y="1" relative="1" as="geometry">',
+    '<mxGeometry x="-0.1" y="1" width="-10" relative="1" as="geometry">',
+  ))
+  assert.ok(codes.includes('NEGATIVE_SIZE'))
+})
+
+test('countPages がページ数を数える', () => {
+  assert.equal(countPages(VALID), 1)
+  assert.equal(countPages(`<mxfile><diagram id="a">${VALID}</diagram><diagram id="b">${VALID}</diagram></mxfile>`), 2)
+  assert.equal(countPages('<not-xml'), 0)
 })
 
 test('1: 整形式でない XML を落とす', () => {

@@ -3,8 +3,8 @@
  *
  * draw.io の SVG をそのまま貼ると次の問題が出る（いずれも実出力で確認済み）:
  *  - width/height が px 固定で、本文幅に追随しない
- *  - mxCell の id がそのまま SVG の id になるため、複数の図を同じ HTML に
- *    貼ると id="0" / id="1" が確実に衝突する
+ *  - ルート svg と defs（gradient / marker）が id を持ち、<style> のセレクタや
+ *    url(#…) から参照される。複数の図を同じ HTML に貼ると衝突しうる
  *  - font-family が Helvetica だけで、日本語のフォールバックが無い
  *  - XML 宣言・DOCTYPE・コメントが付いており HTML には不要
  *  - color-scheme: light dark と light-dark(…) により閲覧環境のダーク設定に
@@ -69,14 +69,22 @@ function prefixIds(svg, prefix) {
       const next = rewriteRef(attr.value)
       // setAttribute('xlink:href', ...) は prefix 付きの名前を受け付けず
       // NamespaceError になるため、Attr の値を直接置き換える
-      if (next !== attr.value) attr.value = next
+      if (next !== attr.value) attr.nodeValue = attr.value = next
     }
   })
+
+  // draw.io は <style> 内の CSS セレクタ（#ge-svg-… { --ge-adaptive-bg: … }）から
+  // ルート id を参照する。属性だけ付け替えるとセレクタが実体を失い、
+  // ダークテーマで背景変数が未定義になる
+  for (const n of walk(svg)) {
+    if (n.nodeType === 3 && n.parentNode && n.parentNode.nodeName === 'style') {
+      n.data = n.data.replace(/#([A-Za-z][\w-]*)/g, (m, id) => (renamed.has(id) ? `#${renamed.get(id)}` : m))
+    }
+  }
 }
 
 /** font-family の指定に日本語フォントのフォールバックを足す。 */
 function injectFontFallback(svg, fallback) {
-  let injected = 0
   let found = 0
 
   const addTo = (value) => {
@@ -90,10 +98,7 @@ function injectFontFallback(svg, fallback) {
     if (fontAttr) {
       found += 1
       const next = addTo(fontAttr)
-      if (next) {
-        el.setAttribute('font-family', next)
-        injected += 1
-      }
+      if (next) el.setAttribute('font-family', next)
     }
 
     const style = el.getAttribute('style')
@@ -102,14 +107,13 @@ function injectFontFallback(svg, fallback) {
         found += 1
         const merged = addTo(fonts.trim())
         if (!merged) return m
-        injected += 1
         return `font-family: ${merged}`
       })
       if (next !== style) el.setAttribute('style', next)
     }
   })
 
-  return { injected, found }
+  return { found }
 }
 
 /**
@@ -127,7 +131,10 @@ export function inlineSvg(svgText, options = {}) {
   } = options
 
   const warnings = []
-  const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml')
+
+  // xmldom は既定のエラーハンドラで stderr へ直接書き出す。呼び出し側には
+  // 例外のメッセージだけを見せたいので、内部ログは握って捨てる
+  const doc = new DOMParser({ onError: () => {} }).parseFromString(svgText, 'image/svg+xml')
   const svg = doc.documentElement
 
   if (!svg || svg.nodeName !== 'svg') {

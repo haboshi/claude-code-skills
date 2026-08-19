@@ -54,6 +54,26 @@ test('フラグメント参照 href="#..." も追随させる', () => {
   assert.match(svg, /href="#fig1-p1"/)
 })
 
+test('<style> 内の CSS セレクタも id に追随させる', () => {
+  // draw.io はルート id を <style> のセレクタから参照して CSS 変数を定義する。
+  // 属性だけ付け替えるとセレクタが実体を失い、ダークで背景変数が未定義になる
+  const withStyle = svgOf({ body: '<rect fill="var(--ge-adaptive-bg, #ffffff)"/>' })
+    .replace('<g>', '<style>#root-abc { --ge-adaptive-bg: #121212 }</style><g>')
+    .replace('viewBox="0 0 412 131"', 'viewBox="0 0 412 131" id="root-abc"')
+  const { svg } = inlineSvg(withStyle, { idPrefix: 'fig1' })
+  assert.match(svg, /#fig1-root-abc\s*\{/)
+  assert.ok(!/#root-abc\s*\{/.test(svg), '未追随のセレクタが残っている')
+})
+
+test('<style> 内の色値は id と誤認して書き換えない', () => {
+  const withStyle = svgOf()
+    .replace('<g>', '<style>#root-abc { color: #121212; background: #FFF }</style><g>')
+    .replace('viewBox="0 0 412 131"', 'viewBox="0 0 412 131" id="root-abc"')
+  const { svg } = inlineSvg(withStyle, { idPrefix: 'fig1' })
+  assert.match(svg, /#121212/)
+  assert.match(svg, /#FFF/)
+})
+
 test('外部 URL は書き換えない', () => {
   const body = '<a xlink:href="https://example.com/#p1"><rect id="p1"/></a>'
   const { svg } = inlineSvg(svgOf({ body }), { idPrefix: 'fig1' })

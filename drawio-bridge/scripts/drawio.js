@@ -28,7 +28,7 @@ if (!deps.ok) {
   process.exit(4)
 }
 
-const { validateDrawio } = await import('./validate.js')
+const { validateDrawio, countPages } = await import('./validate.js')
 const { inlineSvg } = await import('./svg-inline.js')
 const { runExport, findDrawioBin, INSTALL_HINT } = await import('./drawio-cli.js')
 
@@ -79,6 +79,47 @@ function fail(message, code = 1) {
   process.exit(code)
 }
 
+/** CLI が受け付ける値。外れたものを黙って CLI に渡さない。 */
+const FORMATS = ['svg', 'png', 'pdf', 'jpg', 'xml']
+const COLOR_SCHEMES = ['light', 'dark', 'auto']
+
+/** 数値オプションを読む。NaN を素通りさせると検査が無音で消える。 */
+function parseNumber(values, key, { min = 0 } = {}) {
+  if (values[key] === undefined) return undefined
+  const num = Number(values[key])
+  if (!Number.isFinite(num) || num < min) {
+    fail(`--${key} は ${min} 以上の数値で指定してください（指定値: ${values[key]}）`, 2)
+  }
+  return num
+}
+
+/** 列挙オプションを読む。 */
+function parseChoice(values, key, allowed) {
+  const value = values[key]
+  if (value === undefined) return undefined
+  if (!allowed.includes(value)) {
+    fail(`--${key} は ${allowed.join(' / ')} のいずれかです（指定値: ${value}）`, 2)
+  }
+  return value
+}
+
+/**
+ * --page が実在するページを指しているか確かめる。
+ * draw.io CLI は範囲外を渡されると黙って1ページ目を出すため、ここで止める。
+ */
+function assertPageInRange(input, pageIndex) {
+  if (pageIndex === undefined) return
+  let pages
+  try {
+    pages = countPages(readFileSync(input, 'utf8'))
+  } catch {
+    return // 読めない場合は後続の変換側でエラーになる
+  }
+  if (pages > 0 && pageIndex > pages) {
+    fail(`--page ${pageIndex} は範囲外です（このファイルは ${pages} ページ）`, 2)
+  }
+}
+
 /** --page を 1 始まりの整数として読む。未指定なら undefined。 */
 function parsePage(values) {
   if (values.page === undefined) return undefined
@@ -103,7 +144,14 @@ function reportIssues(issues) {
 
 function cmdValidate(values) {
   const input = requireIn(values)
-  const result = validateDrawio(readFileSync(input, 'utf8'))
+
+  let source
+  try {
+    source = readFileSync(input, 'utf8')
+  } catch (e) {
+    fail(`入力を読めません: ${e.message}`, 1)
+  }
+  const result = validateDrawio(source)
 
   if (values.json) {
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
@@ -124,15 +172,18 @@ function cmdExport(values) {
   const input = requireIn(values)
   if (!values.out) fail('--out が必要です', 2)
 
+  const pageIndex = parsePage(values)
+  assertPageInRange(input, pageIndex)
+
   try {
     const result = runExport({
       input,
       output: values.out,
-      format: values.format || 'svg',
-      border: values.border === undefined ? 10 : Number(values.border),
+      format: parseChoice(values, 'format', FORMATS) || 'svg',
+      border: parseNumber(values, 'border') ?? 10,
       embedDiagram: !values['no-embed'],
       layout: values.layout,
-      pageIndex: parsePage(values),
+      pageIndex,
     })
     process.stderr.write(`変換しました: ${values.out}\n`)
     if (result.stderr) process.stderr.write(`${result.stderr}\n`)
@@ -144,6 +195,16 @@ function cmdExport(values) {
 /** .drawio なら CLI で SVG に変換してから、.svg ならそのまま後処理に渡す。 */
 function loadSvg(input, pageIndex) {
   if (extname(input).toLowerCase() === '.svg') return readFileSync(input, 'utf8')
+
+  // 壊れた .drawio は draw.io が「空の SVG」を返すため、変換前に検証する。
+  // ここを通さないと、図が抜けた HTML が黙って出来上がる
+  const check = validateDrawio(readFileSync(input, 'utf8'))
+  if (!check.ok) {
+    reportIssues(check.issues)
+    const error = new Error('入力の .drawio に検証エラーがあります（validate で詳細を確認してください）')
+    error.code = 'DRAWIO_INVALID_INPUT'
+    throw error
+  }
 
   if (!findDrawioBin()) {
     const error = new Error(INSTALL_HINT)
@@ -165,6 +226,10 @@ function cmdInline(values) {
   const input = requireIn(values)
 
   const pageIndex = parsePage(values)
+  if (extname(input).toLowerCase() !== '.svg') assertPageInRange(input, pageIndex)
+  // 変換の前に引数を検査する。不正な指定で draw.io CLI を起動しない
+  parseNumber(values, 'max-width', { min: 1 })
+  parseChoice(values, 'color-scheme', COLOR_SCHEMES)
 
   let svgText
   try {
@@ -173,12 +238,19 @@ function cmdInline(values) {
     fail(e.message, e.code === 'DRAWIO_CLI_NOT_FOUND' ? 3 : 1)
   }
 
-  const { svg, warnings } = inlineSvg(svgText, {
-    idPrefix: values['id-prefix'],
-    maxViewBoxWidth: values['max-width'] === undefined ? undefined : Number(values['max-width']),
-    fontFallback: values['no-font-fallback'] ? false : undefined,
-    colorScheme: values['color-scheme'],
-  })
+  let result
+  try {
+    result = inlineSvg(svgText, {
+      idPrefix: values['id-prefix'],
+      maxViewBoxWidth: parseNumber(values, 'max-width', { min: 1 }),
+      fontFallback: values['no-font-fallback'] ? false : undefined,
+      colorScheme: parseChoice(values, 'color-scheme', COLOR_SCHEMES),
+    })
+  } catch (e) {
+    // xmldom は整形式でない入力で自ら throw する（内部スタックを見せない）
+    fail(`SVG として読めません: ${e.message}`, 1)
+  }
+  const { svg, warnings } = result
 
   for (const w of warnings) process.stderr.write(`WARN ${w}\n`)
 

@@ -18,6 +18,17 @@ description: 既にある .drawio ファイルを検証・SVG化・HTML埋め込
 | LLM に自由レイアウトの SVG を描かせる | svg-diagram |
 | 業務文書の中に図解を入れる | bizdoc（自前のインライン SVG） |
 
+## 初回セットアップ
+
+マーケットプレイス経由で配布されたプラグインには `node_modules` が入らないため、
+最初の1回だけ依存を入れる（入っていない状態で実行すると exit 4 で手順を案内する）。
+
+```bash
+npm install --prefix "${CLAUDE_PLUGIN_ROOT}"
+```
+
+`export` と `inline` はさらに draw.io Desktop を必要とする（後述）。
+
 ## クイックスタート
 
 ```bash
@@ -58,6 +69,9 @@ HTML に inline 埋め込みできる SVG に整えて stdout（または `--out
 - XML 宣言・DOCTYPE・コメントを落とす
 - `--id-prefix` で全 id と `url(#…)` / `href="#…"` 参照を付け替える — **同じ HTML に複数の図を貼るなら必須**（draw.io は mxCell の id をそのまま SVG の id にするため `id="0"` `id="1"` が確実に衝突する）
 - 日本語があれば `font-family` に日本語フォントのフォールバックを足す（draw.io の export は `Helvetica` しか書かない）
+- 色をライト固定にする（`--color-scheme dark|auto` で変更可）。draw.io の SVG は
+  `color-scheme: light dark` を持ち閲覧環境のダーク設定に追随するため、白基調の文書に
+  そのまま貼ると**線が白く飛んで消え、ラベルも薄くなる**（実測で確認済み）
 - `viewBox` 幅が `--max-width`（既定 780）を超えたら警告する。縮小表示され図中文字が本文より小さくなるため
 
 埋め込まれた編集用の原本（`content` 属性）は保持する。実測で全体 33KB のうち 2KB しかなく、外しても軽くならないため。
@@ -72,6 +86,9 @@ HTML に inline 埋め込みできる SVG に整えて stdout（または `--out
 DB_SCRIPTS=$(find ~/.claude/plugins/cache -path "*/drawio-bridge/*/scripts/drawio.js" 2>/dev/null | head -1 | xargs dirname 2>/dev/null)
 [ -z "$DB_SCRIPTS" ] && DB_SCRIPTS="../drawio-bridge/scripts"
 
+# 初回のみ依存を入れる（配布物には node_modules が含まれない）
+[ -d "$DB_SCRIPTS/../node_modules" ] || npm install --prefix "$DB_SCRIPTS/.."
+
 # 検証 → 埋め込み用 SVG を取得
 node "$DB_SCRIPTS/drawio.js" validate --in diagram.drawio || exit 1
 node "$DB_SCRIPTS/drawio.js" inline --in diagram.drawio --id-prefix fig1 > fig1.svg
@@ -85,6 +102,7 @@ node "$DB_SCRIPTS/drawio.js" inline --in diagram.drawio --id-prefix fig1 > fig1.
 | 1 | 検証エラー、または変換失敗 |
 | 2 | 引数が不正 |
 | 3 | draw.io Desktop が見つからない（stderr に導入手順を出す） |
+| 4 | npm 依存が入っていない（stderr に `npm install` の手順を出す） |
 
 **exit 3 を握り潰さないこと。** CLI 不在時に無音で成功扱いにすると、図が抜けた HTML がそのまま出来上がる。
 

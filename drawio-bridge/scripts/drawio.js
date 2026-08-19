@@ -13,11 +13,24 @@
 import { parseArgs } from 'node:util'
 import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, basename, extname } from 'node:path'
+import { join, basename, extname, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-import { validateDrawio } from './validate.js'
-import { inlineSvg } from './svg-inline.js'
-import { runExport, findDrawioBin, INSTALL_HINT } from './drawio-cli.js'
+import { checkDeps, DEPS_HINT } from './deps.js'
+
+const PLUGIN_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
+
+// 依存が無いまま下の import を評価すると ERR_MODULE_NOT_FOUND で落ちる。
+// 直し方の分かるメッセージを先に出す。
+const deps = checkDeps(PLUGIN_ROOT)
+if (!deps.ok) {
+  process.stderr.write(`${DEPS_HINT(PLUGIN_ROOT)}\n  不足: ${deps.missing.join(', ')}\n`)
+  process.exit(4)
+}
+
+const { validateDrawio } = await import('./validate.js')
+const { inlineSvg } = await import('./svg-inline.js')
+const { runExport, findDrawioBin, INSTALL_HINT } = await import('./drawio-cli.js')
 
 const USAGE = `drawio-bridge — .drawio の検証・変換・HTML 埋め込み整形
 
@@ -38,6 +51,9 @@ const USAGE = `drawio-bridge — .drawio の検証・変換・HTML 埋め込み�
 
   共通: --help
   環境変数 DRAWIO_BIN で draw.io 実行ファイルのパスを上書きできる。
+
+  終了コード: 0 成功 / 1 検証エラー・変換失敗 / 2 引数不正
+              3 draw.io Desktop が無い / 4 npm 依存が入っていない
 `
 
 const OPTIONS = {

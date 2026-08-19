@@ -253,7 +253,7 @@ function cmdAdd(htmlPath, opts) {
   // 導出領域の注入。svgGate は上で注入前の原文に対して実行済み（原文検証の意味を保つ）
   let outHtml = injectTokens(html, readTokensCss(), accent);
   const framed = injectNavFrame(outHtml);
-  if (!framed.injected) console.warn('warn: <body> が無いため hub ナビを注入しませんでした');
+  if (!framed.injected) console.warn('warn: 差し込める本文要素が無いため hub ナビを注入しませんでした（<body>・</head>・本文要素のいずれも見つからない）');
   outHtml = framed.html;
   fs.writeFileSync(path.join(docDir, 'index.html'), outHtml);
   // 同梱ディレクトリは**元の名前のまま**コピーする（HTML 内の相対参照 images/... をそのまま活かす）。

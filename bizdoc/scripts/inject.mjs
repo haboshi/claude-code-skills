@@ -3,12 +3,13 @@
 // SSOT 意味論の補足（hub.mjs のヘッダと対で読むこと）:
 //   projects/**/docs/**/index.html は SSOT ファイルだが、その中の 2 つのマーカー区間だけは
 //   **導出領域**として hub 側が書き換える。マーカーの外には決して触れない。
-//     - <style data-bizdoc="tokens"> ... </style>   ... tokens.css の注入先（add 時のみ）
+//     - <style data-bizdoc="tokens"> ... </style>   ... tokens.css の注入先
 //     - <!-- bizdoc:nav:start --> ... <!-- bizdoc:nav:end --> ... 一覧への導線（add で枠、reindex で中身）
 //
 //   2 つは適用条件が違う（混同しないこと）:
 //     - tokens は**マーカーを持つ文書だけ**が対象。持たない文書（フル CSS を焼き込んだ旧文書・
 //       外部からの取込品）は 1 バイトも変えない。見た目を勝手に塗り替えないための線引き。
+//       書き換える経路は 3 つ: add（保存時）／accent 確定時の貼り直し／retheme コマンド。
 //     - nav は hub に保存される全文書が対象（差し込める本文要素があれば入れる）。hub 配下から
 //       一覧へ戻れることは保存物の基本機能なので、取込品にも入れる。既存文書への後付けだけは
 //       opt-in（hub.mjs nav apply）にして、明示の操作なしに過去の文書を書き換えない。
@@ -27,8 +28,11 @@ const BODY_RE = /<body\b[^>]*>/i;
 // nav を差し込める最初の本文要素。<body> も </head> も持たない最小構成の文書
 // （<title> + <style> + いきなり <div> という形。実在する）を拾うためのフォールバック
 const FLOW_RE = /<(?:div|main|header|section|article|nav|h1|h2|p|table|ul|ol|figure)\b[^>]*>/i;
-// タグに見えるが要素ではない領域（コメント・script/style/template の中身）
-const NON_CONTENT_RE = /<!--[\s\S]*?-->|<script\b[^>]*>[\s\S]*?<\/script>|<style\b[^>]*>[\s\S]*?<\/style>|<template\b[^>]*>[\s\S]*?<\/template>/gi;
+// タグに見えるが要素にならない領域。コメントに加え、中身が生テキスト or RCDATA として
+// 扱われる要素（script / style / template / title / textarea / noscript / xmp / iframe）を含む。
+// 例: <title><div>x</div></title> の <div> は文字であって要素ではない。
+const NON_CONTENT_RE =
+  /<!--[\s\S]*?-->|<(script|style|template|title|textarea|noscript|xmp|iframe)\b[^>]*>[\s\S]*?<\/\1>/gi;
 
 // アンカー探索用に、要素ではない領域を同じ長さの空白へ潰す。長さを保つので、
 // マスク後に得た index はそのまま元の文字列へ使える。

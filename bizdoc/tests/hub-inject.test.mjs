@@ -171,6 +171,11 @@ test('アンカー探索: コメント・script・style 内の偽タグを本文
     ['script 内', '<title>t</title><script>var s="<p>ダミー</p>";</script><div>本物</div>', '<div>本物</div>'],
     ['style 内', '<title>t</title><style>/* <section> */body{color:#333}</style><main>本物</main>', '<main>本物</main>'],
     ['コメント内の body', '<title>t</title><!-- <body> --><p>本物</p>', '<p>本物</p>'],
+    // 中身が生テキスト / RCDATA として扱われる要素（タグに見えても要素にならない）
+    ['title 内', '<title><div>ダミー</div></title><p>本物</p>', '<p>本物</p>'],
+    ['textarea 内', '<style>a{}</style><textarea><section>ダミー</section></textarea><main>本物</main>', '<main>本物</main>'],
+    ['noscript 内', '<style>a{}</style><noscript><p>ダミー</p></noscript><div>本物</div>', '<div>本物</div>'],
+    ['iframe 内', '<style>a{}</style><iframe><p>ダミー</p></iframe><h1>本物</h1>', '<h1>本物</h1>'],
   ];
   for (const [name, html, expected] of cases) {
     const at = findNavAnchor(html);

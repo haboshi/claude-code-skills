@@ -80,7 +80,10 @@ test('--accent: 後から確定したとき、既定色で保存済みの文書�
 test('--accent: 確定時の貼り直しはマーカーを持たない文書に触れない', () => {
   const { base, hub, proj } = setup();
   const seed = runHub(hub, ['add', write(base, 'y1.html', DOC('起点')), '--project', proj, '--slug', 'seed']).trim();
-  const pid = projectJson(seed).accent === null ? JSON.parse(fs.readFileSync(path.join(path.dirname(seed), 'manifest.json'), 'utf8')).project_id : null;
+  // project.json の accent の状態に依存せず、必ず manifest から保存先の project_id を取る
+  // （条件付きにすると pid が null に落ち、projects/null/... へ置かれて主張が空振りする）
+  const pid = JSON.parse(fs.readFileSync(path.join(path.dirname(seed), 'manifest.json'), 'utf8')).project_id;
+  assert.ok(pid && pid !== 'null', 'project_id が解決できていない');
   const dir = path.join(hub, 'projects', pid, 'docs', '20260101-legacy');
   fs.mkdirSync(dir, { recursive: true });
   const legacy = path.join(dir, 'index.html');

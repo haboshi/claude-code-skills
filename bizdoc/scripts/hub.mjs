@@ -2,6 +2,15 @@
 // hub.mjs — doc-hub CLI（add / list / reindex / open）
 // SSOT は projects/**（project.json / manifest.json）。index.html は使い捨て導出物であり、
 // 消しても reindex で同一内容が再生成される（タイムスタンプを埋め込まない）。
+//
+// ドキュメント本体（projects/**/docs/**/index.html）は SSOT だが、その中の 2 つの
+// **マーカー区間だけ**は導出領域として hub 側が書き換える（詳細は inject.mjs のヘッダ）。
+//   - <style data-bizdoc="tokens">      … add 時に tokens.css を注入
+//   - <!-- bizdoc:nav:start/end -->     … add で枠を作り、reindex が中身を貼り直す
+// マーカーの外には決して触れない。マーカーを持たない文書は 1 バイトも変えずに素通りする。
+//
+// stdout 契約: add が印字するのは保存先 index.html の絶対パス 1 行のみ。
+// 注入まわりの診断は必ず console.warn（stderr）へ出す（console.log を足すと契約が壊れる）。
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -9,6 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { projectIdFromPath, resolveMainWorktreeRoot, slugify } from './project-id.mjs';
 import { renderIndex } from './render-index.mjs';
+import { injectNavFrame, injectTokens, readTokensCss, refreshNavFile } from './inject.mjs';
 import {
   applyOverrides,
   createGroup,
@@ -137,6 +147,36 @@ function svgGate(html) {
   });
 }
 
+// project.json の accent を解決する。既存値があれば維持し、未設定のときだけ --accent を採用して
+// 書き戻す（同一プロジェクトの文書間でアクセントがぶれるのを防ぐ現行の約束をそのまま守る）。
+function applyAccent(proj, requested) {
+  const projJson = path.join(PROJECTS, proj.id, 'project.json');
+  if (proj.accent) {
+    if (requested && requested !== proj.accent) {
+      console.warn(`warn: このプロジェクトの accent は ${proj.accent} で確定済みのため --accent は無視します`);
+    }
+    return proj.accent;
+  }
+  if (!requested) return null;
+  if (!/^#[0-9a-fA-F]{6}$/.test(requested)) {
+    console.warn(`warn: --accent は #rrggbb 形式で指定してください（無視しました）: ${requested}`);
+    return null;
+  }
+  const value = requested.toLowerCase();
+  try {
+    const cur = JSON.parse(fs.readFileSync(projJson, 'utf8'));
+    if (!cur.accent) {
+      cur.accent = value;
+      fs.writeFileSync(projJson, JSON.stringify(cur, null, 2) + '\n');
+    }
+    proj.accent = cur.accent;
+    return cur.accent;
+  } catch {
+    console.warn('warn: project.json を更新できなかったため accent を既定のまま保存します');
+    return null;
+  }
+}
+
 function cmdAdd(htmlPath, opts) {
   ensureHub();
   if (!htmlPath || !fs.existsSync(htmlPath)) die(`HTML が見つかりません: ${htmlPath}`);
@@ -168,7 +208,17 @@ function cmdAdd(htmlPath, opts) {
   }
   const docDir = path.join(docsDir, name);
   fs.mkdirSync(docDir, { recursive: true });
-  fs.copyFileSync(htmlPath, path.join(docDir, 'index.html'));
+
+  // アクセント色: project.json に既存値があればそれを優先（文書間でぶれさせない）。
+  // 未設定のときだけ --accent を採用し、project.json へ書き戻す。
+  const accent = applyAccent(proj, opts.accent);
+
+  // 導出領域の注入。svgGate は上で注入前の原文に対して実行済み（原文検証の意味を保つ）
+  let outHtml = injectTokens(html, readTokensCss(), accent);
+  const framed = injectNavFrame(outHtml);
+  if (!framed.injected) console.warn('warn: <body> が無いため hub ナビを注入しませんでした');
+  outHtml = framed.html;
+  fs.writeFileSync(path.join(docDir, 'index.html'), outHtml);
   if (opts.assets) fs.cpSync(opts.assets, path.join(docDir, 'assets'), { recursive: true });
 
   const now = new Date().toISOString();
@@ -238,12 +288,35 @@ function buildIndexData() {
   return applyOverrides(collectIndex(), ov);
 }
 
+// nav マーカーを持つ全ドキュメントの中身を貼り直す。nav を描く経路をここ 1 本に集約することで、
+// 新規追加（add → reindex）と既存の鮮度更新が同じコードを通り、冪等性が自明になる。
+// バイト列が変わるときだけ書き込む（無変更なら mtime も動かさない）。
+function refreshNavs(data) {
+  let written = 0;
+  for (const p of data.projects) {
+    for (const d of p.docs) {
+      if (d.broken) continue;
+      const indexPath = path.join(PROJECTS, p.dir, 'docs', d.dir, 'index.html');
+      const r = refreshNavFile(indexPath, {
+        projectId: p.id,
+        label: p.label,
+        docs: p.docs,
+        selfDir: d.dir,
+      });
+      if (r === 'written') written++;
+    }
+  }
+  if (written) console.warn(`info: hub ナビを更新しました（${written}件）`);
+}
+
 function cmdReindex() {
   ensureHub();
-  const html = renderIndex(buildIndexData());
+  const data = buildIndexData();
+  const html = renderIndex(data);
   const tmp = path.join(HUB, `.index-${process.pid}.tmp`);
   fs.writeFileSync(tmp, html);
   fs.renameSync(tmp, path.join(HUB, 'index.html')); // 原子書き込み（iCloud 同期・並行実行への防御）
+  refreshNavs(data);
 }
 
 function cmdList(opts) {

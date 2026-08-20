@@ -149,6 +149,13 @@ tr.pick td:first-child { box-shadow: inset 3px 0 var(--accent); font-weight: 650
 
 .src { color: var(--ink-3); font-size: 11.5px; display: block; }
 code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .88em; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 4px; padding: .06em .38em; }
+/* コードブロック。inline の code は「文中の識別子1個」用のチップ装飾なので、複数行に
+   またがると背景・枠・角丸が行ごとに分断されて描画される（v0.8.1 まで pre が未定義で、
+   コマンド例が行ごとの角丸チップに割れていた）。器は pre 側が持ち、pre > code は装飾を
+   落とす。長い行は折り返さず横スクロールに送る — コマンドは折ると可搬性が壊れるため。
+   --measure は掛けない（表・図・囲みと同じ器幅の視覚要素として扱う） */
+pre { margin: 1.1rem 0; padding: .85rem 1.05rem; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; font-size: 13px; line-height: 1.75; }
+pre code { background: none; border: 0; border-radius: 0; padding: 0; font-size: inherit; white-space: pre; }
 
 footer { margin-top: 3.2rem; padding-top: .9rem; border-top: 1px solid var(--line-strong); color: var(--ink-3); font-size: 11.5px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: .4rem 1.5rem; }
 
@@ -204,13 +211,16 @@ footer { margin-top: 3.2rem; padding-top: .9rem; border-top: 1px solid var(--lin
   .card, .compare-cols .col { padding: .65rem .85rem; }
   .card ul { font-size: 8.8pt; }
   .callout, .callout-warn { padding: .55rem .85rem; margin: .8rem 0; font-size: 9pt; }
+  /* 紙には横スクロールが無い。折り返さないと長いコマンドの右側がそのまま欠ける */
+  pre { padding: .55rem .8rem; margin: .8rem 0; font-size: 8.5pt; line-height: 1.6; overflow-x: visible; }
+  pre code { white-space: pre-wrap; word-break: break-all; }
   .steps { margin: .8rem 0; }
   .steps li { padding: .28rem 0 .28rem 2.2rem; }
   .steps li b { font-size: 10pt; }
   .steps li small { font-size: 8.8pt; }
   .src { font-size: 8pt; }
   footer { margin-top: 1.6rem; padding-top: .6rem; }
-  figure, .kpi-grid, .cols-2, .compare-cols, .callout, .callout-warn, .exec-summary, .kpi, .card { break-inside: avoid; }
+  figure, .kpi-grid, .cols-2, .compare-cols, .callout, .callout-warn, .exec-summary, .kpi, .card, pre { break-inside: avoid; }
   /* 表は行単位で改ページを許す（thead はブラウザが次ページへ自動繰り返す）。長表を丸ごと avoid にすると1ページ超で余白が崩れる */
   tr, .steps li { break-inside: avoid; }
   section > h2, h3 { break-after: avoid; }

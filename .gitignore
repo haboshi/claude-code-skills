@@ -63,3 +63,7 @@ mission-brief.md
 web-vuln-report/skills/web-vuln-report/examples/crawl.json
 web-vuln-report/skills/web-vuln-report/examples/findings.json
 web-vuln-report/skills/web-vuln-report/examples/ext_findings.json
+
+# Playwright MCP の出力（検証用スクリーンショット・スナップショット）
+.playwright-mcp/
+*-measure-after.png

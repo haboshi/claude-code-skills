@@ -13,8 +13,13 @@
   --bg: #ffffff;
   --bg-soft: #f4f6fa;
   /* 本文の行長。em 基準なので font-size が違う要素でも「約42字/行」に揃い、
-     body の max-width を変えても影響を受けない。図・表・カードには適用せず、
-     「本文は狭く・視覚要素は広く」の二段構えにする（器 64rem のとき図表は約 953px）*/
+     body の max-width を変えても影響を受けない。図・表・カード・囲み（.callout）には
+     適用せず、「本文は狭く・視覚要素は広く」の二段構えにする（器 64rem のとき視覚要素は
+     約 953px）。地色と枠を持つ .callout に本文と同じ measure を課すと、読者が視覚要素と
+     して見るブロックの右端だけが表・図より 323px 内側で終わり、死に余白になる（v0.8.1）。
+     同じ理由で .exec-summary / .conclusion のパネル内テキストからも外した（v0.8.3）—
+     パネルは器幅なのに中の行だけ止まり、パネル右端との間に余白が残っていた。
+     measure を掛けるのは地色・枠を持たない生の本文（p / ul / ol / lede）だけにする */
   --measure: 42em;
 }
 * { box-sizing: border-box; }
@@ -54,7 +59,7 @@ strong { font-weight: 700; }
 .exec-summary { background: var(--accent-soft); border-radius: 12px; padding: 1.2rem 1.45rem 1.1rem; margin: 1.9rem 0; }
 .exec-summary h2 { font-size: 12.5px; letter-spacing: .16em; color: var(--accent); margin: 0 0 .65rem; border: none; padding: 0; }
 .exec-summary ol { margin: 0; padding: 0; list-style: none; counter-reset: es; }
-.exec-summary ol li { counter-increment: es; position: relative; padding: .34rem 0 .34rem 2.15rem; font-weight: 650; font-size: 14.5px; max-width: var(--measure); }
+.exec-summary ol li { counter-increment: es; position: relative; padding: .34rem 0 .34rem 2.15rem; font-weight: 650; font-size: 14.5px; }
 .exec-summary ol li::before {
   content: counter(es); position: absolute; left: 0; top: .48rem;
   width: 1.35rem; height: 1.35rem; border-radius: 50%; background: var(--accent); color: #fff;
@@ -72,9 +77,10 @@ section > h2::before {
   border: 1px solid var(--accent); border-radius: 4px; padding: .08rem .42rem;
 }
 .sec-lede { color: var(--ink-2); font-size: 15px; margin: 0 0 1rem; }
-/* 本文の行長を絞る。figure / table / .kpi-grid / .cols-2 / .compare-cols / .steps は
-   意図的に対象外（視覚要素は紙面いっぱいを使う） */
-section > p, section > ul, section > ol:not(.steps), .sec-lede, .callout, .callout-warn { max-width: var(--measure); }
+/* 本文の行長を絞る。figure / table / .kpi-grid / .cols-2 / .compare-cols / .steps /
+   .callout / .callout-warn は意図的に対象外（視覚要素は紙面いっぱいを使う）。
+   囲みを器幅で使う前提として、囲みの本文は4行以内に収める（SKILL.md §6 の役割固定） */
+section > p, section > ul, section > ol:not(.steps), .sec-lede { max-width: var(--measure); }
 h3 { font-size: 16.5px; margin: 1.4rem 0 .5rem; }
 
 /* ── 目次（section 5個以上のとき exec-summary の直後に置く）── */
@@ -121,7 +127,7 @@ tr.pick td:first-child { box-shadow: inset 3px 0 var(--accent); font-weight: 650
 .conclusion { margin: 3rem 0 0; padding: 1.5rem 1.7rem 1.3rem; background: var(--ink); color: #e5e7eb; border-radius: 14px; }
 .conclusion h2 { font-size: 12.5px; letter-spacing: .16em; color: #9ca3af; margin: 0 0 .7rem; border: none; padding: 0; }
 .conclusion ol { margin: 0; padding: 0; list-style: none; counter-reset: cc; }
-.conclusion ol li { counter-increment: cc; position: relative; padding: .4rem 0 .4rem 2.15rem; font-weight: 650; font-size: 15px; color: #f9fafb; max-width: var(--measure); }
+.conclusion ol li { counter-increment: cc; position: relative; padding: .4rem 0 .4rem 2.15rem; font-weight: 650; font-size: 15px; color: #f9fafb; }
 .conclusion ol li::before {
   content: counter(cc); position: absolute; left: 0; top: .52rem;
   width: 1.35rem; height: 1.35rem; border-radius: 50%; background: var(--accent); color: #fff;
@@ -146,6 +152,13 @@ tr.pick td:first-child { box-shadow: inset 3px 0 var(--accent); font-weight: 650
 
 .src { color: var(--ink-3); font-size: 11.5px; display: block; }
 code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .88em; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 4px; padding: .06em .38em; }
+/* コードブロック。inline の code は「文中の識別子1個」用のチップ装飾なので、複数行に
+   またがると背景・枠・角丸が行ごとに分断されて描画される（v0.8.1 まで pre が未定義で、
+   コマンド例が行ごとの角丸チップに割れていた）。器は pre 側が持ち、pre > code は装飾を
+   落とす。長い行は折り返さず横スクロールに送る — コマンドは折ると可搬性が壊れるため。
+   --measure は掛けない（表・図・囲みと同じ器幅の視覚要素として扱う） */
+pre { margin: 1.1rem 0; padding: .85rem 1.05rem; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; font-size: 13px; line-height: 1.75; }
+pre code { background: none; border: 0; border-radius: 0; padding: 0; font-size: inherit; white-space: pre; }
 
 footer { margin-top: 3.2rem; padding-top: .9rem; border-top: 1px solid var(--line-strong); color: var(--ink-3); font-size: 11.5px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: .4rem 1.5rem; }
 
@@ -163,8 +176,7 @@ footer { margin-top: 3.2rem; padding-top: .9rem; border-top: 1px solid var(--lin
      紙の端に寄って窮屈な紙面になるため、内側にも余白を置いている。 */
   body { padding: 0 6mm; max-width: none; font-size: 10pt; line-height: 1.65; }
   /* 紙は1段組で幅が既に狭い。画面用の行長制限を解除しないとページ数が増える */
-  section > p, section > ul, section > ol:not(.steps), .sec-lede, .callout, .callout-warn,
-  .exec-summary ol li, .conclusion ol li, .cover .lede { max-width: none; }
+  section > p, section > ul, section > ol:not(.steps), .sec-lede, .cover .lede { max-width: none; }
   /* ダーク地はトナーを食い紙面で浮くため、印刷では白地+枠に反転する */
   .conclusion { background: #fff; color: var(--ink); border: 2px solid var(--ink); break-inside: avoid; }
   .conclusion h2 { color: var(--ink-2); }
@@ -201,13 +213,16 @@ footer { margin-top: 3.2rem; padding-top: .9rem; border-top: 1px solid var(--lin
   .card, .compare-cols .col { padding: .65rem .85rem; }
   .card ul { font-size: 8.8pt; }
   .callout, .callout-warn { padding: .55rem .85rem; margin: .8rem 0; font-size: 9pt; }
+  /* 紙には横スクロールが無い。折り返さないと長いコマンドの右側がそのまま欠ける */
+  pre { padding: .55rem .8rem; margin: .8rem 0; font-size: 8.5pt; line-height: 1.6; overflow-x: visible; }
+  pre code { white-space: pre-wrap; word-break: break-all; }
   .steps { margin: .8rem 0; }
   .steps li { padding: .28rem 0 .28rem 2.2rem; }
   .steps li b { font-size: 10pt; }
   .steps li small { font-size: 8.8pt; }
   .src { font-size: 8pt; }
   footer { margin-top: 1.6rem; padding-top: .6rem; }
-  figure, .kpi-grid, .cols-2, .compare-cols, .callout, .callout-warn, .exec-summary, .kpi, .card { break-inside: avoid; }
+  figure, .kpi-grid, .cols-2, .compare-cols, .callout, .callout-warn, .exec-summary, .kpi, .card, pre { break-inside: avoid; }
   /* 表は行単位で改ページを許す（thead はブラウザが次ページへ自動繰り返す）。長表を丸ごと avoid にすると1ページ超で余白が崩れる */
   tr, .steps li { break-inside: avoid; }
   section > h2, h3 { break-after: avoid; }

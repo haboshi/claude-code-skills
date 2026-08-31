@@ -1,7 +1,8 @@
 /* bizdoc tokens v2 — 白基調・上質コーポレート文書
    v1 の class 契約（.cover/.exec-summary/.callout/.callout-warn/.kpi-grid/.kpi/
    .compare-cols/.pick/.steps/table/tr.pick/.src）は維持し、視覚設計を刷新。
-   追加クラス: .kicker / .sec-lede / .cols-2 / .card / figure 枠 / footer */
+   追加クラス: .kicker / .sec-lede / .cols-2 / .card / figure 枠 / footer
+   v0.9.0 追加: セマンティック色 --warn / --warn-soft と .tag-warn / tr.warn */
 :root {
   --accent: #2563eb;
   --accent-soft: #eef4ff;
@@ -12,6 +13,19 @@
   --line-strong: #d1d5db;
   --bg: #ffffff;
   --bg-soft: #f4f6fa;
+  /* セマンティック色（v0.9.0）— accent 1色原則の唯一の例外。
+     accent は「この文書の主役はどれか」を指す色で、読者に強調を伝える。
+     警告は種類の違う情報で、「ここは他と危険度が違う」を伝える。同じ色に
+     兼ねさせると、accent が濃いだけの箇条書きになり、両方の合図が死ぬ。
+     .callout-warn は v1 から琥珀を持っていたが値が直書きだったため、SVG も
+     `.tag` も参照できなかった。トークン化して図・表・バッジから使えるようにする。
+     **増やさない**: success / info は作らない。「注意」の1色だけが例外である。
+     **暖色 accent との衝突に注意**: 色相は 34.6°。青（221°）・緑（166°）とは十分離れるが、
+     テラコッタ #A6472B は 20.9°・橙 #ea580c は 14.0° しか離れず、隣り合うと区別しづらい。
+     accent が橙〜赤褐色の文書では、warn を同一画面に並べない（表の行と図の強調を別の節へ分ける）。 */
+  --warn: #c2740a;
+  --warn-soft: #fdf7ec;
+
   /* 本文の行長。em 基準なので font-size が違う要素でも「約42字/行」に揃い、
      body の max-width を変えても影響を受けない。図・表・カード・囲み（.callout）には
      適用せず、「本文は狭く・視覚要素は広く」の二段構えにする（器 64rem のとき視覚要素は
@@ -120,6 +134,10 @@ tr.pick td:first-child { box-shadow: inset 3px 0 var(--accent); font-weight: 650
 .compare-cols .col.pick, .card.pick { border-color: var(--accent); background: var(--accent-soft); }
 .card h3, .compare-cols h3 { margin: 0 0 .45rem; font-size: 14px; display: flex; align-items: center; gap: .5rem; }
 .card .tag { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; color: #fff; background: var(--accent); border-radius: 3px; padding: .1rem .4rem; }
+/* 警告のバッジと表行。accent 版と同じ形で色だけ違う（形が同じなら意味の差が色だけで読める） */
+.card .tag-warn { background: var(--warn); }
+tr.warn td { background: var(--warn-soft); }
+tr.warn td:first-child { box-shadow: inset 3px 0 var(--warn); font-weight: 650; }
 .card ul { margin: .2rem 0 0; padding-left: 1.15rem; font-size: 14px; color: var(--ink-2); }
 .card li { margin: .18rem 0; }
 
@@ -137,7 +155,7 @@ tr.pick td:first-child { box-shadow: inset 3px 0 var(--accent); font-weight: 650
 
 /* ── コールアウト ─────────────────────── */
 .callout { background: var(--bg-soft); border-left: 4px solid var(--accent); border-radius: 6px; padding: .75rem 1.05rem; margin: 1.05rem 0; font-size: 15px; }
-.callout-warn { background: #fdf7ec; border-left: 4px solid #c2740a; border-radius: 6px; padding: .75rem 1.05rem; margin: 1.05rem 0; font-size: 15px; }
+.callout-warn { background: var(--warn-soft); border-left: 4px solid var(--warn); border-radius: 6px; padding: .75rem 1.05rem; margin: 1.05rem 0; font-size: 15px; }
 
 /* ── 手順 ─────────────────────────────── */
 .steps { counter-reset: step; list-style: none; padding: 0; margin: 1.2rem 0; }

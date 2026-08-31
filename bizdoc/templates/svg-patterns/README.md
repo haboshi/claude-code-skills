@@ -5,7 +5,12 @@
 2. `viewBox` のみ指定し、`width` / `height` の px 直書きをしない（`figure svg { width:100% }` が効く）
 3. ルート要素に `role="img"` と `<title>`（+ 必要なら `<desc>`）を必須とする
 4. `font-family` は指定しない（本文の system font stack を継承させる）
-5. 色は tokens.css の CSS 変数を参照する（`fill="var(--accent)"` 等）。アクセント1色の原則は SVG にも適用
+5. 色は tokens.css の CSS 変数を参照する（`fill="var(--accent)"` 等）。アクセント1色の原則は SVG にも適用。
+   **唯一の例外がセマンティック色 `var(--warn)` / `var(--warn-soft)`**（v0.9.0）で、超過・未達・停止・
+   要対処など「他と危険度が違う」1要素にだけ使える。accent が「主役はどれか」を指すのに対し、warn は
+   「ここは種類が違う」を指す — 兼ねさせると両方の合図が消える。ただし **1図につき warn は1要素まで**で、
+   予防則15（強調は同時1点）は accent と warn を合算して数える（accent 強調と warn 強調を同じ図に
+   置かない）。success / info に相当する色は用意しない（増やすと図が信号機になる）
 6. `<svg>` の入れ子は禁止（hub の SVG 検証ゲートの抽出が入れ子に対応しないため）
 7. XML として整形式であること（属性は必ず引用符・タグは必ず閉じる。& は &amp;）。
    hub.mjs add の xmllint 検証で不正 XML は reject される

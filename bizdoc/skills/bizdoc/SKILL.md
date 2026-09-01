@@ -408,10 +408,12 @@ Phase 5 の `add` に **`--accent "#rrggbb"` を渡すだけ**でよい。判断
 `project.json` を直接読み書きしたり、`reindex` を手で追加実行したりしない。
 
 **未設定のプロジェクトでは、案件の色に寄せられないか一度だけ確かめる。** 既に accent があるときは
-この手順を飛ばす（何を渡しても既存値が勝つので、走らせるだけ無駄になる）。
+この手順を飛ばす（何を渡しても既存値が勝つので、走らせるだけ無駄になる）。未設定かどうかは
+`list --json` の `accent` が `null` かで判定する — `#2563eb` が入っていれば既に確定済みで、対象外。
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/accent-candidates.mjs" <プロジェクトルート>
+node "${CLAUDE_PLUGIN_ROOT}/scripts/hub.mjs" list --json   # 対象プロジェクトの accent が null か見る
+node "${CLAUDE_PLUGIN_ROOT}/scripts/accent-candidates.mjs" <プロジェクトルート> --limit 3
 ```
 
 スタイル定義から候補色を集める。**このスクリプトは候補を出すだけで、色を決めない。**
@@ -420,7 +422,8 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/accent-candidates.mjs" <プロジェクト�
 hover 用の `--accent: 243 244 246`（gray-100）も本文色 `--text-primary` も、機械が落とす。
 
 - **候補が出たら AskUserQuestion で1問だけ聞く**。第1選択肢を1位の候補にし、既定 `#2563eb` を残す
-  選択肢も必ず添える。ラベルには色と変数名を出す（例:「#147b73（--teal / 対白 5.11:1）」）
+  選択肢も必ず添える。ラベルには色と変数名を出す（例:「#147b73（--teal / 対白 5.11:1）」）。
+  AskUserQuestion の選択肢は**4つが上限**なので、`--limit 3` で候補を3件に絞り、4つ目を既定にする
 - **候補が空なら聞かない**。既定のまま進めるか、トピックに合う色を渡す
 - 候補は既にコントラスト 4.5:1 と `--warn` からの色相 45° を満たしている。**この2条件を外して
   独自に色を作らない** — v0.9.0 で警告色が入り、暖色の accent は「推奨」と「要検討」のバッジが

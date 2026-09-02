@@ -1,7 +1,7 @@
 'use strict';
 // harness-analytics 純関数のテスト（依存ゼロ・node scripts/harness-analytics.test.js で実行）。
 const assert = require('assert');
-const { classifyToolResult, detectRetries, detectDrift, detectHallucinationMarkers } = require('./classify');
+const { classifyToolResult, detectRetries, detectDrift, detectHallucinationMarkers, detectModelBehavior } = require('./classify');
 const { digestFromRecords } = require('./digest');
 const { buildClusters, attachTrend } = require('./cluster');
 const { computeKpis, reviewCoverage } = require('./rollup');
@@ -181,6 +181,117 @@ test('detectDrift: 同一ファイル反復 Read', () => {
   assert.ok(s.some((x) => x.kind === 'repeated_read_same_file' && x.count === 5));
 });
 
+// --- detectModelBehavior（Fable 5.1 の既定挙動差分の退行）---
+test('detectModelBehavior: 読取ツール 1 件ずつの連鎖が閾値以上で serial_single_tool_calls', () => {
+  const steps = [];
+  for (let i = 0; i < 6; i++) steps.push({ turnIdx: 0, tools: ['Read'], hasText: true });
+  const s = detectModelBehavior(steps);
+  const sig = s.find((x) => x.kind === 'serial_single_tool_calls');
+  assert.ok(sig, 'serial_single_tool_calls が立たない');
+  assert.strictEqual(sig.count, 6);
+  assert.strictEqual(sig.turn_idx, 0);
+});
+test('detectModelBehavior: 複数ツール同時呼び出し・書き込み系・user ターン跨ぎで連鎖がリセットされる', () => {
+  const run = (n) => Array.from({ length: n }, () => ({ turnIdx: 0, tools: ['Grep'], hasText: true }));
+  // 5 連の途中に並列呼び出しが挟まる → 最長 3
+  assert.strictEqual(detectModelBehavior([...run(3), { turnIdx: 0, tools: ['Read', 'Read'], hasText: true }, ...run(3)]).length, 0);
+  // Edit（書き込み系）は逐次化の対象外
+  assert.strictEqual(detectModelBehavior(Array.from({ length: 8 }, () => ({ turnIdx: 0, tools: ['Edit'], hasText: true }))).length, 0);
+  // user ターンを跨ぐと 0 から数え直す（3 + 3）
+  assert.strictEqual(detectModelBehavior([...run(3), ...run(3).map((s) => ({ ...s, turnIdx: 1 }))]).length, 0);
+});
+test('detectModelBehavior: 本文なしのツール連鎖が閾値（20）以上で silent_tool_run、本文があれば切れる', () => {
+  const silent = (n, turn = 0) => Array.from({ length: n }, () => ({ turnIdx: turn, tools: ['Bash', 'Read'], hasText: false }));
+  const s = detectModelBehavior(silent(20));
+  assert.ok(s.some((x) => x.kind === 'silent_tool_run' && x.count === 20));
+  assert.ok(!detectModelBehavior(silent(19)).some((x) => x.kind === 'silent_tool_run'), '19 連は閾値未満');
+  const cut = detectModelBehavior([...silent(15), { turnIdx: 0, tools: ['Bash'], hasText: true }, ...silent(15)]);
+  assert.ok(!cut.some((x) => x.kind === 'silent_tool_run'));
+  // 閾値は opts で変えられる
+  assert.ok(detectModelBehavior(silent(4), { silentThreshold: 4 }).some((x) => x.kind === 'silent_tool_run'));
+  // serial も境界を両側から
+  const rd = (n) => Array.from({ length: n }, () => ({ turnIdx: 0, tools: ['Read'], hasText: true }));
+  assert.ok(!detectModelBehavior(rd(5)).some((x) => x.kind === 'serial_single_tool_calls'), '5 連は閾値未満');
+  assert.ok(detectModelBehavior(rd(6)).some((x) => x.kind === 'serial_single_tool_calls'));
+});
+test('digestFromRecords: 非空 thinking block は実況として扱う（Fable 5.1 の進捗更新は thinking で届く）', () => {
+  const recs = [{ type: 'user', sessionId: 'T1', cwd: '/x', timestamp: '2026-09-03T00:00:00Z', message: { role: 'user', content: 'go' } }];
+  for (let i = 0; i < 25; i++) {
+    recs.push({ type: 'assistant', sessionId: 'T1', timestamp: '2026-09-03T00:00:01Z', message: { id: `m${i}`, model: 'claude-fable-5-1', content: [{ type: 'thinking', thinking: `checking ${i}` }] } });
+    recs.push({ type: 'assistant', sessionId: 'T1', timestamp: '2026-09-03T00:00:01Z', message: { id: `m${i}`, model: 'claude-fable-5-1', content: [{ type: 'tool_use', id: `t${i}`, name: 'Bash', input: { command: 'true' } }] } });
+    recs.push({ type: 'user', isMeta: true, sessionId: 'T1', timestamp: '2026-09-03T00:00:02Z', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: `t${i}`, is_error: false, content: '' }] } });
+  }
+  const d = digestFromRecords(recs, { filePath: '/x/projects/-Users-t-proj/T1.jsonl' });
+  assert.ok(!d.failure_signals.model_behavior_signals.some((x) => x.kind === 'silent_tool_run'));
+  // thinking が空文字なら無言扱い
+  for (const r of recs) if (r.type === 'assistant' && r.message.content[0].type === 'thinking') r.message.content[0].thinking = '';
+  const d2 = digestFromRecords(recs, { filePath: '/x/projects/-Users-t-proj/T1.jsonl' });
+  assert.ok(d2.failure_signals.model_behavior_signals.some((x) => x.kind === 'silent_tool_run' && x.count === 25));
+});
+test('digestFromRecords: 既に Read/Edit したファイルへの Write を whole_file_rewrite として計上（新規ファイルは除外）', () => {
+  const recs = [
+    { type: 'user', sessionId: 'W1', cwd: '/x', timestamp: '2026-09-03T00:00:00Z', message: { role: 'user', content: 'go' } },
+    { type: 'assistant', sessionId: 'W1', timestamp: '2026-09-03T00:00:01Z', message: { model: 'claude-fable-5-1', content: [
+      { type: 'tool_use', id: 'w1', name: 'Read', input: { file_path: '/Users/tester/proj/a.ts' } },
+      { type: 'tool_use', id: 'w2', name: 'Write', input: { file_path: '/Users/tester/proj/new.ts', content: 'x' } }, // 新規 → 対象外
+    ] } },
+    { type: 'user', isMeta: true, sessionId: 'W1', timestamp: '2026-09-03T00:00:02Z', message: { role: 'user', content: [
+      { type: 'tool_result', tool_use_id: 'w1', is_error: false, content: 'ok' },
+      { type: 'tool_result', tool_use_id: 'w2', is_error: false, content: 'ok' },
+    ] } },
+    { type: 'assistant', sessionId: 'W1', timestamp: '2026-09-03T00:00:03Z', message: { model: 'claude-fable-5-1', content: [
+      { type: 'text', text: '直します' },
+      { type: 'tool_use', id: 'w3', name: 'Write', input: { file_path: '/Users/tester/proj/a.ts', content: 'y' } }, // Read 済み → 全文書き直し
+    ] } },
+    { type: 'user', isMeta: true, sessionId: 'W1', timestamp: '2026-09-03T00:00:04Z', message: { role: 'user', content: [
+      { type: 'tool_result', tool_use_id: 'w3', is_error: false, content: 'ok' },
+    ] } },
+  ];
+  const d = digestFromRecords(recs, { filePath: '/x/projects/-Users-t-proj/W1.jsonl' });
+  const sig = d.failure_signals.model_behavior_signals.find((x) => x.kind === 'whole_file_rewrite');
+  assert.ok(sig, 'whole_file_rewrite が立たない');
+  assert.strictEqual(sig.count, 1);
+  assert.ok(/^~\/proj\/a\.ts$/.test(sig.targets[0]), `パスがマスクされていない: ${sig.targets[0]}`);
+  assert.strictEqual(d.schema, 'harness-digest/6');
+  // Write→Write（生成物の再出力）は数えない。sidechain の Read は先行操作にならない。
+  const recs2 = [
+    { type: 'user', sessionId: 'W2', cwd: '/x', timestamp: '2026-09-03T00:00:00Z', message: { role: 'user', content: 'go' } },
+    { type: 'assistant', sessionId: 'W2', timestamp: '2026-09-03T00:00:01Z', message: { id: 'a', model: 'claude-fable-5-1', content: [{ type: 'tool_use', id: 'x1', name: 'Write', input: { file_path: '/x/out.html', content: '1' } }] } },
+    { type: 'assistant', sessionId: 'W2', isSidechain: true, timestamp: '2026-09-03T00:00:02Z', message: { id: 'b', model: 'claude-fable-5-1', content: [{ type: 'tool_use', id: 'x2', name: 'Read', input: { file_path: '/x/side.ts' } }] } },
+    { type: 'assistant', sessionId: 'W2', timestamp: '2026-09-03T00:00:03Z', message: { id: 'c', model: 'claude-fable-5-1', content: [
+      { type: 'tool_use', id: 'x3', name: 'Write', input: { file_path: '/x/out.html', content: '2' } },   // Write→Write → 対象外
+      { type: 'tool_use', id: 'x4', name: 'Write', input: { file_path: '/x/side.ts', content: '2' } },    // sidechain Read → 対象外
+    ] } },
+    { type: 'user', isMeta: true, sessionId: 'W2', timestamp: '2026-09-03T00:00:04Z', message: { role: 'user', content: ['x1', 'x2', 'x3', 'x4'].map((id) => ({ type: 'tool_result', tool_use_id: id, is_error: false, content: 'ok' })) } },
+  ];
+  const d2 = digestFromRecords(recs2, { filePath: '/x/projects/-Users-t-proj/W2.jsonl' });
+  assert.ok(!d2.failure_signals.model_behavior_signals.some((x) => x.kind === 'whole_file_rewrite'));
+});
+test('maskPaths: cwd スラッグ形式（-Users-<name>-）も畳む', () => {
+  assert.strictEqual(C.maskPaths('/private/tmp/claude-501/-Users-tester-Projects-x/scratch/a.js'), '/private/tmp/claude-501/-Users-~-Projects-x/scratch/a.js');
+  assert.strictEqual(C.maskPaths('/Users/tester/proj/a.ts'), '~/proj/a.ts');
+});
+test('digestFromRecords: 同じ message.id に分割された text と tool_use は 1 ステップに束ねる（実 transcript の形）', () => {
+  // 実 transcript: 1 API 応答が content block ごとに別レコード。text → tool_use → tool_use が同じ message.id で連続する。
+  const recs = [{ type: 'user', sessionId: 'M1', cwd: '/x', timestamp: '2026-09-03T00:00:00Z', message: { role: 'user', content: 'go' } }];
+  for (let i = 0; i < 14; i++) {
+    const mid = `msg_${i}`;
+    recs.push({ type: 'assistant', sessionId: 'M1', timestamp: `2026-09-03T00:00:${String(10 + i).padStart(2, '0')}Z`, message: { id: mid, model: 'claude-fable-5-1', content: [{ type: 'text', text: `step ${i}` }] } });
+    recs.push({ type: 'assistant', sessionId: 'M1', timestamp: `2026-09-03T00:00:${String(10 + i).padStart(2, '0')}Z`, message: { id: mid, model: 'claude-fable-5-1', content: [{ type: 'tool_use', id: `r${i}a`, name: 'Read', input: { file_path: `/x/f${i}.ts` } }] } });
+    recs.push({ type: 'assistant', sessionId: 'M1', timestamp: `2026-09-03T00:00:${String(10 + i).padStart(2, '0')}Z`, message: { id: mid, model: 'claude-fable-5-1', content: [{ type: 'tool_use', id: `r${i}b`, name: 'Grep', input: { pattern: 'x' } }] } });
+    recs.push({ type: 'user', isMeta: true, sessionId: 'M1', timestamp: `2026-09-03T00:00:${String(10 + i).padStart(2, '0')}Z`, message: { role: 'user', content: [
+      { type: 'tool_result', tool_use_id: `r${i}a`, is_error: false, content: 'ok' }, { type: 'tool_result', tool_use_id: `r${i}b`, is_error: false, content: 'ok' },
+    ] } });
+  }
+  const d = digestFromRecords(recs, { filePath: '/x/projects/-Users-t-proj/M1.jsonl' });
+  // 束ねれば「本文あり・ツール 2 件」のステップが 14 個 → 逐次化も無言連鎖も立たない。束ねなければ両方が誤検知する。
+  assert.deepStrictEqual(d.failure_signals.model_behavior_signals, []);
+});
+test('digestFromRecords: 既存 synth にモデル挙動シグナルは立たない（回帰）', () => {
+  const d = digestFromRecords(synthRecords(), { filePath: '/x/projects/-Users-tester-proj/S1.jsonl' });
+  assert.deepStrictEqual(d.failure_signals.model_behavior_signals, []);
+});
+
 // --- pricing ---
 test('costUsd: opus 概算', () => {
   const c = costUsd({ input: 1e6, output: 0, cache_read: 0, cache_creation: 0 }, 'claude-opus-4-8');
@@ -312,6 +423,25 @@ test('computeKpis: ハーネス健全性（打ち切り/作話）の総数を集
   assert.strictEqual(k.orphaned_sessions, 2);
   assert.strictEqual(k.hallucination_total, 1);
   assert.strictEqual(k.hallucination_sessions, 1);
+});
+test('computeKpis: refusal とモデル挙動シグナルを集計し、旧 digest（配列なし）も壊れない', () => {
+  const base = { tools: {}, cost_usd: 0, friction_score: 0, turns: { compactions: 0 } };
+  const old = { ...base, failure_signals: { orphaned_tool_use: [], suspected_hallucinations: [], model_refusals: 1 } }; // v5 以前
+  const d2 = { ...base, failure_signals: { orphaned_tool_use: [], suspected_hallucinations: [], model_refusals: 0, model_behavior_signals: [
+    { kind: 'serial_single_tool_calls', count: 7 }, { kind: 'whole_file_rewrite', count: 2, targets: ['~/p/a.ts'] }, { kind: 'unknown_kind', count: 9 },
+  ] } };
+  const k = computeKpis([old, d2]);
+  assert.strictEqual(k.model_refusals_total, 1);
+  assert.strictEqual(k.model_refusals_sessions, 1);
+  assert.deepStrictEqual(k.behavior_signals.serial_single_tool_calls, { max: 7, total: 7, sessions: 1 });
+  assert.deepStrictEqual(k.behavior_signals.whole_file_rewrite, { max: 2, total: 2, sessions: 1 });
+  assert.deepStrictEqual(k.behavior_signals.silent_tool_run, { max: 0, total: 0, sessions: 0 });
+  assert.strictEqual(k.behavior_unmeasured_sessions, 1); // old は配列なし＝未計測
+  // 連鎖系は最長（max）で見る。同一 kind の重複と steps_truncated はセッション数を二重に数えない。
+  const d3 = { ...base, failure_signals: { model_behavior_signals: [{ kind: 'silent_tool_run', count: 6 }, { kind: 'silent_tool_run', count: 10 }, { kind: 'steps_truncated', count: 5000 }] } };
+  const k2 = computeKpis([d3]);
+  assert.deepStrictEqual(k2.behavior_signals.silent_tool_run, { max: 10, total: 16, sessions: 1 });
+  assert.strictEqual(k2.behavior_truncated_sessions, 1);
 });
 
 // --- reviewCoverage（自動レビューのカバレッジ欠損）---

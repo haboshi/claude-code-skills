@@ -203,12 +203,23 @@ function kpiRow(kpis) {
 function harnessHealth(kpis) {
   const ot = kpis.orphaned_total || 0, os = kpis.orphaned_sessions || 0;
   const ht = kpis.hallucination_total || 0, hs = kpis.hallucination_sessions || 0;
+  const rt = kpis.model_refusals_total || 0, rs = kpis.model_refusals_sessions || 0;
+  const bh = kpis.behavior_signals || {};
+  const b = (k) => bh[k] || { max: 0, total: 0, sessions: 0 };
+  const unm = kpis.behavior_unmeasured_sessions || 0, trunc = kpis.behavior_truncated_sessions || 0;
   const cells = [
     ['打ち切り (orphaned tool_use)', `${ot}件`, `${os} セッション`],
     ['作話疑い (tool-result R8)', `${ht}件`, `${hs} セッション`],
+    ['refusal → モデル退避', `${rt}件`, `${rs} セッション`],
+    ['逐次化 (1応答1読取ツールの最長連鎖)', `最長 ${b('serial_single_tool_calls').max}連`, `${b('serial_single_tool_calls').sessions} セッション`],
+    ['無言の長走 (本文なし応答の最長連鎖)', `最長 ${b('silent_tool_run').max}連`, `${b('silent_tool_run').sessions} セッション`],
+    ['全文書き直し (Read/Edit 済みファイルへの Write)', `${b('whole_file_rewrite').total}件`, `${b('whole_file_rewrite').sessions} セッション`],
   ];
   const cellHtml = cells.map(([k, v, s]) =>
     `<div class="kpi"><div class="kpi-v">${esc(v)}</div><div class="kpi-k">${esc(k)}<br><span class="muted">${esc(s)}</span></div></div>`).join('');
+  const unmeasuredNote = (unm || trunc)
+    ? `<div class="meta">モデル挙動の 3 指標は digest v6 以降のセッションだけが対象。未計測（v5 以前）${unm} セッション${trunc ? `・steps 上限到達（連鎖系が過小の可能性）${trunc} セッション` : ''}は 0 ではなく unknown。</div>`
+    : '';
   const rc = kpis.review_coverage;
   const rcHtml = rc ? `<div class="kpis" style="grid-template-columns:repeat(3,1fr);max-width:1100px;margin-top:10px">
       <div class="kpi"><div class="kpi-v">${(rc.no_output_rate * 100).toFixed(1)}%</div><div class="kpi-k">自動レビューの無所見率<br><span class="muted">${rc.no_output}/${rc.sessions} セッション</span></div></div>
@@ -216,9 +227,11 @@ function harnessHealth(kpis) {
       <div class="kpi"><div class="kpi-v">${rc.avg_steps_with_output}</div><div class="kpi-k">所見あり時の平均ステップ<br><span class="muted">対照</span></div></div>
     </div>
     <div class="meta"><b>自動レビューのカバレッジ欠損</b>＝ security-guidance プラグイン（sdk-py）のレビューが所見（StructuredOutput）を返さずに終わった割合。無所見側のステップ数が有意に長ければ <code>max_turns</code> 上限（既定18）での打ち切りが疑われる。上限は環境変数 <code>SG_AGENTIC_MAX_TURNS</code> で変更できる。</div>` : '';
-  return `<h2>ハーネス健全性 — 打ち切り・作話・レビュー欠損の可視化</h2>
-    <div class="kpis" style="grid-template-columns:repeat(2,1fr);max-width:760px">${cellHtml}</div>
-    <div class="meta">従来 digest で不可視だった「静かな失敗」。<b>打ち切り</b>＝ツール結果が返る前にターンが切れた回数（model-side error 等の代理シグナル）。<b>作話疑い</b>＝tool_result に内部プロトコル構文が混入した痕跡（TaskOutput・transcript 読取など仕様上プロトコル構文を含む出所は除外済み）。</div>
+  return `<h2>ハーネス健全性 — 打ち切り・作話・refusal・モデル挙動の退行・レビュー欠損の可視化</h2>
+    <div class="kpis kpis-3">${cellHtml}</div>
+    ${unmeasuredNote}
+    <div class="meta">従来 digest で不可視だった「静かな失敗」。<b>打ち切り</b>＝ツール結果が返る前にターンが切れた回数（model-side error 等の代理シグナル）。<b>作話疑い</b>＝tool_result に内部プロトコル構文が混入した痕跡（TaskOutput・transcript 読取など仕様上プロトコル構文を含む出所は除外済み）。<b>refusal</b>＝安全分類器で別モデルへ退避した回数（復帰手順は fable5-prompting）。</div>
+    <div class="meta">下段 3 つは Fable 5.1 の公式ガイドが挙げる既定挙動の差分に対応する代理指標（advisory・friction 非算入）。<b>逐次化</b>＝1 API 応答（同じ message.id）に読み取り系ツール（Read/Glob/Grep/WebFetch/WebSearch。Bash 経由の読み取りは対象外）1 件だけの応答が 6 連以上続いた最長連鎖（独立した呼び出しの並列化漏れの疑い。対処: バッチ化の 1 文はハーネスが注入済みなので、頻発なら effort と依頼の粒度を見直す）。<b>無言の長走</b>＝本文（text / 非空 thinking）なしのツール呼び出し応答が 20 連以上続いた最長連鎖（実測 p95 は 5〜8。対処: 進捗更新の指示。rules R4-2）。<b>全文書き直し</b>＝同一セッションの main thread で Read/Edit 済みのファイルへの Write（Write→Write の再出力は数えない。対処: Edit 優先の 1 文。rules R4-3。意図的な全面書き換えも含むので件数だけで判断しない）。</div>
     ${rcHtml}`;
 }
 
@@ -244,7 +257,7 @@ const STYLE = `
 
   .kpis { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-bottom:10px; }
   @media (min-width:720px){ .kpis{ grid-template-columns:repeat(3,1fr);} }
-  @media (min-width:1100px){ .kpis{ grid-template-columns:repeat(6,1fr);} }
+  @media (min-width:1100px){ .kpis{ grid-template-columns:repeat(6,1fr);} .kpis-3{ grid-template-columns:repeat(3,1fr); max-width:1100px; } }
   .kpi { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 14px; }
   .kpi-v { font-size:20px; font-weight:700; } .kpi-k { font-size:10px; color:var(--muted); }
 
@@ -393,9 +406,15 @@ function markdown(data) {
     }
   } else { lines.push(`優先度の高い失敗は検出されませんでした。`); }
   lines.push(``, `## KPI`, ``, `| 指標 | 値 |`, `|---|---|`, `| セッション | ${kpis.sessions} |`, `| 総コスト(概算) | $${(kpis.total_cost_usd || 0).toFixed(2)} |`, `| ツールエラー率 | ${((kpis.tool_error_rate || 0) * 100).toFixed(1)}% |`, `| 平均 friction | ${kpis.avg_friction} |`, ``,
-    `## ハーネス健全性（打ち切り/作話の可視化）`, ``, `| 指標 | 件数 | 影響セッション |`, `|---|---|---|`,
-    `| 打ち切り(orphaned tool_use) | ${kpis.orphaned_total || 0} | ${kpis.orphaned_sessions || 0} |`,
-    `| 作話疑い(tool-result R8) | ${kpis.hallucination_total || 0} | ${kpis.hallucination_sessions || 0} |`,
+    `## ハーネス健全性（打ち切り・作話・refusal・モデル挙動の可視化）`, ``, `| 指標 | 値 | 影響セッション |`, `|---|---|---|`,
+    `| 打ち切り(orphaned tool_use) | ${kpis.orphaned_total || 0} 件 | ${kpis.orphaned_sessions || 0} |`,
+    `| 作話疑い(tool-result R8) | ${kpis.hallucination_total || 0} 件 | ${kpis.hallucination_sessions || 0} |`,
+    `| refusal→モデル退避 | ${kpis.model_refusals_total || 0} 件 | ${kpis.model_refusals_sessions || 0} |`,
+    ...[['serial_single_tool_calls', 'max', '連(最長)'], ['silent_tool_run', 'max', '連(最長)'], ['whole_file_rewrite', 'total', '件']].map(([k, f, u]) => {
+      const b = (kpis.behavior_signals || {})[k] || { max: 0, total: 0, sessions: 0 };
+      return `| モデル挙動: ${k} | ${b[f] || 0} ${u} | ${b.sessions} |`;
+    }),
+    ...((kpis.behavior_unmeasured_sessions || kpis.behavior_truncated_sessions) ? [`| モデル挙動: 未計測(v5以前) / steps上限到達 | ${kpis.behavior_unmeasured_sessions || 0} / ${kpis.behavior_truncated_sessions || 0} | unknown |`] : []),
     ``, `## 失敗クラスター`, ``, `| クラス/ツール | 件数 | 影響 | 傾向 | 改善示唆 | 対象面 |`, `|---|---|---|---|---|---|`);
   for (const c of clusters) lines.push(`| ${c.error_class}/${c.tool}${c.is_defense ? '(防御)' : ''} | ${c.count} | ${c.affected_sessions} | ${c.trend || ''} | ${c.suggested_fix} | ${c.target_surface} |`);
   return lines.join('\n') + '\n';

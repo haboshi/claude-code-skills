@@ -27,6 +27,11 @@ function computeKpis(digests) {
   const n = digests.length;
   let totalCost = 0, toolCalls = 0, toolErrors = 0, compactions = 0, interruptions = 0, frictionSum = 0;
   let orphanTotal = 0, orphanSessions = 0, hallucTotal = 0, hallucSessions = 0;
+  let refusalTotal = 0, refusalSessions = 0;
+  // v6: モデル挙動の退行（kind → { max, total, sessions }）。連鎖系は最長連鎖の max、rewrite は件数の total が意味を持つ。
+  // 旧 digest（v5 以前）には配列が無いので、未計測セッション数を別掲して 0 と区別する（verification-integrity R5）。
+  const behavior = { serial_single_tool_calls: { max: 0, total: 0, sessions: 0 }, silent_tool_run: { max: 0, total: 0, sessions: 0 }, whole_file_rewrite: { max: 0, total: 0, sessions: 0 } };
+  let behaviorUnmeasured = 0, behaviorTruncated = 0;
   const byTool = {}; // name -> { count, errors }
   const costBySession = [];
   const compactionBySession = [];
@@ -41,6 +46,18 @@ function computeKpis(digests) {
     const hn = (fsig.suspected_hallucinations || []).length;
     orphanTotal += on; if (on) orphanSessions++;
     hallucTotal += hn; if (hn) hallucSessions++;
+    const rn = fsig.model_refusals || 0;
+    refusalTotal += rn; if (rn) refusalSessions++;
+    if (!Array.isArray(fsig.model_behavior_signals)) behaviorUnmeasured++;
+    const seenKinds = new Set();
+    for (const sig of (fsig.model_behavior_signals || [])) {
+      if (sig.kind === 'steps_truncated') { behaviorTruncated++; continue; }
+      const b = behavior[sig.kind];
+      if (!b) continue;
+      b.total += sig.count || 0;
+      if ((sig.count || 0) > b.max) b.max = sig.count || 0;
+      if (!seenKinds.has(sig.kind)) { b.sessions++; seenKinds.add(sig.kind); }
+    }
     for (const [name, t] of Object.entries(d.tools || {})) {
       const bt = byTool[name] || { count: 0, errors: 0 };
       bt.count += t.count || 0; bt.errors += t.errors || 0; byTool[name] = bt;
@@ -69,6 +86,12 @@ function computeKpis(digests) {
     orphaned_sessions: orphanSessions,
     hallucination_total: hallucTotal,
     hallucination_sessions: hallucSessions,
+    // v6: refusal（Opus フォールバック）と Fable 5.1 の既定挙動差分の退行
+    model_refusals_total: refusalTotal,
+    model_refusals_sessions: refusalSessions,
+    behavior_signals: behavior,
+    behavior_unmeasured_sessions: behaviorUnmeasured, // digest v5 以前（配列なし）＝ 0 ではなく未計測
+    behavior_truncated_sessions: behaviorTruncated,   // steps cap 到達＝連鎖系が過小の可能性
     // 自動レビューのカバレッジ欠損（sdk-py セッションが存在するときのみ）
     review_coverage: reviewCoverage(digests),
     by_tool: byTool,

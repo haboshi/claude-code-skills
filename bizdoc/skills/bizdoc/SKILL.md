@@ -471,7 +471,7 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/hub.mjs" add "<組み立てたHTML>" \
   --project "$(pwd)" --title "<タイトル>" --slug "<英語kebab-caseスラッグ>" \
   --type "<種別>" --tags "<a,b>" --accent "#rrggbb"
 
-# 決定論ゲート2: 実コンテンツ高で全体 PNG を撮り、図・表を DOM 位置から切り出して 2 倍で書き出す
+# 決定論ゲート2: 全体を 2000px ごとのセグメント PNG に分けて撮り、図・表を DOM 位置から切り出して 2 倍で書き出す
 node "${CLAUDE_PLUGIN_ROOT}/scripts/screenshot.mjs" "<保存先index.html>" "<scratchpad>/shot"
 ```
 
@@ -481,12 +481,12 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/screenshot.mjs" "<保存先index.html>" "<sc
 - `add` は保存時に **tokens.css と hub ナビを注入する**。保存物のスクリーンショット上部に「← doc-hub 一覧」のバーが出るのは正常（hub 配下のパスでのみ表示され、メール添付などで持ち出したコピーでは自動的に消える。印刷にも出ない）
 - スクリーンショットが**無スタイル**（素の HTML に見える）なら、`<style data-bizdoc="tokens"></style>` を書き忘れているか、プラグインのキャッシュが古い
 - 同じ slug のドキュメントが既にあると `add` は既定で停止する（勝手に上書きしない）。ユーザーの意図が更新なら `--update`、別ドキュメントとして残すなら `--new` を確認してから付ける
-- `<scratchpad>/shot` = 一時的な出力ディレクトリ（`mktemp -d` 等）。`screenshot.mjs` は `full.png`（幅 1280・高さ＝文書の実高）と `crop-NN-<figure|table>.png`（各図表を前後の本文 2 行分込みで 2 倍解像度に再ラスタライズ）を書き、stdout に JSON（`height`・各 crop の `tag`/`top`/`height`/`truncated`）を返す。Chrome CLI の `--screenshot` は使わない（ビューポート分しか撮れず、実文書の大半が 4000px を超えるため下半分の図表が写らない。2026-09-03 実測 10/10 文書）
-- JSON の `crops` の件数が文書内の図表の数と一致するか先に確かめる（0 件なら `figure` / `table` で組んでいない。`--selector` で対象を足せる）
+- `<scratchpad>/shot` = 一時的な出力ディレクトリ（`mktemp -d` 等）。`screenshot.mjs` は `full-NN.png`（全体を上から 2000px ごとに分割・幅 1280・等倍。Read が縮小せず本文が読める）と `crop-NN-<figure|table|div.kpi-grid>.png`（各図表を前後の本文 2 行分込みで 2 倍解像度に再ラスタライズ）を書き、stdout に JSON（`height`・`segments`・各 crop の `tag`/`top`/`height`/`truncated`/`skipped`）を返す。Chrome CLI の `--screenshot` は使わない（ビューポート分しか撮れず、実文書の大半が 4000px を超えるため下半分の図表が写らない。2026-09-03 実測 10/10 文書。1 枚撮りは 16384px 超で先頭の複製に化けるため分割する）
+- JSON の `crops` の件数が文書内の図表の数（`figure` / `table` / 数値カードの `.kpi-grid`）と一致するか先に確かめる。0 件ならそれらの要素で組んでいない（`--selector` で対象を足せる）。`truncated: true`（高さ 2400px 超で先頭しか撮れていない）か `skipped: true` の crop が 1 件でもあれば、その要素は表を分割するか `--selector` で単独指定して撮り直してから判定する
 
-全体（`full.png`）は骨格と位置の確認に使い、図表の判定は crop 側で行う。**目視の印象ではなく数えて**確認する項目:
+セグメント PNG は骨格と位置の確認に使い、図表の判定は crop 側で行う。**目視の印象ではなく数えて**確認する項目:
 
-全体 PNG（`full.png`）で:
+全体 PNG（`full-NN.png` を順に Read する。文字を読む検査は保存 HTML への `grep` と併用する）で:
 - **本文1行の文字数が 45字を超えていないか** — 超えていれば `--measure`（tokens.css）が効いていない
   （`section > p` 等に当たっているか、`<p>` が `<section>` の直下にあるかを確認する）。
   `.callout` / `.callout-warn` と `.exec-summary` / `.conclusion` のパネル内テキストは器幅で組む

@@ -268,7 +268,7 @@ test('digestFromRecords: 既に Read/Edit したファイルへの Write を who
   assert.ok(!d2.failure_signals.model_behavior_signals.some((x) => x.kind === 'whole_file_rewrite'));
 });
 test('maskPaths: cwd スラッグ形式（-Users-<name>-）も畳む', () => {
-  assert.strictEqual(C.maskPaths('/private/tmp/claude-501/-Users-tester-Projects-x/scratch/a.js'), '/private/tmp/claude-501/-Users-~-Projects-x/scratch/a.js');
+  assert.strictEqual(C.maskPaths('/tmp/x/-Users-tester-Projects-x/scratch/a.js'), '/tmp/x/-Users-~-Projects-x/scratch/a.js');
   assert.strictEqual(C.maskPaths('/Users/tester/proj/a.ts'), '~/proj/a.ts');
 });
 test('digestFromRecords: 同じ message.id に分割された text と tool_use は 1 ステップに束ねる（実 transcript の形）', () => {

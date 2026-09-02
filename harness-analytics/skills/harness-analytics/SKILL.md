@@ -109,11 +109,13 @@ detached で `cluster`→`build-report` を走らせサーバ起動＋ブラウ�
 |---|---|---|
 | `serial_single_tool_calls` | 1 API 応答（同じ `message.id` のレコードを束ねたもの）に読み取り系ツール（Read/Glob/Grep/WebFetch 等）1 件だけの状態が同一 user ターン内で 6 連以上 | 依存のある逐次読みは正常。頻発なら effort と依頼粒度（バッチ化 nudge はハーネス注入済み） |
 | `silent_tool_run` | 本文（text、または Fable 5.1 が進捗更新として出す非空 thinking）なしのツール呼び出し応答が 20 連以上（直近 60 セッションの実測で p95 = 5〜8。12 では半数が立つ） | 進捗更新の指示（rules/model-generation-policy R4-2） |
-| `whole_file_rewrite` | 同一セッションで既に Read/Edit/Write した file_path への Write | Edit 優先の 1 文（同 R4-3）。生成物の再出力は正常動作 |
+| `whole_file_rewrite` | 同一セッションの main thread で Read/Edit 済みの file_path への Write（Write→Write の再出力と sidechain の操作は数えない） | Edit 優先の 1 文（同 R4-3）。意図的な全面書き換えも含むので件数だけで判断しない |
 | `model_refusals`（既存） | `model_refusal_fallback` システムイベント | 復帰手順は fable5-prompting |
 
 閾値は `detectModelBehavior(steps, { serialThreshold, silentThreshold })` の opts で変えられる。v6 で `DIGEST_VERSION` を
-上げているため、次回 `ingest.js` は全セッションを再ダイジェストする（`--backfill` 不要）。
+上げているため、次回 `ingest.js` は窓内（既定 14d）のセッションを再ダイジェストする。それより古い分は `--backfill` で
+再生成するまで v5 以前のままで、レポートでは「未計測」として別掲される（0 とは区別）。steps 上限（5000 応答）に
+達したセッションも連鎖系が過小になりうるため同様に別掲する。
 
 ## 保存先
 

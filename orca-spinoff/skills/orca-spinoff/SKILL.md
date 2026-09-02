@@ -116,14 +116,15 @@ orca worktree create --name <slug> --parent-worktree active --agent <agent> --pr
 - `--base-branch` は渡さない(repo 既定 base を使う)。現在のブランチを base にするのは、ユーザーが stacked 作業を明示したときだけ。
 - `<slug>` はチケットキー/番号を含む短い英数字(例: `fix-123-login-css`)。
 - `<agent>` はユーザー指定 > そのプロジェクトの直近の慣行 > `claude`。
-- 旧 CLI が `--agent`/`--prompt` を拒否した場合のフォールバック: `worktree create` → `orca terminal create --worktree id:<id> --command "<agent>" --json` → `orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 60000 --json` → `orca terminal send --terminal <handle> --text "<ブリーフ>" --enter --json`
+- 旧 CLI が `--agent`/`--prompt` を拒否した場合のフォールバック: `worktree create` → `orca terminal create --worktree id:<id> --command "<agent>" --json` → `orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 60000 --json` → `orca terminal send --terminal <handle> --text "<ブリーフのポインタ 1 行(チケット参照 + 一意トークン)>" --enter --json` → `orca terminal read --screen` でトークンの出現を確認(ブリーフ全文は send に載せない。§7 の送達契約)
 
 ### 監督モードの起動
 
 `--prompt` でブリーフを渡す代わりに task を作って dispatch する(worker_done / ask を返せる preamble が注入される)。`--parent-worktree` / `--base-branch` / `<slug>` / `<agent>` の規約はフルハンドオフと同じ:
 
 ```bash
-orca orchestration task-create --spec "<ブリーフ>" --json
+# ブリーフは一時ファイルに書いてから渡す(本文中のバッククォート・$() がシェル評価される事故の予防。2026-08-27 実測: `permission denied: lib/...`)
+orca orchestration task-create --spec "$(cat <brief-file>)" --json
 orca worktree create --name <slug> --parent-worktree active --agent <agent> --json
 orca terminal list --worktree id:<newId> --json          # エージェントの terminal handle を取る
 orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 60000 --json
@@ -173,16 +174,19 @@ orca worktree set --worktree id:<newId> --comment "spun off: <チケット参照
 orca terminal send --terminal <handle> --text "【方針更新】<変更の要旨1〜2文>。チケット <キー> の最新本文を再読してから続行。着手済みの旧方針差分は破棄すること" --enter --json
 ```
 
-send に変更内容の全文を書かない(チケットとの二重管理になり、古い指示が残って事故る)。エージェントは処理中でも入力をキューするので、割り込みはそのまま送ってよい。
+send に変更内容の全文を書かない(チケットとの二重管理になり、古い指示が残って事故る)。
+
+**処理中に送った入力は消失する**(2026-09-02 実測。旧記述「処理中でもキューされる」は誤りだった)。送る前に `orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 600000 --json` で idle を待ち、送った後は `orca terminal read --terminal <handle> --screen --json` で要旨の一部が画面に出たことを確認する。`ok:true` は到達の証明ではない(idle 受信でも先頭が欠落して末尾 1 文だけ届き、worker が逆の方針を実装した実例あり)。届いていなければ 1 回だけ再送し、それでも届かなければ人に報告する。
 
 ## 8. 監督モード: 監視と完遂
 
 dispatch 後、ローリング待機で子からのメッセージを受ける:
 
 ```bash
-orca orchestration check --wait --types worker_done,escalation,decision_gate --timeout-ms 540000 --json
+orca orchestration check --ack <直前に受けた delivery_id> --wait --types worker_done,escalation,decision_gate,ask --timeout-ms 540000 --json
 ```
 
+- **`--ack` を省略しない**(2026-09-02)。check は最古の未 ack Delivery を replay し続けるため、heartbeat を ack しないと後ろに並んだ子の `ask` / `worker_done` が永久に見えない(実測: 同一 delivery を 3 回 replay、子の ask 900s は親が AskUserQuestion で待つ間に失効し、子は仮定で実装した)。**AskUserQuestion に入る前に必ず 1 回 `check --ack` を回す**。
 - タイムアウトや `{count:0}` は**チェックポイントであって失敗ではない**。`terminal read` / `task-list` で生存確認し、待機を続ける(コーディング課題は 15〜60 分が普通。heartbeat や画面の動きは「生きている」であって「完了」ではない。止めない・再起動しない)。
 - 待機は `run_in_background` で回してよい。その間に本流作業を進めて構わないが、スピンオフ先と同一ファイルは編集しない。
 - **decision_gate / ask への応答**: チケットに書いた完了定義の範囲内の技術判断は親が即 `reply` する。設計変更・スコープ変更・破壊的/外向き操作に踏み込む判断は AskUserQuestion でユーザーに確認してから返す。

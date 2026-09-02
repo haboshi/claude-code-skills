@@ -81,7 +81,16 @@ try {
     footerTemplate,
   }, sessionId);
 
-  fs.writeFileSync(path.resolve(output), Buffer.from(data, 'base64'));
+  const pdf = Buffer.from(data, 'base64');
+  // v0.11.1 (2026-09-02): 未描画のまま printToPDF して exit 0 で「成功」していた無音失敗を止める
+  //   （2026-08 実測: 6 件中 4 件が空 PDF。load の race（10s）に負けると本文ゼロで出力される）。
+  //   ページ数 0 / 本文長ゼロ相当（< MIN_PDF_BYTES）は非 0 終了にし、呼び出し側に再実行を促す。
+  const MIN_PDF_BYTES = 2048;
+  const pageCount = (pdf.toString('latin1').match(/\/Type\s*\/Page[^s]/g) || []).length;
+  if (pdf.length < MIN_PDF_BYTES || pageCount === 0) {
+    die(`空 PDF の可能性があります（${pdf.length} bytes / ${pageCount} pages）。load が完了する前に印刷された疑い — マシン負荷を下げて再実行するか、HTML 単体でレンダリングを確認してください`);
+  }
+  fs.writeFileSync(path.resolve(output), pdf);
   console.log(path.resolve(output));
 } finally {
   close();

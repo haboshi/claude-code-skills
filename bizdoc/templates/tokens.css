@@ -82,9 +82,16 @@ strong { font-weight: 700; }
 .exec-summary ol li small { display: block; font-weight: 400; color: var(--ink-2); font-size: 14px; line-height: 1.75; margin-top: .1rem; }
 
 /* ── セクション（番号つきメッセージ見出し）── */
+/* v0.11.1 (2026-09-02): カウンタのリセットを <main> 依存から body へ移す。祖先に counter-reset が無いと
+   各 section > h2 の counter-increment がその要素上にカウンタを新設し、全セクションが「01」になる
+   （2026-08 に 4 文書で再発。SKILL.md は <main> を要求していなかった）。main の行は互換のため残す。 */
+body { counter-reset: sec; }
 main { counter-reset: sec; }
 section { margin: 3.4rem 0; }
 section > h2 { counter-increment: sec; font-size: 23px; line-height: 1.5; margin: 0 0 .4rem; display: flex; gap: .7rem; align-items: baseline; }
+/* 終端の結論パネル（.conclusion）は番号対象外。<section class="conclusion"> と書かれても採番を消費しない */
+section.conclusion > h2, .conclusion > h2 { counter-increment: none; }
+section.conclusion > h2::before, .conclusion > h2::before { content: none; border: none; padding: 0; }
 section > h2::before {
   content: counter(sec, decimal-leading-zero); flex: none; transform: translateY(-2px);
   font-size: 11.5px; font-weight: 700; letter-spacing: .1em; color: var(--accent);

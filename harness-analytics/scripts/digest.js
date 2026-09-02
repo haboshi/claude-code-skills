@@ -3,7 +3,7 @@
 // 1 transcript ファイル = 1 セッション。冪等: 同じ入力から常に同じダイジェストを返す。
 
 const C = require('./common');
-const { classifyToolResult, detectRetries, detectDrift, detectHallucinationMarkers } = require('./classify');
+const { classifyToolResult, detectRetries, detectDrift, detectHallucinationMarkers, detectModelBehavior } = require('./classify');
 const { costUsd } = require('./pricing');
 
 // tool_use.input から短い target 文字列を抽出（Read/Edit/Write→file_path, Bash→cmd先頭, Grep→pattern）
@@ -56,6 +56,10 @@ function digestFromRecords(records, opts = {}) {
   const hookErrors = [];
   const orphaned = [];        // 結果の無い tool_use（＝ターン打ち切り/model-side error の代理シグナル）
   const hallucinations = [];  // R8: 作話/混線の痕跡（assistant テキスト・tool_result）
+  const steps = [];           // モデル挙動検知用: main thread の assistant メッセージ列 { turnIdx, tools, hasText }
+  const seenFileTargets = new Set(); // main thread で Read/Edit 済み file_path（Write の全文書き直し判定用。Write→Write は生成物の再出力が多数派なので数えない）
+  const rewrites = [];        // whole_file_rewrite: Read/Edit 済みファイルへの Write { target, turn_idx }
+  let stepsTruncated = false; // steps の cap 到達（0 と未計測を区別するため digest に載せる）
   const CAP = 50;             // 弱シグナル配列の上限（暴走セッションでのメモリ暴発を防ぐ）
   let lastToolUseId = null;   // 最後に発火した tool_use（in-flight なので orphan 判定から除外）
   let modelRefusals = 0, permissionDenials = 0;
@@ -125,27 +129,58 @@ function digestFromRecords(records, opts = {}) {
         bm.input += rowInput; bm.output += rowOutput; tokens.by_model[model] = bm;
         costTotal += costUsd({ input: rowInput, output: rowOutput, cache_read: rowCr, cache_creation: rowCw }, model);
       }
-      // ツール使用 / テキスト（作話痕跡走査）
+      // ツール使用 / テキスト（作話痕跡走査・モデル挙動検知）
       const content = msg && msg.content;
       if (Array.isArray(content)) {
+        const stepTools = []; let stepHasText = false;
         for (const b of content) {
           if (!b) continue;
           // assistant テキストに内部プロトコル構文の断片（R8 混線）が漏れていないか
-          if (b.type === 'text' && b.text && hallucinations.length < CAP) {
-            const h = detectHallucinationMarkers(b.text);
-            if (h.suspected) hallucinations.push({ where: 'assistant_text', markers: h.markers, turn_idx: turnIdx });
+          if (b.type === 'text' && b.text) {
+            if (b.text.trim()) stepHasText = true;
+            if (hallucinations.length < CAP) {
+              const h = detectHallucinationMarkers(b.text);
+              if (h.suspected) hallucinations.push({ where: 'assistant_text', markers: h.markers, turn_idx: turnIdx });
+            }
             continue;
           }
+          // Fable 5.1 の進捗更新は text でなく thinking block として届く（公式 "Progress updates between tool calls"）。
+          // 非空の thinking はユーザーに見える実況として扱う（実測 2026-09-03: Fable 5.1 のツール手番の 16% が thinking のみ）。
+          if (b.type === 'thinking') { if (String(b.thinking || '').trim()) stepHasText = true; continue; }
           if (b.type !== 'tool_use') continue;
           const name = b.name || 'unknown';
           const target = extractTarget(name, b.input);
           toolUseById[b.id] = { name, target, turnIdx };
           lastToolUseId = b.id; // 発火順に更新 → 最終値が「最後に発火した tool_use」
           if (toolSeq.length < 60) toolSeq.push(name);
+          stepTools.push(name);
+          // main thread で既に Read/Edit したファイルへの Write ＝ 全文書き直しの代理シグナル（Fable 5.1 の既定挙動差分）。
+          // 実測（2026-09-03・40 セッション）: Write→Write を含めると 72% が生成物の再出力だったため、先行操作を Read/Edit に限る。
+          // sidechain（サブエージェント）の操作は steps と同じく対象外にして対称にする。
+          if (!rec.isSidechain && target) {
+            if (name === 'Write' && seenFileTargets.has(target) && rewrites.length < CAP) rewrites.push({ target, turn_idx: turnIdx });
+            if (/^(Read|Edit|NotebookEdit|MultiEdit)$/.test(name)) seenFileTargets.add(target);
+            else if (name === 'Write') seenFileTargets.delete(target); // Write 後の再 Write は数えない
+          }
           if (name === 'Skill' && b.input && (b.input.skill || b.input.command)) invokedSkills.add(b.input.skill || b.input.command);
           else if (name === 'Task' && b.input && b.input.subagent_type) invokedSubagents.add(b.input.subagent_type);
           else if (name === 'Agent' && b.input && b.input.subagent_type) invokedSubagents.add(b.input.subagent_type);
           else if (name.startsWith('mcp__')) invokedMcp.add(name.split('__')[1] || 'unknown');
+        }
+        // Claude Code の transcript は 1 つの API 応答（message.id）を content block ごとに別レコードへ分割する
+        // （実測 2026-09-03: assistant レコードの content 長は常に 1、同じ message.id が連続する）。
+        // text と tool_use が別レコードに出るため、message.id で 1 ステップに束ねてから判定する。
+        if (!rec.isSidechain) {
+          const mid = msg && msg.id;
+          const last = steps[steps.length - 1];
+          if (mid && last && last.mid === mid) {
+            last.tools.push(...stepTools);
+            if (stepHasText) last.hasText = true;
+          } else if (steps.length < 5000) {
+            steps.push({ mid: mid || null, turnIdx, tools: stepTools, hasText: stepHasText });
+          } else {
+            stepsTruncated = true;
+          }
         }
       }
     } else if (rec.type === 'system') {
@@ -197,6 +232,10 @@ function digestFromRecords(records, opts = {}) {
   const retryEvents = toolEvents.filter((e) => e.tool !== '__user__');
   const retries = detectRetries(retryEvents);
   const driftSignals = detectDrift(toolEvents);
+  // モデル挙動の退行（advisory・friction 非算入）。whole_file_rewrite は digest 側で数えて同じ配列に載せる。
+  const behaviorSignals = detectModelBehavior(steps);
+  if (rewrites.length) behaviorSignals.push({ kind: 'whole_file_rewrite', count: rewrites.length, targets: rewrites.slice(0, 10).map((r) => C.maskPaths(r.target)) });
+  if (stepsTruncated) behaviorSignals.push({ kind: 'steps_truncated', count: steps.length }); // 連鎖系は過小評価の可能性（unknown 扱い）
 
   // friction_score（0..1 決定論合成）
   const totalToolCalls = Object.values(toolCounts).reduce((s, t) => s + t.count, 0);
@@ -249,6 +288,7 @@ function digestFromRecords(records, opts = {}) {
       drift_signals: driftSignals,
       orphaned_tool_use: orphaned,        // 打ち切り（model-side error 等）の代理シグナル
       suspected_hallucinations: hallucinations, // R8: tool-result 作話/混線の痕跡（advisory）
+      model_behavior_signals: behaviorSignals,  // v6: Fable 5.1 の既定挙動差分の退行（逐次化・無言連鎖・全文書き直し。advisory）
     },
     interruptions,
     friction_score: Math.round(friction * 100) / 100,

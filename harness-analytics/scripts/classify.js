@@ -164,4 +164,43 @@ function detectHallucinationMarkers(text, opts = {}) {
   return { suspected, markers };
 }
 
-module.exports = { classifyToolResult, detectRetries, detectDrift, detectHallucinationMarkers, RULES };
+// モデル挙動の退行検知（決定論・弱シグナル・advisory）。2026-09-03 追加。
+// Anthropic 公式 "What's new in Claude Fable 5.1" の "Changed from Claude Fable 5" に対応する代理指標:
+//   serial_single_tool_calls — 読み取り系ツールを 1 API 応答 1 件ずつ連続して呼ぶ（独立した呼び出しの逐次化＝バッチ化の退行）
+//   silent_tool_run          — ツールを呼ぶ API 応答が本文（text / 非空 thinking）なしで連続する（実況の減少）
+// transcript からは「独立だったか」「既存ファイルか」を確定できないため、閾値付きの代理指標に留め friction には算入しない。
+// 閾値の根拠（2026-09-03・直近 60 セッション実測）: 無言連鎖の長さは p50=1-2 / p90=5 / p95=5-8、最長 50。
+//   12 では対象セッションの約半数が立って advisory でなくノイズになる（hook-authoring R3）ため、p95 の 2.5 倍超＝20 を採用。
+//   逐次化は 6 連で立ったのが 60 セッション中 2 件（いずれも 10 連）で、6 は分離できている。
+// steps: 1 user ターン内で連続する API 応答の列 [{ turnIdx, tools: [name...], hasText }]（main thread のみ）
+// 対象は専用の読み取りツールのみ。Bash 経由の読み取り（cat/grep 等。全呼び出しの約 9 割）は目的を判別できないため対象外。
+const READ_ONLY_TOOLS = /^(Read|Glob|Grep|WebFetch|WebSearch)$/;
+function detectModelBehavior(steps, opts = {}) {
+  const serialThreshold = opts.serialThreshold || 6;
+  const silentThreshold = opts.silentThreshold || 20;
+  const signals = [];
+  let serial = 0, serialMax = 0, serialTurn = null;
+  let silent = 0, silentMax = 0, silentTurn = null;
+  let prevTurn = null;
+  for (const s of steps || []) {
+    const tools = Array.isArray(s.tools) ? s.tools : [];
+    if (s.turnIdx !== prevTurn) { serial = 0; silent = 0; prevTurn = s.turnIdx; }
+    if (tools.length === 1 && READ_ONLY_TOOLS.test(tools[0])) {
+      serial++;
+      if (serial > serialMax) { serialMax = serial; serialTurn = s.turnIdx; }
+    } else {
+      serial = 0;
+    }
+    if (tools.length > 0 && !s.hasText) {
+      silent++;
+      if (silent > silentMax) { silentMax = silent; silentTurn = s.turnIdx; }
+    } else {
+      silent = 0;
+    }
+  }
+  if (serialMax >= serialThreshold) signals.push({ kind: 'serial_single_tool_calls', count: serialMax, turn_idx: serialTurn });
+  if (silentMax >= silentThreshold) signals.push({ kind: 'silent_tool_run', count: silentMax, turn_idx: silentTurn });
+  return signals;
+}
+
+module.exports = { classifyToolResult, detectRetries, detectDrift, detectHallucinationMarkers, detectModelBehavior, RULES };

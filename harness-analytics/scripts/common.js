@@ -33,7 +33,8 @@ const AUTO_REFRESH_PATH = path.join(HA_DIR, '.auto-refresh.json');
 // v3: orphaned_tool_use（打ち切り代理）と suspected_hallucinations（R8 混線）を failure_signals に追加。
 // v4: 作話検出を高精度マーカーのみに限定（低精度はオーサリング誤検知支配のため）。
 // v5: 割り込み検出が string content しか見ておらず array 形式の中断を取りこぼしていたのを修正。
-const DIGEST_VERSION = 5;
+// v6: failure_signals.model_behavior_signals を追加（Fable 5.1 の既定挙動差分の退行: 逐次化・無言連鎖・全文書き直し）。
+const DIGEST_VERSION = 6;
 
 // 日付ヘルパ（ローカルタイム基準の YYYY-MM-DD）
 function today() {
@@ -81,7 +82,10 @@ function maskPaths(text) {
   return String(text)
     .replace(/\/Users\/[^/\s"']+/g, '~')
     .replace(/\/home\/[^/\s"']+/g, '~')
-    .replace(/[A-Za-z]:\\Users\\[^\\\s"']+/g, '%USERPROFILE%');
+    .replace(/[A-Za-z]:\\Users\\[^\\\s"']+/g, '%USERPROFILE%')
+    // cwd スラッグ形式（scratchpad / projects ディレクトリ名に現れる -Users-<name>-...）も畳む
+    .replace(/-Users-[^-/\s"']+/g, '-Users-~')
+    .replace(/-home-[^-/\s"']+/g, '-home-~');
 }
 
 // secret と path を両方畳む（外部送信・レポート埋め込み前の既定サニタイズ）

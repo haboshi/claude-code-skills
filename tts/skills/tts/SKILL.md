@@ -1,6 +1,7 @@
 ---
 name: tts
 description: テキスト音声変換（TTS）。OpenAI gpt-4o-mini-tts（高品質クラウド）/ COEIROINK / VOICEVOX対応。バッチ音声生成・WAV結合・スタイル指示に対応。COEIROINK/VOICEVOX向けの発音辞書（英単語のカタカナ読み登録）も内蔵。「読み上げて」「音声にして」「テキストをTTSで」「発音辞書」「読み方登録」「英単語の読みを登録」「発音確認」で発動。
+allowed-tools: Bash, Read, Write, AskUserQuestion
 ---
 
 # Text-to-Speech
@@ -14,41 +15,23 @@ description: テキスト音声変換（TTS）。OpenAI gpt-4o-mini-tts（高品
 - WAVファイルを結合する必要があるとき
 - 高品質な日本語音声が必要なとき（OpenAI推奨）
 
-## Step 0: プロバイダ選択（AskUserQuestion）
+## Step 0: プロバイダ判定（質問は最小限）
 
-ユーザーに使用するTTSプロバイダを確認する。
+会話から決める。プロバイダ名（OpenAI / COEIROINK / VOICEVOX）や話者名（つくよみちゃん・ずんだもん等）、「ローカルで」「無料で」の指定があればそれに従う。指定が無ければ既定は **OpenAI TTS**（有料 API。`[ -n "$OPENAI_API_KEY" ]` で有無だけ確認し、値は出力しない）。キーが無ければローカル TTS を使う（`--provider coeiroink` / `voicevox` で `batch-tts.js` を起動すれば同梱の healthcheck が生死を判定し、停止中なら即エラーで止まる）。**スクリプトの `--provider` 既定は `coeiroink` のままなので、OpenAI で進めるときは `--provider openai` を必ず明示する。**
 
-```
-question: "どのTTSプロバイダを使用しますか？"
-header: "TTS選択"
-options:
-  - label: "OpenAI TTS（推奨）"
-    description: "gpt-4o-mini-tts。高品質クラウドTTS。13種のボイス、スタイル指示対応。OPENAI_API_KEY必須。"
-  - label: "COEIROINK"
-    description: "ローカルTTS。つくよみちゃん、AI声優-銀芽。localhost:50032で起動が必要。"
-  - label: "VOICEVOX"
-    description: "ローカルTTS。多数の話者。localhost:50021で起動が必要。"
-```
+どれも使えない（キー未設定かつローカル TTS 両方停止）ときだけ、AskUserQuestion で 1 問「利用できる TTS がありません。どれを用意しますか？」を聞く。選択肢は推奨を先頭に、各行に必要な準備を書く: OpenAI TTS（`OPENAI_API_KEY` の設定。有料）/ COEIROINK（localhost:50032 を起動）/ VOICEVOX（localhost:50021 を起動）。
 
-### OpenAI選択時の追加ヒアリング
+### OpenAI 選択時の追加設定
 
 #### Step 1: ボイス選択
 
-```
-question: "使用するボイスを選んでください"
-header: "Voice"
-options:
-  - label: "nova（推奨）"
-    description: "自然で温かみのある女性声。日本語に最適。"
-  - label: "alloy"
-    description: "中性的でバランスの取れた声。"
-  - label: "echo"
-    description: "落ち着いた深みのある男性声。"
-  - label: "shimmer"
-    description: "明るくエネルギッシュな女性声。"
-```
+指定が無ければ `nova` で進める。「男性の声で」「落ち着いた声で」等の希望があれば下の一覧から選ぶ。AskUserQuestion は使わない（1 本作って聞いてもらい、合わなければ差し替える方が速い）。
 
-その他のボイス: ash, ballad, coral, fable, onyx, sage, verse, marin, cedar
+- `nova`（既定）: 自然で温かみのある女性声。日本語に最適
+- `alloy`: 中性的でバランスの取れた声
+- `echo`: 落ち着いた深みのある男性声
+- `shimmer`: 明るくエネルギッシュな女性声
+- その他: ash, ballad, coral, fable, onyx, sage, verse, marin, cedar
 
 #### Step 2: スタイル指示
 
@@ -88,7 +71,7 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/concat-wav.js \
 | `--concat` | 生成後に全ファイルを結合 | false |
 | `--concat-name` | 結合ファイル名 | combined.wav |
 | `--indices` | 再生成する特定セグメント（1-based, カンマ区切り） | 全て |
-| `--provider` | TTSプロバイダ (openai / coeiroink / voicevox) | coeiroink |
+| `--provider` | TTSプロバイダ (openai / coeiroink / voicevox)。Step 0 の既定（OpenAI）とは別に、スクリプト側の既定は coeiroink | coeiroink |
 | `--api-base` | API基本URL | プロバイダ依存 |
 | `--speaker-map` | 話者マップJSONファイル | なし |
 

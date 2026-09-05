@@ -12,7 +12,7 @@ import { DrawioBuilder, LINE } from '../../scripts/xml-builder.js'
 
 export function buildExample() {
   const b = new DrawioBuilder({ name: 'AWS 構成図の例', width: 1050, height: 900 })
-  const [c0, c1, c2, c3, c4, c5] = [25, 235, 395, 555, 715, 875] // 列（アンカー左端）
+  const [, c1, c2, c3, c4, c5] = [25, 235, 395, 555, 715, 875] // 列（アンカー左端。先頭は WAF 専用で未使用）
   const [A, B, C, D, E] = [48, 195, 355, 535, 690] // 帯（アイコン上端）
 
   // 上段: 利用者と DNS、リージョン外のサービス

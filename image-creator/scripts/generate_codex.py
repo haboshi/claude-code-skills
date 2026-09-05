@@ -250,7 +250,7 @@ def generate_image(
     prompt,
     output_path="generated_image.png",
     n=1,
-    effort="low",
+    effort=None,
     aspect=None,
     timeout=300,
     workdir=None,
@@ -286,13 +286,14 @@ def generate_image(
         "codex", "exec", "--skip-git-repo-check",
         "-C", str(workdir),
         *codex_profile_args(),
-        "-c", f"model_reasoning_effort={effort}",
+        # effort は明示されたときだけ上乗せする（未指定なら profile / config の既定に委ねる）
+        *(["-c", f"model_reasoning_effort={effort}"] if effort else []),
         "-o", out_txt,
         full_prompt,
     ]
 
     profile = codex_profile_args()
-    print(f"codex サブスク枠で生成中（profile={profile[1] if profile else 'config既定'}, effort={effort}, n={n}）...")
+    print(f"codex サブスク枠で生成中（profile={profile[1] if profile else 'config既定'}, effort={effort or 'profile既定'}, n={n}）...")
     print(f"プロンプト: {prompt[:80]}...")
     try:
         subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=timeout)
@@ -371,9 +372,9 @@ def main():
     parser.add_argument("-o", "--output", default="generated_image.png", help="出力ファイルパス")
     parser.add_argument("-n", "--number", type=int, default=1,
                         choices=range(1, 11), help="生成枚数（1-10）")
-    parser.add_argument("--effort", default="low",
+    parser.add_argument("--effort", default=None,
                         choices=["low", "medium", "high", "xhigh"],
-                        help="推論強度（作り込みは high/xhigh、単発は low）")
+                        help="推論強度（未指定なら profile light / config の既定。作り込みは high/xhigh）")
     parser.add_argument("--aspect", default=None,
                         help="比率のヒント（例: 16:9 / 3:4 / 1:1。向きは誘導可、解像度は built-in 非制御）")
     parser.add_argument("--no-augment", dest="augment", action="store_false", default=True,

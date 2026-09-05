@@ -290,7 +290,7 @@ class TestCLIArguments(unittest.TestCase):
         with patch("sys.argv", ["generate_codex.py", "テストプロンプト"]):
             main()
         kwargs = mock_gen.call_args[1]
-        self.assertEqual(kwargs["effort"], "low")
+        self.assertIsNone(kwargs["effort"])  # 未指定なら profile / config の既定に委ねる
         self.assertEqual(kwargs["n"], 1)
 
     @patch("generate_codex.check_availability", return_value=(True, "Logged in using ChatGPT"))
@@ -331,6 +331,24 @@ class TestCodexProfileArgs(unittest.TestCase):
                 self.assertEqual(generate_codex.codex_profile_args(), ["-p", "custom"])
             with patch.dict(os.environ, {"CODEX_HOME": d, "IMAGE_CREATOR_CODEX_PROFILE": ""}, clear=False):
                 self.assertEqual(generate_codex.codex_profile_args(), [])
+
+    def test_effort_flag_only_when_explicit(self):
+        """effort 未指定なら -c model_reasoning_effort を付けない（profile の既定を生かす）"""
+        captured = {}
+        def run_side_effect(cmd, **kwargs):
+            captured["cmd"] = list(cmd)
+            oidx = cmd.index("-o")
+            Path(cmd[oidx + 1]).write_text("IMAGEGEN-UNAVAILABLE", encoding="utf-8")
+            return MagicMock(returncode=0, stdout="", stderr="")
+        with patch("generate_codex.check_availability", return_value=(True, "ok")), \
+             patch("generate_codex.subprocess.run", side_effect=run_side_effect):
+            # IMAGEGEN-UNAVAILABLE を返すので SystemExit(EXIT_NO_IMAGE) で終わる。見るのは組み立てた cmd だけ
+            with self.assertRaises(SystemExit):
+                generate_image("テスト", output_path="/tmp/x.png")
+            self.assertNotIn("model_reasoning_effort", " ".join(captured["cmd"]))
+            with self.assertRaises(SystemExit):
+                generate_image("テスト", output_path="/tmp/x.png", effort="xhigh")
+            self.assertIn("model_reasoning_effort=xhigh", " ".join(captured["cmd"]))
 
     def test_explicit_profile_missing_warns_and_falls_back(self):
         import io

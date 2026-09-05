@@ -332,8 +332,8 @@ class TestCodexProfileArgs(unittest.TestCase):
             with patch.dict(os.environ, {"CODEX_HOME": d, "IMAGE_CREATOR_CODEX_PROFILE": ""}, clear=False):
                 self.assertEqual(generate_codex.codex_profile_args(), [])
 
-    def test_effort_flag_only_when_explicit(self):
-        """effort 未指定なら -c model_reasoning_effort を付けない（profile の既定を生かす）"""
+    def _capture_cmd(self, **gen_kwargs):
+        """generate_image が組み立てた codex コマンドを返す（IMAGEGEN-UNAVAILABLE で SystemExit するので cmd だけ見る）"""
         captured = {}
         def run_side_effect(cmd, **kwargs):
             captured["cmd"] = list(cmd)
@@ -342,13 +342,30 @@ class TestCodexProfileArgs(unittest.TestCase):
             return MagicMock(returncode=0, stdout="", stderr="")
         with patch("generate_codex.check_availability", return_value=(True, "ok")), \
              patch("generate_codex.subprocess.run", side_effect=run_side_effect):
-            # IMAGEGEN-UNAVAILABLE を返すので SystemExit(EXIT_NO_IMAGE) で終わる。見るのは組み立てた cmd だけ
             with self.assertRaises(SystemExit):
-                generate_image("テスト", output_path="/tmp/x.png")
-            self.assertNotIn("model_reasoning_effort", " ".join(captured["cmd"]))
-            with self.assertRaises(SystemExit):
-                generate_image("テスト", output_path="/tmp/x.png", effort="xhigh")
-            self.assertIn("model_reasoning_effort=xhigh", " ".join(captured["cmd"]))
+                generate_image("テスト", output_path="/tmp/x.png", **gen_kwargs)
+        return " ".join(captured["cmd"])
+
+    def test_effort_defaults_to_low_without_profile(self):
+        """profile が無い配布先では従来どおり low を強制する（config 既定の xhigh 等に黙って落ちない）"""
+        with tempfile.TemporaryDirectory() as d:
+            with patch.dict(os.environ, {"CODEX_HOME": d}, clear=False):
+                os.environ.pop("IMAGE_CREATOR_CODEX_PROFILE", None)
+                cmd = self._capture_cmd()
+                self.assertNotIn("-p light", cmd)
+                self.assertIn("model_reasoning_effort=low", cmd)
+
+    def test_effort_deferred_to_profile_when_present(self):
+        """profile があり effort 未指定なら -c を付けず profile の既定に委ねる。明示すれば上乗せ"""
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "light.config.toml").write_text('model = "x"\n', encoding="utf-8")
+            with patch.dict(os.environ, {"CODEX_HOME": d}, clear=False):
+                os.environ.pop("IMAGE_CREATOR_CODEX_PROFILE", None)
+                cmd = self._capture_cmd()
+                self.assertIn("-p light", cmd)
+                self.assertNotIn("model_reasoning_effort", cmd)
+                cmd = self._capture_cmd(effort="xhigh")
+                self.assertIn("model_reasoning_effort=xhigh", cmd)
 
     def test_explicit_profile_missing_warns_and_falls_back(self):
         import io

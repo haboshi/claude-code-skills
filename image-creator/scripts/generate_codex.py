@@ -282,17 +282,20 @@ def generate_image(
     env = os.environ.copy()
     env.pop("OPENAI_API_KEY", None)
 
+    profile = codex_profile_args()
+    # effort: 明示されたら常にそれ。未指定なら profile があるときだけ profile の既定に委ね、
+    # profile が無い配布先では従来どおり low を強制する（config 既定の xhigh 等に黙って落ちない）
+    if not effort and not profile:
+        effort = "low"
     cmd = [
         "codex", "exec", "--skip-git-repo-check",
         "-C", str(workdir),
-        *codex_profile_args(),
-        # effort は明示されたときだけ上乗せする（未指定なら profile / config の既定に委ねる）
+        *profile,
         *(["-c", f"model_reasoning_effort={effort}"] if effort else []),
         "-o", out_txt,
         full_prompt,
     ]
 
-    profile = codex_profile_args()
     print(f"codex サブスク枠で生成中（profile={profile[1] if profile else 'config既定'}, effort={effort or 'profile既定'}, n={n}）...")
     print(f"プロンプト: {prompt[:80]}...")
     try:

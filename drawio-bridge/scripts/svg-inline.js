@@ -51,7 +51,10 @@ function prefixIds(svg, prefix) {
   if (renamed.size === 0) return
 
   const rewriteRef = (value) => {
-    let out = value.replace(/url\(#([^)]+)\)/g, (m, id) => (renamed.has(id) ? `url(#${renamed.get(id)})` : m))
+    // url(#id) だけでなく url("#id") / url('#id') も書き換える。draw.io は勾配の塗りを
+    // fill 属性と style="fill: url(&quot;#id&quot;)" の両方に書き、style が優先されるため、
+    // 属性側だけ付け替えると勾配が見つからずアイコンのタイルが消える（2026-09 実測）
+    let out = value.replace(/url\((['"]?)#([^)'"]+)\1\)/g, (m, q, id) => (renamed.has(id) ? `url(${q}#${renamed.get(id)}${q})` : m))
     // フラグメント参照のみ書き換える（外部 URL は触らない）
     if (out.startsWith('#')) {
       const id = out.slice(1)

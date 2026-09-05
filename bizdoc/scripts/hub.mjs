@@ -136,6 +136,29 @@ function extractSvgs(html) {
   return html.match(/<svg[\s>][\s\S]*?<\/svg>/gi) || [];
 }
 
+// v0.11.1 (2026-09-02): 骨格の決定論チェック（warn のみ・add は止めない。stdout 契約は不変）。
+//   - <style data-bizdoc="tokens"> が無い → tokens.css が注入されず番号・図採番・配色が全て消える
+//   - 番号対象の section > h2（.conclusion を除く）の数と <nav class="toc"> のリンク数が不一致
+//     → 目次の id と h2 の採番がずれる（SKILL.md「目次」の規約違反）
+function structureWarn(html) {
+  try {
+    if (!/<style[^>]*data-bizdoc="tokens"/.test(html)) {
+      console.warn('warn: <style data-bizdoc="tokens"> が無いため tokens.css を注入できません（セクション番号・図採番・配色が付きません）');
+    }
+    const sections = [...html.matchAll(/<section\b([^>]*)>([\s\S]*?)<\/section>/g)];
+    const numbered = sections.filter((m) => !/class="[^"]*\bconclusion\b/.test(m[1]) && /<h2\b/.test(m[2])).length;
+    const toc = html.match(/<nav[^>]*class="[^"]*\btoc\b[^"]*"[^>]*>([\s\S]*?)<\/nav>/);
+    if (toc) {
+      const links = (toc[1].match(/<a\s[^>]*href="#s-\d+"/g) || []).length;
+      if (links !== numbered) {
+        console.warn(`warn: 目次リンク ${links} 件と番号付きセクション ${numbered} 件が一致しません（.conclusion は採番対象外。id="s-NN" は h2 の番号と同じ規則で振る）`);
+      }
+    }
+  } catch {
+    // 検査の失敗で add を止めない
+  }
+}
+
 function svgGate(html) {
   const svgs = extractSvgs(html);
   if (svgs.length === 0) return;
@@ -221,6 +244,7 @@ function cmdAdd(htmlPath, opts) {
   if (!htmlPath || !fs.existsSync(htmlPath)) die(`HTML が見つかりません: ${htmlPath}`);
   const html = fs.readFileSync(htmlPath, 'utf8');
   svgGate(html);
+  structureWarn(html);
   const proj = resolveProject(opts.project || process.cwd());
   const title = opts.title || readTitle(html, path.basename(htmlPath, path.extname(htmlPath)));
   const slug = slugify(opts.slug || title);

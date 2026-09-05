@@ -9,6 +9,7 @@
  *   node drawio.js validate --in diagram.drawio
  *   node drawio.js export   --in diagram.drawio --out diagram.svg
  *   node drawio.js inline   --in diagram.drawio --id-prefix fig1
+ *   node drawio.js check-overlap --in diagram.svg
  */
 import { parseArgs } from 'node:util'
 import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
@@ -31,6 +32,7 @@ if (!deps.ok) {
 const { validateDrawio, countPages } = await import('./validate.js')
 const { inlineSvg } = await import('./svg-inline.js')
 const { runExport, findDrawioBin, INSTALL_HINT } = await import('./drawio-cli.js')
+const { checkOverlap, formatIssues } = await import('./overlap.js')
 
 const USAGE = `drawio-bridge — .drawio の検証・変換・HTML 埋め込み整形
 
@@ -51,6 +53,13 @@ const USAGE = `drawio-bridge — .drawio の検証・変換・HTML 埋め込み�
       日本語のフォントフォールバックを足す。既定で色をライト固定にする
       （draw.io の SVG は閲覧環境のダーク設定に追随し、白背景で線が消えるため）。
 
+  check-overlap --in <file.svg|file.drawio> [--json] [--pad 2] [--label-pad 0] [--page 2]
+      export 済み SVG のラベル矩形と辺の線分から、辺×ラベル・ラベル×ラベルの重なりを列挙する。
+      .drawio を渡した場合は内部で SVG に変換してから検査する。
+      重なりがあれば exit 1（座標を直す決定論ゲートとして使う）。
+      幅の見積りは CJK 1 文字 = font-size、半角 = 0.56 倍。--pad で辺×ラベルの余白（px）、
+      --label-pad でラベル×ラベルの余白を調整する（負の値は --label-pad=-2 の形で渡す）。
+
   共通: --help
   環境変数 DRAWIO_BIN で draw.io 実行ファイルのパスを上書きできる。
 
@@ -69,6 +78,8 @@ const OPTIONS = {
   'max-width': { type: 'string' },
   'color-scheme': { type: 'string' },
   'no-embed': { type: 'boolean' },
+  pad: { type: 'string' },
+  'label-pad': { type: 'string' },
   'no-font-fallback': { type: 'boolean' },
   json: { type: 'boolean' },
   help: { type: 'boolean' },
@@ -271,6 +282,40 @@ function cmdInline(values) {
   }
 }
 
+function cmdCheckOverlap(values) {
+  const input = requireIn(values)
+  const pageIndex = parsePage(values)
+  if (extname(input).toLowerCase() !== '.svg') assertPageInRange(input, pageIndex)
+  const pad = parseNumber(values, 'pad', { min: 0 })
+  // label-pad は負を許す（凡例の隣接行など、接触を意図した配置を許容するため）
+  let labelPad
+  if (values['label-pad'] !== undefined) {
+    labelPad = Number(values['label-pad'])
+    if (!Number.isFinite(labelPad)) fail(`--label-pad は数値で指定してください（指定値: ${values['label-pad']}）`, 2)
+  }
+
+  let svgText
+  try {
+    svgText = loadSvg(input, pageIndex)
+  } catch (e) {
+    fail(e.message, e.code === 'DRAWIO_CLI_NOT_FOUND' ? 3 : 1)
+  }
+
+  let result
+  try {
+    result = checkOverlap(svgText, { pad, labelPad })
+  } catch (e) {
+    fail(`SVG として読めません: ${e.message}`, 1)
+  }
+
+  if (values.json) {
+    process.stdout.write(`${JSON.stringify({ ok: result.issues.length === 0, labels: result.labels.length, edges: result.edges.length, issues: result.issues }, null, 2)}\n`)
+  } else {
+    process.stderr.write(`${formatIssues(result)}\n`)
+  }
+  process.exit(result.issues.length === 0 ? 0 : 1)
+}
+
 function main() {
   const [command, ...rest] = process.argv.slice(2)
   if (!command || command === '--help' || command === 'help') {
@@ -293,6 +338,7 @@ function main() {
     case 'validate': return cmdValidate(values)
     case 'export': return cmdExport(values)
     case 'inline': return cmdInline(values)
+    case 'check-overlap': return cmdCheckOverlap(values)
     default: return fail(`不明なコマンド: ${command}\n\n${USAGE}`, 2)
   }
 }

@@ -139,7 +139,7 @@ Stop 発火
 - **ブロックが不当だと思ったら**: `/evaluate` で advisory の所見を取り、人間が判断する。緊急脱出は環境変数 `EVALUATOR_GATE_BYPASS=1`（人間専用）。
 - **リポジトリ外の作業（MCP 追加・設定変更・外部操作）なのに差し戻される**: 評価者は直近数ターンの元指示（REQUEST）を見て「成果物がリポジトリに出る種類か」を判断する。元指示がゲートに届いていない可能性がある（transcript を読めない環境・古いセッション）。届いている場合でも文脈が薄いときは `EVALUATOR_GATE_INSTRUCTION_TURNS`（既定3）を増やすと、タスクを定義したより前のターンまで評価者に渡せる。
 - **state をリセットしたい**: `rm ~/.claude/evaluator-gate/state/<session_id>.json`。
-- **評価が遅い**: `EVALUATOR_GATE_EVAL_TIMEOUT`（秒、既定240）と `EVALUATOR_GATE_CODEX_EFFORT`（既定 medium）で調整。モデルは `EVALUATOR_GATE_CODEX_MODEL` / `EVALUATOR_GATE_GROK_MODEL`（既定 grok-4.6）で上書き可能。
+- **評価が遅い**: `EVALUATOR_GATE_EVAL_TIMEOUT`（秒、既定240）と `EVALUATOR_GATE_CODEX_EFFORT`（既定 medium）で調整。モデルは `EVALUATOR_GATE_CODEX_MODEL` / `EVALUATOR_GATE_GROK_MODEL`（既定 grok-4.6）で上書き可能。Codex の profile は `EVALUATOR_GATE_CODEX_PROFILE`（未設定なら `~/.codex/review.config.toml` がある環境で自動的に `-p review`。空文字で無効化。`-m` / effort の上書きは profile より優先）。
 - **OS レベル読取・書込隔離を使いたい**: `EVALUATOR_GATE_SANDBOX=1`（macOS のみ）。有効時は評価者を `sandbox-exec` で包み、順次実行に切り替える。
   **既知の問題**: sandbox 有効時、Stop フック経由で起動された Codex が `Error: Operation not permitted (os error 1)` で即座に落ちることがある（`run-evaluator.sh` を直接実行した場合は正常動作し、リポジトリの読取・書込とも正しく遮断される）。原因未特定で、`--dangerously-bypass-approvals-and-sandbox` の有無・並列/順次・umask のいずれとも無関係であることは実験で確認済み。この場合は Grok 単独判定に縮退する（差し戻し機能自体は動作する）。両評価者を確実に使いたい場合は sandbox を無効（既定）のままにすること。
 

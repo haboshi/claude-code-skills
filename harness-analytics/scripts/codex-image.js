@@ -13,7 +13,7 @@ function renderPrompt(template, vars) {
   return template.replace(/\{\{(\w+)\}\}/g, (_, k) => String(vars[k] == null ? '' : vars[k]));
 }
 
-async function runCodex({ bin = 'codex', prompt, timeoutSec = 600, addDir, model = 'gpt-5.4-mini', reasoning = 'low', logFile, lastMessageFile }) {
+async function runCodex({ bin = 'codex', prompt, timeoutSec = 600, addDir, model = 'gpt-5.6-luna', reasoning = 'low', logFile, lastMessageFile }) {
   const args = ['exec', '--skip-git-repo-check', '--full-auto'];
   if (addDir) args.push('--cd', addDir);        // --add-dir は実測 read-only。workdir を --cd にする
   if (lastMessageFile) args.push('-o', lastMessageFile);

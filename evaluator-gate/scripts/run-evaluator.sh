@@ -40,6 +40,11 @@ fi
 case "$kind" in
   codex)
     command -v codex >/dev/null 2>&1 || { note "codex CLI 不在"; exit 127; }
+    # profile: EVALUATOR_GATE_CODEX_PROFILE が未設定なら、~/.codex/review.config.toml がある環境でだけ -p review を付ける
+    # （配布先に profile が無くても動く。空文字を設定すると profile なしを強制できる）
+    if [ -z "${EVALUATOR_GATE_CODEX_PROFILE+x}" ] && [ -f "${CODEX_HOME:-$HOME/.codex}/review.config.toml" ]; then
+      EVALUATOR_GATE_CODEX_PROFILE=review
+    fi
     # env -u OPENAI_API_KEY: ChatGPT サブスク経路を強制（API 従量課金への転落防止）
     # プロンプトは stdin 渡し（引数クォート事故の回避）。-o: 最終メッセージのみをファイルへ
     #
@@ -50,6 +55,7 @@ case "$kind" in
     run_with_timeout "$tsec" ${EG_SANDBOX[@]+"${EG_SANDBOX[@]}"} \
       env -u OPENAI_API_KEY codex exec \
       -s read-only -C "$run_cwd" --skip-git-repo-check \
+      ${EVALUATOR_GATE_CODEX_PROFILE:+-p "$EVALUATOR_GATE_CODEX_PROFILE"} \
       ${EVALUATOR_GATE_CODEX_MODEL:+-m "$EVALUATOR_GATE_CODEX_MODEL"} \
       -c model_reasoning_effort="${EVALUATOR_GATE_CODEX_EFFORT:-medium}" \
       -o "$outf" - < "$prompt" >> "$logf" 2>&1

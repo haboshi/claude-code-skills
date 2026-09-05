@@ -189,6 +189,8 @@ AskUserQuestion は、読み違えると生成物が別物になる 1 点だけ�
 
 Codex CLI 組み込みの built-in `image_gen`（gpt-image-2）を **ChatGPT ログイン認証（サブスクリプション枠）** で呼び出す。`OPENAI_API_KEY` を明示的に外して起動するため **API 従量課金が発生しない**。「何も指定しない汎用生成」の既定。
 
+駆動側の Codex モデルはスクリプトに固定しない。`~/.codex/light.config.toml`（profile `light`）がある環境では `-p light` を自動付与し、無い環境では `~/.codex/config.toml` の既定モデルに委ねる。profile 名は `IMAGE_CREATOR_CODEX_PROFILE` で差し替え可（空文字で無効化）。
+
 ```bash
 # 可用性判定（利用可=exit 0 / 不可=exit 3）
 uv run python scripts/generate_codex.py --check
@@ -280,6 +282,7 @@ uv run --with requests --with pillow scripts/generate_zhipu.py \
 
 - **Pro** → codex（無課金） → OpenAI `gpt-image-2` → NB2 → fal.ai → Flash
 - **NB2** → codex（無課金） → OpenAI `gpt-image-2` → fal.ai → Flash
+- OpenAI `gpt-image-2` への段は **API 従量課金**なので、`ALLOW_OPENAI_API_BILLING=1` を明示したときだけ使う（未指定ならスキップして次の段へ。`OPENAI_API_KEY` があるだけでは使わない）
 - **Flash** は GA モデルで最安定
 - codex サブスク枠（無課金）を従量課金 OpenAI の前段に置き、コストを最小化
 

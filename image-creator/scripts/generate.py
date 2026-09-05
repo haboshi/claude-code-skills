@@ -235,6 +235,10 @@ def generate_image(
 
                 # OpenAI gpt-image-2 フォールバック: subprocess で generate_openai.py を呼び出す
                 if fb_key == "openai":
+                    # OpenAI API 従量課金の経路。ALLOW_OPENAI_API_BILLING=1 を明示したときだけ使う（既定はスキップ）
+                    if os.environ.get("ALLOW_OPENAI_API_BILLING") != "1":
+                        print("\nALLOW_OPENAI_API_BILLING=1 未指定。OpenAI（API 従量課金）をスキップ...")
+                        continue
                     openai_api_key = os.environ.get("OPENAI_API_KEY")
                     if not openai_api_key:
                         print("\nOPENAI_API_KEY 未設定。OpenAI をスキップ...")

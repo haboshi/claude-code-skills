@@ -88,7 +88,7 @@ Quality Flywheel（評価→失敗クラスター分析→最適化）のメタ�
   "analysis": { "window": "14d", "top_k_clusters": 8 },
   "privacy": { "store_raw_tool_result": false },
   "server": { "port": 7788, "idle_timeout_min": 30 },
-  "infographics": { "enabled": true, "limit": 10, "timeout_sec": 600, "model": "gpt-5.4-mini", "reasoning": "low" },
+  "infographics": { "enabled": true, "limit": 10, "timeout_sec": 600, "model": "gpt-5.6-luna", "reasoning": "low" },
   "auto_refresh": { "enabled": true, "stale_days": 7, "cooldown_hours": 12, "window": "14d" }
 }
 ```

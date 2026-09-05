@@ -290,7 +290,7 @@ class TestCLIArguments(unittest.TestCase):
         with patch("sys.argv", ["generate_codex.py", "テストプロンプト"]):
             main()
         kwargs = mock_gen.call_args[1]
-        self.assertEqual(kwargs["effort"], "low")
+        self.assertIsNone(kwargs["effort"])  # 未指定なら profile / config の既定に委ねる
         self.assertEqual(kwargs["n"], 1)
 
     @patch("generate_codex.check_availability", return_value=(True, "Logged in using ChatGPT"))
@@ -306,6 +306,74 @@ class TestCLIArguments(unittest.TestCase):
             with self.assertRaises(SystemExit) as ctx:
                 main()
         self.assertEqual(ctx.exception.code, EXIT_UNAVAILABLE)
+
+
+class TestCodexProfileArgs(unittest.TestCase):
+    """profile（~/.codex/<name>.config.toml）の自動検出。モデル名をスクリプトに固定しないための層"""
+
+    def test_profile_file_exists(self):
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "light.config.toml").write_text('model = "x"\n', encoding="utf-8")
+            with patch.dict(os.environ, {"CODEX_HOME": d}, clear=False):
+                os.environ.pop("IMAGE_CREATOR_CODEX_PROFILE", None)
+                self.assertEqual(generate_codex.codex_profile_args(), ["-p", "light"])
+
+    def test_profile_file_missing_falls_back_to_config_default(self):
+        with tempfile.TemporaryDirectory() as d:
+            with patch.dict(os.environ, {"CODEX_HOME": d}, clear=False):
+                os.environ.pop("IMAGE_CREATOR_CODEX_PROFILE", None)
+                self.assertEqual(generate_codex.codex_profile_args(), [])
+
+    def test_env_override_and_disable(self):
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "custom.config.toml").write_text('model = "x"\n', encoding="utf-8")
+            with patch.dict(os.environ, {"CODEX_HOME": d, "IMAGE_CREATOR_CODEX_PROFILE": "custom"}, clear=False):
+                self.assertEqual(generate_codex.codex_profile_args(), ["-p", "custom"])
+            with patch.dict(os.environ, {"CODEX_HOME": d, "IMAGE_CREATOR_CODEX_PROFILE": ""}, clear=False):
+                self.assertEqual(generate_codex.codex_profile_args(), [])
+
+    def _capture_cmd(self, **gen_kwargs):
+        """generate_image が組み立てた codex コマンドを返す（IMAGEGEN-UNAVAILABLE で SystemExit するので cmd だけ見る）"""
+        captured = {}
+        def run_side_effect(cmd, **kwargs):
+            captured["cmd"] = list(cmd)
+            oidx = cmd.index("-o")
+            Path(cmd[oidx + 1]).write_text("IMAGEGEN-UNAVAILABLE", encoding="utf-8")
+            return MagicMock(returncode=0, stdout="", stderr="")
+        with patch("generate_codex.check_availability", return_value=(True, "ok")), \
+             patch("generate_codex.subprocess.run", side_effect=run_side_effect):
+            with self.assertRaises(SystemExit):
+                generate_image("テスト", output_path="/tmp/x.png", **gen_kwargs)
+        return " ".join(captured["cmd"])
+
+    def test_effort_defaults_to_low_without_profile(self):
+        """profile が無い配布先では従来どおり low を強制する（config 既定の xhigh 等に黙って落ちない）"""
+        with tempfile.TemporaryDirectory() as d:
+            with patch.dict(os.environ, {"CODEX_HOME": d}, clear=False):
+                os.environ.pop("IMAGE_CREATOR_CODEX_PROFILE", None)
+                cmd = self._capture_cmd()
+                self.assertNotIn("-p light", cmd)
+                self.assertIn("model_reasoning_effort=low", cmd)
+
+    def test_effort_deferred_to_profile_when_present(self):
+        """profile があり effort 未指定なら -c を付けず profile の既定に委ねる。明示すれば上乗せ"""
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "light.config.toml").write_text('model = "x"\n', encoding="utf-8")
+            with patch.dict(os.environ, {"CODEX_HOME": d}, clear=False):
+                os.environ.pop("IMAGE_CREATOR_CODEX_PROFILE", None)
+                cmd = self._capture_cmd()
+                self.assertIn("-p light", cmd)
+                self.assertNotIn("model_reasoning_effort", cmd)
+                cmd = self._capture_cmd(effort="xhigh")
+                self.assertIn("model_reasoning_effort=xhigh", cmd)
+
+    def test_explicit_profile_missing_warns_and_falls_back(self):
+        import io
+        with tempfile.TemporaryDirectory() as d:
+            with patch.dict(os.environ, {"CODEX_HOME": d, "IMAGE_CREATOR_CODEX_PROFILE": "nope"}, clear=False):
+                with patch("sys.stderr", new_callable=io.StringIO) as err:
+                    self.assertEqual(generate_codex.codex_profile_args(), [])
+                self.assertIn("IMAGE_CREATOR_CODEX_PROFILE=nope", err.getvalue())
 
 
 if __name__ == "__main__":

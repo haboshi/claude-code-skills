@@ -67,7 +67,7 @@ async function ensureClusterImage(cluster, opts) {
   try {
     await CI.runWithRetry({
       bin: 'codex', prompt, addDir: dir,
-      model: inf.model || 'gpt-5.4-mini', reasoning: inf.reasoning || 'low',
+      model: inf.model || 'gpt-5.6-luna', reasoning: inf.reasoning || 'low',
       timeoutSec: opts.timeoutSec, lastMessageFile: path.join(dir, 'last-message.txt'), logFile: path.join(dir, 'codex.log'),
     }, { retries: 2 });
   } catch (e) { return { cluster_id: cluster.cluster_id, status: 'failed', hash, reason: e.message }; }
@@ -75,7 +75,7 @@ async function ensureClusterImage(cluster, opts) {
   const provenance = await CI.ensureImage(dir, { sinceMs });
   if (provenance === 'missing') return { cluster_id: cluster.cluster_id, status: 'failed', hash, reason: 'no image produced' };
 
-  C.writeJson(path.join(dir, 'meta.json'), { hash, cluster_id: cluster.cluster_id, prompt_version: PROMPT_VERSION, created_at: C.nowIso(), facts, model: inf.model || 'gpt-5.4-mini', provenance });
+  C.writeJson(path.join(dir, 'meta.json'), { hash, cluster_id: cluster.cluster_id, prompt_version: PROMPT_VERSION, created_at: C.nowIso(), facts, model: inf.model || 'gpt-5.6-luna', provenance });
   index[cluster.cluster_id] = { hash, created_at: C.nowIso() };
   saveIndex(index);
   appendArchive({ date: today, cluster_id: cluster.cluster_id, hash, action: 'generated' });

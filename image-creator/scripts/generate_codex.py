@@ -41,6 +41,28 @@ EXIT_NO_IMAGE = 2        # 生成なし／偽装検証に落ちた
 EXIT_UNAVAILABLE = 3     # codex CLI 不在 or ChatGPT 未ログイン
 EXIT_TOKEN_EXPIRED = 4   # サブスクトークン期限切れ（要 `codex login`）
 
+# codex の profile（~/.codex/<name>.config.toml）。モデル名をこのスクリプトに固定しないための層。
+# 既定 "light"（image_gen の駆動は軽量モデルで足りる）。ファイルが無い環境では付けず、config 既定モデルに委ねる。
+# IMAGE_CREATOR_CODEX_PROFILE で差し替え可（空文字で無効化）。
+DEFAULT_CODEX_PROFILE = "light"
+
+
+def codex_profile_args():
+    """`-p <profile>` を付けるべきときだけ返す（profile ファイルの実在で判定）。"""
+    explicit = "IMAGE_CREATOR_CODEX_PROFILE" in os.environ
+    name = os.environ.get("IMAGE_CREATOR_CODEX_PROFILE", DEFAULT_CODEX_PROFILE)
+    if not name:
+        return []
+    codex_home = Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex"))
+    if (codex_home / f"{name}.config.toml").is_file():
+        return ["-p", name]
+    if explicit:
+        # 明示指定が解決できないときは黙って既定に落とさず、理由を出してから config 既定で続行する
+        print(f"警告: IMAGE_CREATOR_CODEX_PROFILE={name} に対応する {codex_home / (name + '.config.toml')} が無いため、"
+              "config 既定モデルで実行します", file=sys.stderr)
+    return []
+
+
 # codex が生成画像を書き出す候補ディレクトリ（環境依存を吸収するため複数探索）。
 # 個人パスをハードコードせず expanduser / 環境変数から導出する（path-privacy 順守）。
 def candidate_image_dirs():
@@ -228,7 +250,7 @@ def generate_image(
     prompt,
     output_path="generated_image.png",
     n=1,
-    effort="low",
+    effort=None,
     aspect=None,
     timeout=300,
     workdir=None,
@@ -260,15 +282,21 @@ def generate_image(
     env = os.environ.copy()
     env.pop("OPENAI_API_KEY", None)
 
+    profile = codex_profile_args()
+    # effort: 明示されたら常にそれ。未指定なら profile があるときだけ profile の既定に委ね、
+    # profile が無い配布先では従来どおり low を強制する（config 既定の xhigh 等に黙って落ちない）
+    if not effort and not profile:
+        effort = "low"
     cmd = [
         "codex", "exec", "--skip-git-repo-check",
         "-C", str(workdir),
-        "-c", f"model_reasoning_effort={effort}",
+        *profile,
+        *(["-c", f"model_reasoning_effort={effort}"] if effort else []),
         "-o", out_txt,
         full_prompt,
     ]
 
-    print(f"codex サブスク枠で生成中（effort={effort}, n={n}）...")
+    print(f"codex サブスク枠で生成中（profile={profile[1] if profile else 'config既定'}, effort={effort or 'profile既定'}, n={n}）...")
     print(f"プロンプト: {prompt[:80]}...")
     try:
         subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=timeout)
@@ -347,9 +375,9 @@ def main():
     parser.add_argument("-o", "--output", default="generated_image.png", help="出力ファイルパス")
     parser.add_argument("-n", "--number", type=int, default=1,
                         choices=range(1, 11), help="生成枚数（1-10）")
-    parser.add_argument("--effort", default="low",
+    parser.add_argument("--effort", default=None,
                         choices=["low", "medium", "high", "xhigh"],
-                        help="推論強度（作り込みは high/xhigh、単発は low）")
+                        help="推論強度（未指定なら profile light / config の既定。作り込みは high/xhigh）")
     parser.add_argument("--aspect", default=None,
                         help="比率のヒント（例: 16:9 / 3:4 / 1:1。向きは誘導可、解像度は built-in 非制御）")
     parser.add_argument("--no-augment", dest="augment", action="store_false", default=True,

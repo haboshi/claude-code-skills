@@ -622,4 +622,11 @@ test('shouldRefresh: 無効化で発火しない', () => {
   assert.strictEqual(shouldRefresh({ auto_refresh: { enabled: false, stale_days: 7 } }, now - 30 * DAY, null, now), false);
 });
 
+// --- infographics 既定モデル（退役 slug の混入防止。gpt-5.4-mini は 2026-08-31 に ChatGPT サインインから退役） ---
+test('infographics 既定モデルは退役した gpt-5.4 系ではなく gpt-5.6-luna', () => {
+  const m = C.defaultConfig().infographics.model;
+  assert.ok(!/^gpt-5\.4/.test(m), m);
+  assert.strictEqual(m, 'gpt-5.6-luna');
+});
+
 process.stdout.write(`\n${passed} tests passed\n`);

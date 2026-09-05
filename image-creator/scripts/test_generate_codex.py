@@ -308,5 +308,38 @@ class TestCLIArguments(unittest.TestCase):
         self.assertEqual(ctx.exception.code, EXIT_UNAVAILABLE)
 
 
+class TestCodexProfileArgs(unittest.TestCase):
+    """profile（~/.codex/<name>.config.toml）の自動検出。モデル名をスクリプトに固定しないための層"""
+
+    def test_profile_file_exists(self):
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "light.config.toml").write_text('model = "x"\n', encoding="utf-8")
+            with patch.dict(os.environ, {"CODEX_HOME": d}, clear=False):
+                os.environ.pop("IMAGE_CREATOR_CODEX_PROFILE", None)
+                self.assertEqual(generate_codex.codex_profile_args(), ["-p", "light"])
+
+    def test_profile_file_missing_falls_back_to_config_default(self):
+        with tempfile.TemporaryDirectory() as d:
+            with patch.dict(os.environ, {"CODEX_HOME": d}, clear=False):
+                os.environ.pop("IMAGE_CREATOR_CODEX_PROFILE", None)
+                self.assertEqual(generate_codex.codex_profile_args(), [])
+
+    def test_env_override_and_disable(self):
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "custom.config.toml").write_text('model = "x"\n', encoding="utf-8")
+            with patch.dict(os.environ, {"CODEX_HOME": d, "IMAGE_CREATOR_CODEX_PROFILE": "custom"}, clear=False):
+                self.assertEqual(generate_codex.codex_profile_args(), ["-p", "custom"])
+            with patch.dict(os.environ, {"CODEX_HOME": d, "IMAGE_CREATOR_CODEX_PROFILE": ""}, clear=False):
+                self.assertEqual(generate_codex.codex_profile_args(), [])
+
+    def test_explicit_profile_missing_warns_and_falls_back(self):
+        import io
+        with tempfile.TemporaryDirectory() as d:
+            with patch.dict(os.environ, {"CODEX_HOME": d, "IMAGE_CREATOR_CODEX_PROFILE": "nope"}, clear=False):
+                with patch("sys.stderr", new_callable=io.StringIO) as err:
+                    self.assertEqual(generate_codex.codex_profile_args(), [])
+                self.assertIn("IMAGE_CREATOR_CODEX_PROFILE=nope", err.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -41,6 +41,28 @@ EXIT_NO_IMAGE = 2        # 生成なし／偽装検証に落ちた
 EXIT_UNAVAILABLE = 3     # codex CLI 不在 or ChatGPT 未ログイン
 EXIT_TOKEN_EXPIRED = 4   # サブスクトークン期限切れ（要 `codex login`）
 
+# codex の profile（~/.codex/<name>.config.toml）。モデル名をこのスクリプトに固定しないための層。
+# 既定 "light"（image_gen の駆動は軽量モデルで足りる）。ファイルが無い環境では付けず、config 既定モデルに委ねる。
+# IMAGE_CREATOR_CODEX_PROFILE で差し替え可（空文字で無効化）。
+DEFAULT_CODEX_PROFILE = "light"
+
+
+def codex_profile_args():
+    """`-p <profile>` を付けるべきときだけ返す（profile ファイルの実在で判定）。"""
+    explicit = "IMAGE_CREATOR_CODEX_PROFILE" in os.environ
+    name = os.environ.get("IMAGE_CREATOR_CODEX_PROFILE", DEFAULT_CODEX_PROFILE)
+    if not name:
+        return []
+    codex_home = Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex"))
+    if (codex_home / f"{name}.config.toml").is_file():
+        return ["-p", name]
+    if explicit:
+        # 明示指定が解決できないときは黙って既定に落とさず、理由を出してから config 既定で続行する
+        print(f"警告: IMAGE_CREATOR_CODEX_PROFILE={name} に対応する {codex_home / (name + '.config.toml')} が無いため、"
+              "config 既定モデルで実行します", file=sys.stderr)
+    return []
+
+
 # codex が生成画像を書き出す候補ディレクトリ（環境依存を吸収するため複数探索）。
 # 個人パスをハードコードせず expanduser / 環境変数から導出する（path-privacy 順守）。
 def candidate_image_dirs():
@@ -263,12 +285,14 @@ def generate_image(
     cmd = [
         "codex", "exec", "--skip-git-repo-check",
         "-C", str(workdir),
+        *codex_profile_args(),
         "-c", f"model_reasoning_effort={effort}",
         "-o", out_txt,
         full_prompt,
     ]
 
-    print(f"codex サブスク枠で生成中（effort={effort}, n={n}）...")
+    profile = codex_profile_args()
+    print(f"codex サブスク枠で生成中（profile={profile[1] if profile else 'config既定'}, effort={effort}, n={n}）...")
     print(f"プロンプト: {prompt[:80]}...")
     try:
         subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=timeout)

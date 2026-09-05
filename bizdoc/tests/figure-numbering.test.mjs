@@ -35,6 +35,12 @@ test('tokens.css: main に counter-reset を置かない（body で足りる。m
   assert.equal(counterResets(css).some((r) => /(^|[\s>+~])main$/.test(r.selector)), false);
 });
 
+test('tokens.css: figure は fig を加算し、figcaption が counter(fig) を表示する', () => {
+  const stripped = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.match(stripped, /figure\s*\{[^}]*counter-increment:\s*fig/);
+  assert.match(stripped, /figcaption::before\s*\{[^}]*counter\(fig\)/);
+});
+
 const svg = '<svg viewBox="0 0 10 4" width="200" height="80"><rect width="10" height="4" fill="#eee"/></svg>';
 const DOC_BODY =
   `<section><h2>一</h2><figure>${svg}<figcaption>最初の図</figcaption></figure></section>` +

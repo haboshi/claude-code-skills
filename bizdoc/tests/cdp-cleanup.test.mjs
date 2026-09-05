@@ -1,4 +1,4 @@
-// v0.11.2 (2026-09-05): headless Chrome の後始末（push 時のセキュリティレビュー「孤児化したデバッグエンドポイント」への対応）
+// v0.11.3 (2026-09-05): headless Chrome の後始末（push 時のセキュリティレビュー「孤児化したデバッグエンドポイント」への対応）
 //   - close() は Chrome の終了を待ってから一時プロファイルを消す（kill 直後の rm は ENOTEMPTY で残っていた。
 //     実測: 3 日で 197 個・358MB）
 //   - print-pdf.mjs / screenshot.mjs は try の中で process.exit しない（finally の close() が走らず、

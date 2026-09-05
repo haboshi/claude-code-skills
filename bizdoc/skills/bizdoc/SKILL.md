@@ -288,54 +288,52 @@ subagent の要約（または縮退モードでの自前調査）を、スク�
 
 ### drawio で図を作る
 
-draw.io デスクトップの CLI を使う。**Mermaid で書いて変換するのが基本**（自動レイアウトが効き、
-手座標より確実）。細かい配置や公式アイコンが要るときだけ drawio XML を直接書く。
-詳細は drawio スキル（`~/.claude/plugins/cache/drawio/drawio/*/skills/drawio/SKILL.md`）が正。
+経路は 2 つ。**Mermaid で書いて変換**（自動レイアウト。フロー・シーケンス・ER 向き）か、
+**確定座標で組む**（AWS 構成図のように列と帯で並べる図。`drawio-bridge` の `xml-builder.js` と
+`references/layout-rules.md` に従う）。どちらも後段の検証・変換・整形・検品は **`drawio-bridge` に任せ、
+自前で SVG を整形しない**（2026-09 実測: 手動で id を付け替えた SVG は AWS アイコンのタイルが消えた。
+draw.io は勾配の塗りを属性と `style` の両方に書き、片方だけ付け替えると勾配が失われる）。
+
+#### drawio-bridge の所在（未導入なら導入する）
 
 ```bash
-DRAWIO=/Applications/draw.io.app/Contents/MacOS/draw.io
-[ -x "$DRAWIO" ] || echo "draw.io 未導入 — この図は手書き SVG に切り替える"
-
-# 1) Mermaid を書いて .drawio へ変換（1〜2分かかる。同期で待つ）
-cat > "<scratch>/fig1.mmd" <<'MMD'
-flowchart TD
-  A[開始] --> B{条件}
-  B -->|はい| C[処理]
-  B -->|いいえ| D[別処理]
-MMD
-"$DRAWIO" -x -f xml -o "<scratch>/fig1.drawio" "<scratch>/fig1.mmd"
-
-# 2) SVG へ書き出す（-e で編集用 XML を埋め込む。元の .drawio も残す）
-"$DRAWIO" -x -f svg -e -b 10 -o "<scratch>/fig1.svg" "<scratch>/fig1.drawio"
-
-# 3) 白基調の 1 枚 HTML へ貼れる形に整える（この工程を飛ばすと図が壊れる）
-#    drawio-bridge の inlineSvg に委ねる（自前で整形しない）。
-#    パスは環境で異なるので探し、見つからなければ drawio-bridge スキルに整形を依頼する
-BRIDGE=$(ls -d "$HOME"/.claude/plugins/cache/*/drawio-bridge/*/scripts/svg-inline.js 2>/dev/null | head -1)
-node -e "
-import('$BRIDGE').then(async m => {
-  const fs = await import('node:fs');
-  const { svg, warnings } = m.inlineSvg(fs.readFileSync('<scratch>/fig1.svg','utf8'), {
-    idPrefix: 'fig1',              // 図ごとに違う値にする（id 衝突の防止）
-    accent: '<文書のアクセント色>',   // 既定の紫を文書の色へ寄せる
-    accentSoft: '<同・薄色>',
-  });
-  warnings.forEach(w => console.error('warn: ' + w));
-  fs.writeFileSync('<scratch>/fig1-embed.svg', svg);
-});
-"
+DB=$(ls -d "$HOME"/.claude/plugins/cache/haboshi-skills/drawio-bridge/*/ 2>/dev/null | sort -V | tail -1)
+# 未導入なら: /plugin install drawio-bridge@haboshi-skills
+# 導入できない環境では、配布元リポジトリ（claude-code-skills）の drawio-bridge/ を DB に指定する
+[ -d "$DB/node_modules" ] || npm install --prefix "$DB" --silent   # 初回のみ（配布物に node_modules は無い）
+node "$DB/scripts/drawio.js" --help
 ```
 
-**3 の整形を省略してはいけない**。draw.io の素の SVG をそのまま貼るとダーク環境で線が消え
-（`color-scheme: light dark`）、同一文書に2枚貼ると id が衝突し、配色が既定の紫のままになる。
-`inlineSvg` はこれらをまとめて処理する（`drawio-bridge` プラグイン。実装の正はそちら）。
+`drawio-bridge` も配布元も無い環境では「drawio-bridge が無い」と報告し、gpt-image-2 か手書き SVG に切り替える。
+draw.io Desktop（`brew install --cask drawio`）は `export` と `check-overlap` の `.drawio` 入力に要る。
 
-`warnings` は必ず読む。**viewBox 幅が本文幅の目安を超えると警告が出る** — その図は縮小表示されて
-図中文字が小さくなるので、予防則9 の式で必要な font-size を出して上げるか、図を分割する
-（実測: Mermaid 既定の 16px は幅 1168 の図だと実表示 12.6px で違反した）。
+#### 手順（決定論ゲート 3 つ）
 
-整形後の SVG をそのまま `<figure>` の中へ貼る。viewBox 基準になっているので
-`figure svg { width:100% }` が効き、予防則9 の判定もそのまま適用できる。
+```bash
+# Mermaid 経路: .mmd → .drawio（自動レイアウト）
+node "$DB/scripts/drawio.js" export --in fig1.mmd --out fig1.drawio --format xml
+# 座標経路: xml-builder.js で .drawio を生成（references/examples/aws-architecture.example.js が完成例）
+
+node "$DB/scripts/drawio.js" validate --in fig1.drawio                              # ゲート 1: 構造
+node "$DB/scripts/drawio.js" export   --in fig1.drawio --out fig1.svg --no-embed
+node "$DB/scripts/drawio.js" check-overlap --in fig1.svg                            # ゲート 2: 重なり 0 件まで座標を直す
+node "$DB/scripts/drawio.js" inline   --in fig1.svg --id-prefix fig1 --max-width 1050 --out fig1-embed.svg  # ゲート 3: 埋め込み整形
+```
+
+- `check-overlap` は辺×ラベル・ラベル×ラベルの交差を列挙し、あれば exit 1。**0 件にしてから PNG を目視する**。
+  目視で直すのは色と語だけにする（座標は機械判定に従う）
+- `inline` は width/height の除去、id の付け替え（属性と `style` 内の `url("#…")` の両方）、日本語フォント、
+  色のライト固定を行う。draw.io の素の SVG は閲覧環境がダークだと線が白く飛ぶ（検品の Chrome でも起きる）
+- `--max-width` は figure の器幅 918px に対する上限。**font-size 16 の図は viewBox 幅 1050 まで**（実表示 14px）。
+  超えるなら図を分けるか、viewBox 座標系の font-size を上げる（予防則 9）
+- `--id-prefix` は図ごとに変える。同じ HTML に 2 枚貼ると id が衝突する
+
+#### 埋め込み
+
+整形後の SVG をそのまま `<figure>` に貼る（viewBox 基準なので `figure svg { width:100% }` が効く）。
+例外は 2 つ。SVG が 1MB を超える場合（AWS アイコン 40 個で約 1.8MB。保存物が重くなる）と、
+公式アイコンを画像として渡す方が読み手に確実な場合は、`export --format png --border 12` の PNG を
+`<img>` で埋める。PNG は編集できないので、`.drawio` を文書と同じ場所に残す（次の版で文言だけ直せる）。
 
 ### ラスタ画像の画風 spec（B2 ビジネスフラット高密度 — 文書内で固定）
 
@@ -545,6 +543,8 @@ PDF は一時配布物なので manifest に記録しない（`hub.mjs add` を�
 
 ## 11. Gotchas
 
+- **図番号が全部「図1」になったら tokens.css を疑う** — body の `counter-reset` は `fig sec` を 1 つの宣言に持つこと。v0.11.1 は `fig` と `sec` を別の宣言に分けたため後の宣言が前を消し、全図が 図1 になった（v0.11.2 で修正、tests/figure-numbering.test.mjs が固定）
+- **draw.io の SVG を自前で整形しない** — id の付け替え・色固定・幅の除去は `drawio-bridge` の `inline` に任せる。手動の正規表現置換は `style` 属性内の `url("#…")` を取りこぼし、AWS アイコンのタイルが消える（2026-09 実測）
 - **同じ slug の再生成は勝手に上書きしない** — `hub.mjs add` が既定で停止する。ユーザーに更新意図を確認してから `--update`（別ドキュメントとして残すなら `--new`）を付ける
 - **見出しの「言い切り完結」も仕上げ段階で直す** — 目次と見出しだけ読んで疑問が1つも残らなければ、本文は読まれない。§6 の「未解決要素を1つ残す」検査に戻る
 - **見出しのトピックラベル化は仕上げ段階でも直す** — Phase 5 の PNG 確認時に見出しだけを拾い読みし、主張の文が並んでいなければ Phase 2 の構成規範に戻って書き直す

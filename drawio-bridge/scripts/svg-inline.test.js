@@ -204,3 +204,13 @@ test('inlineSvg: accent 未指定なら色に手を触れない', () => {
   const { svg } = inlineSvg(src, { idPrefix: 'f3' })
   assert.match(svg, /rgb\(147, 112, 219\)/, 'accent 未指定なのに置き換わった')
 })
+
+test('style 属性内の url("#...") 参照も id に追随させる（勾配タイルが消える欠陥の回帰）', () => {
+  // draw.io は fill 属性と style="fill: url(&quot;#id&quot;)" の両方に勾配を書く。style が優先されるので
+  // 属性側だけ付け替えると勾配が見つからず、AWS アイコンのタイルが透明になる
+  const body = '<defs><linearGradient id="g1"/></defs><path fill="url(#g1)" style="fill: url(&quot;#g1&quot;);"/>'
+  const { svg } = inlineSvg(svgOf({ body }), { idPrefix: 'fig1' })
+  assert.match(svg, /fill="url\(#fig1-g1\)"/)
+  assert.match(svg, /style="fill: url\(&quot;#fig1-g1&quot;\);"/)
+  assert.ok(!/#g1[^-]/.test(svg.replace(/fig1-g1/g, '')), '古い id が残っている')
+})

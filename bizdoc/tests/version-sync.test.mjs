@@ -1,4 +1,4 @@
-// v0.11.2 (2026-09-05): 版数の三点一致。plugin.json と 2 つの marketplace.json（ルート / .claude-plugin）の bizdoc
+// v0.11.3 (2026-09-05): 版数の三点一致。plugin.json と 2 つの marketplace.json（ルート / .claude-plugin）の bizdoc
 // 登録版数は散文（repo CLAUDE.md）だけで守られていて、v0.11.1 のとき実際にずれた（plugin 0.11.1 / marketplace 0.11.0）。
 import test from 'node:test';
 import assert from 'node:assert/strict';

@@ -156,7 +156,7 @@ tr.warn td:first-child { box-shadow: inset 3px 0 var(--warn); font-weight: 650; 
 /* ── 結論パネル（文書終端専用。exec-summary の再利用は不可 — 冒頭の地図と終端の締めを視覚で区別する）── */
 .conclusion {
   margin: 3rem 0 0; padding: 1.5rem 1.7rem 1.3rem; background: #111827; color: #e5e7eb; border-radius: 14px;
-  /* パネル内では「地と文字」のトークンをダーク用に反転する（v0.11.2）。code / pre / table / .callout / .card は
+  /* パネル内では「地と文字」のトークンをダーク用に反転する（v0.11.3）。code / pre / table / .callout / .card は
      白地前提で --bg-soft 地 + --line 枠 + --ink 系の文字を使うため、部品ごとに上書きすると穴が残る
      （実例: 文中の <code> だけ直して <pre> と直下の <code> が明るい地に明るい文字のまま読めなかった）。
      パネル地は var(--ink) でなく固定値にする — 同じ要素で --ink を上書きするため */

@@ -19,7 +19,7 @@ const CHROME = process.env.BIZDOC_CHROME || '/Applications/Google Chrome.app/Con
 const css = fs.readFileSync(TOKENS, 'utf8');
 
 test('tokens.css: body で sec カウンタをリセットする（<main> 非依存）', () => {
-  assert.match(css, /body\s*\{\s*counter-reset:\s*sec;?\s*\}/);
+  assert.match(css, /body\s*\{\s*counter-reset:\s*(?:fig\s+sec|sec\s+fig|sec);?\s*\}/);
 });
 
 test('tokens.css: .conclusion の h2 は採番しない', () => {

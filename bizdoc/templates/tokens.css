@@ -48,7 +48,6 @@ body {
      これが無いと「〜を誰も見て/いない」のような不自然な位置で折れる（v0.7.1 で実指摘） */
   line-break: strict;
   overflow-wrap: anywhere;
-  counter-reset: fig;
 }
 p, li, .sec-lede, figcaption, .lede { text-wrap: pretty; }
 h1, h2, h3 { text-wrap: balance; }
@@ -84,8 +83,12 @@ strong { font-weight: 700; }
 /* ── セクション（番号つきメッセージ見出し）── */
 /* v0.11.1 (2026-09-02): カウンタのリセットを <main> 依存から body へ移す。祖先に counter-reset が無いと
    各 section > h2 の counter-increment がその要素上にカウンタを新設し、全セクションが「01」になる
-   （2026-08 に 4 文書で再発。SKILL.md は <main> を要求していなかった）。main の行は互換のため残す。 */
-body { counter-reset: sec; }
+   （2026-08 に 4 文書で再発。SKILL.md は <main> を要求していなかった）。main の行は互換のため残す。
+   v0.11.2 (2026-09-05): fig と sec を同じ宣言にまとめる。v0.11.1 は body の counter-reset を 2 か所に
+   分けて書いたため後の宣言（sec）が前の宣言（fig）を上書きし、figure ごとにカウンタが新設されて
+   全ての図が「図1」になった（実測: 図 3 枚の文書で 図1/図1/図1）。counter-reset は要素ごとに
+   1 宣言しか効かないので、body のリセットは必ずこの 1 行に集約する。 */
+body { counter-reset: fig sec; }
 main { counter-reset: sec; }
 section { margin: 3.4rem 0; }
 section > h2 { counter-increment: sec; font-size: 23px; line-height: 1.5; margin: 0 0 .4rem; display: flex; gap: .7rem; align-items: baseline; }

@@ -446,9 +446,10 @@ hover 用の `--accent: 243 244 246`（gray-100）も本文色 `--text-primary` 
 - **目次**: `<section>` が **5個以上**なら `.exec-summary` の直後に `<nav class="toc">` を置く（4個以下は省略）。
   各 `<section>` に `id="s-01"` 形式（`h2` の採番と同じゼロパディング）の id を振り、`<a href="#s-01">` で飛ばす。
   **`.conclusion` は採番対象外**なので id も振らず目次にも載せない（h2 の番号と id を同じ規則で数える）。
-- **セクション番号の機構（v0.11.1）**: 番号は tokens.css の CSS カウンタ（`section > h2 { counter-increment: sec }`）で付く。
+- **セクション番号・図番号の機構（v0.11.1 / v0.11.2）**: 番号は tokens.css の CSS カウンタ（`section > h2 { counter-increment: sec }`）で付く。
   祖先に `counter-reset: sec` が無いと各 h2 がカウンタを新設して**全部「01」になる**。tokens.css は `body` でリセットするため
-  `<main>` の有無に依存しない（`<main>` を書いてもよいが必須ではない）。終端の `.conclusion` は `<section class="conclusion">` /
+  `<main>` の有無に依存しない（`<main>` を書いてもよいが必須ではない）。図番号 `fig` も同じ body の 1 宣言（`counter-reset: fig sec`）でリセットする —
+  別規則で重ね書きすると後勝ちで先の宣言が消える（v0.11.2 で直した「全部 図1」の原因）。終端の `.conclusion` は `<section class="conclusion">` /
   `<aside class="conclusion">` のどちらで書いても番号を消費しない。`hub.mjs add` は h2 の数と目次リンク数の不一致を stderr に warn する。
   目次項目は `h2` の全文ではなく **25字程度に要約した短縮形**を使う（メッセージ見出しはそのままでは2カラムに収まらない）。
   紙ではページ番号を持たないため tokens.css が印刷時に非表示にする — 画面用の地図として置く
@@ -483,7 +484,7 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/screenshot.mjs" "<保存先index.html>" "<sc
 - `<組み立てたHTML>` = Phase 4 でスクラッチ領域に書き出した一時ファイルのパス
 - `<タイトル>` / `<英語kebab-caseスラッグ>` / `<種別>` / `<a,b>` = Phase 0/2 で確定した内容
 - `hub.mjs add` は内部処理の最初に SVG の XML 妥当性を検証する（決定論ゲート1。stdout の1行目＝保存先パスのことではない）。不正な SVG があれば add がここで中止するので、Phase 3 のスニペットを見直す
-- `add` は保存時に **tokens.css と hub ナビを注入する**。保存物のスクリーンショット上部に「← doc-hub 一覧」のバーが出るのは正常（hub 配下のパスでのみ表示され、メール添付などで持ち出したコピーでは自動的に消える。印刷にも出ない）
+- `add` は保存時に **tokens.css と hub ナビを注入する**。保存物のスクリーンショット上部に「← doc-hub 一覧」のバーが出るのは正常（hub 配下のパスでのみ表示され、メール添付などで持ち出したコピーでは自動的に消える。印刷にも出ない）。**tokens.css を更新しても保存済み文書には自動で届かない**（注入時の CSS が焼き込まれる）ので、テンプレートを直したら `hub.mjs retheme` で貼り直す（例: v0.11.2 の図番号修正）
 - スクリーンショットが**無スタイル**（素の HTML に見える）なら、`<style data-bizdoc="tokens"></style>` を書き忘れているか、プラグインのキャッシュが古い
 - 同じ slug のドキュメントが既にあると `add` は既定で停止する（勝手に上書きしない）。ユーザーの意図が更新なら `--update`、別ドキュメントとして残すなら `--new` を確認してから付ける
 - `<scratchpad>/shot` = 一時的な出力ディレクトリ（`mktemp -d` 等）。`screenshot.mjs` は `full-NN.png`（全体を上から 2000px ごとに分割・幅 1280・等倍。Read が縮小せず本文が読める）と `crop-NN-<figure|table|div.kpi-grid>.png`（各図表を前後の本文 2 行分込みで 2 倍解像度に再ラスタライズ）を書き、stdout に JSON（`height`・`segments`・各 crop の `tag`/`top`/`height`/`truncated`/`skipped`）を返す。Chrome CLI の `--screenshot` は使わない（ビューポート分しか撮れず、実文書の大半が 4000px を超えるため下半分の図表が写らない。2026-09-03 実測 10/10 文書。1 枚撮りは 16384px 超で先頭の複製に化けるため分割する）
@@ -501,6 +502,7 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/screenshot.mjs" "<保存先index.html>" "<sc
 - **言葉づかいの検査（v0.9.0）**: §6「言葉づかいの規範」を1度通す。特に (a) 同じ節で見出し・lede・callout が同じ主張を3回言っていないか、(b) 「大幅に」「適切に」など具体へ落とせる抽象語が残っていないか、(c) 実装側の呼称が本文の主語になっていないか
 - **警告色の検査（v0.9.0）**: `--warn` / `.callout-warn` / `tr.warn` / `.tag-warn` の使用箇所を数え、意味が「超過・未達・停止・要対処」に限られているか、1図につき1要素までかを確認する
 - **前方参照検査**: 保存 HTML に `grep -nE '後述|（[0-9０-９]+ ?章）|別紙'` を実行し、根拠が参照だけのセル・本文が残っていないか確認する（残っていれば §6 の前方参照禁止に戻る）
+- **番号が通し採番になっているか（v0.11.2）** — セクション番号 `01, 02, 03 …` と図番号 `図1, 図2 …` を上から数える。全部 `01` / 全部 `図1` なら tokens.css のカウンタリセットが効いていない（`counter-reset` の重複宣言か、tokens 未注入）
 - **コードブロックが行ごとの角丸チップに割れていないか** — 割れていれば `<pre>` で包み忘れている（`<code>` 単独で複数行を囲っている）
 
 図表の crop PNG（`crop-NN-*.png`。1 枚ずつ Read する）で:

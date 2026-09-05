@@ -48,7 +48,14 @@ body {
      これが無いと「〜を誰も見て/いない」のような不自然な位置で折れる（v0.7.1 で実指摘） */
   line-break: strict;
   overflow-wrap: anywhere;
-  counter-reset: fig;
+  /* 文書全体のカウンタは body のこの 1 宣言だけでリセットする（fig = 図番号、sec = セクション番号）。
+     同じ要素に counter-reset を別の規則で重ねて書かない — 同一プロパティは後勝ちで、あとから足した
+     宣言が先の宣言を丸ごと消す（v0.11.1 で `body { counter-reset: sec }` を別行に足し、fig のリセットが
+     消えて全ての図が「図1」になった。v0.11.2 で統合）。カウンタを増やすときはこの行に名前を足す。
+     祖先にリセットが無いと counter-increment が要素ごとにカウンタを新設して番号が全部 1 になるので、
+     リセットは <main> 等の任意要素でなく必ず存在する body に置く（v0.11.1: SKILL.md は <main> を
+     要求しておらず、2026-08 に 4 文書で「全部 01」が再発した）。 */
+  counter-reset: fig sec;
 }
 p, li, .sec-lede, figcaption, .lede { text-wrap: pretty; }
 h1, h2, h3 { text-wrap: balance; }
@@ -82,11 +89,9 @@ strong { font-weight: 700; }
 .exec-summary ol li small { display: block; font-weight: 400; color: var(--ink-2); font-size: 14px; line-height: 1.75; margin-top: .1rem; }
 
 /* ── セクション（番号つきメッセージ見出し）── */
-/* v0.11.1 (2026-09-02): カウンタのリセットを <main> 依存から body へ移す。祖先に counter-reset が無いと
-   各 section > h2 の counter-increment がその要素上にカウンタを新設し、全セクションが「01」になる
-   （2026-08 に 4 文書で再発。SKILL.md は <main> を要求していなかった）。main の行は互換のため残す。 */
-body { counter-reset: sec; }
-main { counter-reset: sec; }
+/* sec カウンタのリセットは body の counter-reset（上）に統合済み。ここに body / main の counter-reset を
+   再び書かないこと。旧 `main { counter-reset: sec }` は v0.11.2 で削除 — body で足りるうえ、section が
+   <main> の内外に分かれた文書では main 側のリセットで番号が 01 からやり直しになる（互換ではなく再採番の罠）。 */
 section { margin: 3.4rem 0; }
 section > h2 { counter-increment: sec; font-size: 23px; line-height: 1.5; margin: 0 0 .4rem; display: flex; gap: .7rem; align-items: baseline; }
 /* 終端の結論パネル（.conclusion）は番号対象外。<section class="conclusion"> と書かれても採番を消費しない */
@@ -149,7 +154,15 @@ tr.warn td:first-child { box-shadow: inset 3px 0 var(--warn); font-weight: 650; 
 .card li { margin: .18rem 0; }
 
 /* ── 結論パネル（文書終端専用。exec-summary の再利用は不可 — 冒頭の地図と終端の締めを視覚で区別する）── */
-.conclusion { margin: 3rem 0 0; padding: 1.5rem 1.7rem 1.3rem; background: var(--ink); color: #e5e7eb; border-radius: 14px; }
+.conclusion {
+  margin: 3rem 0 0; padding: 1.5rem 1.7rem 1.3rem; background: #111827; color: #e5e7eb; border-radius: 14px;
+  /* パネル内では「地と文字」のトークンをダーク用に反転する（v0.11.2）。code / pre / table / .callout / .card は
+     白地前提で --bg-soft 地 + --line 枠 + --ink 系の文字を使うため、部品ごとに上書きすると穴が残る
+     （実例: 文中の <code> だけ直して <pre> と直下の <code> が明るい地に明るい文字のまま読めなかった）。
+     パネル地は var(--ink) でなく固定値にする — 同じ要素で --ink を上書きするため */
+  --bg-soft: rgba(255,255,255,.14); --line: rgba(255,255,255,.22); --line-strong: rgba(255,255,255,.3);
+  --ink: #eef3fd; --ink-2: #c7cedb;
+}
 .conclusion h2 { font-size: 12.5px; letter-spacing: .16em; color: #9ca3af; margin: 0 0 .7rem; border: none; padding: 0; }
 .conclusion ol { margin: 0; padding: 0; list-style: none; counter-reset: cc; }
 .conclusion ol li { counter-increment: cc; position: relative; padding: .4rem 0 .4rem 2.15rem; font-weight: 650; font-size: 15px; color: #f9fafb; }
@@ -203,7 +216,9 @@ footer { margin-top: 3.2rem; padding-top: .9rem; border-top: 1px solid var(--lin
   /* 紙は1段組で幅が既に狭い。画面用の行長制限を解除しないとページ数が増える */
   section > p, section > ul, section > ol:not(.steps), .sec-lede, .cover .lede { max-width: none; }
   /* ダーク地はトナーを食い紙面で浮くため、印刷では白地+枠に反転する */
-  .conclusion { background: #fff; color: var(--ink); border: 2px solid var(--ink); break-inside: avoid; }
+  .conclusion { background: #fff; color: var(--ink); border: 2px solid var(--ink); break-inside: avoid;
+    /* 白地に反転するので、画面用に上書きした地と文字のトークンも親（body）の値へ戻す */
+    --bg-soft: inherit; --line: inherit; --line-strong: inherit; --ink: inherit; --ink-2: inherit; }
   .conclusion h2 { color: var(--ink-2); }
   .conclusion ol li { color: var(--ink); }
   .conclusion strong { color: var(--ink); }

@@ -31,7 +31,7 @@
       "description": "Codex サブスク枠（無課金・既定）、Google Gemini、OpenAI GPT Image、ZhipuAI GLM-Image の画像生成モデルで画像を生成・編集。「画像を生成して」「イラストを作って」「この画像を編集して」などの指示で自動的に使用される。何も指定しない汎用生成は codex サブスク枠（ChatGPTログイン・API従量課金なし）を優先し、不可時は Gemini に自動フォールバック。ステッカーシート生成・分割にも対応。",
       "source": "./image-creator",
       "strict": false,
-      "version": "1.6.0",
+      "version": "1.6.1",
       "category": "image-generation",
       "keywords": [
         "image",
@@ -185,7 +185,7 @@
       "description": "Claude Code の transcript ログを増分ダイジェスト化し、セッション横断で失敗パターン（ツールエラー・リトライ・権限拒否・compaction・ドリフト）を分析して、どのスキル/ルール/CLAUDE.md/settings を直すべきかを人間向けHTMLレポートで示唆する運用改善スキル。「ハーネス分析」「運用改善レポート」「失敗パターン分析」「/harness-loop」で発動。自動書き換えはせず示唆のみ。",
       "source": "./harness-analytics",
       "strict": false,
-      "version": "0.6.0",
+      "version": "0.6.1",
       "category": "developer-tools",
       "keywords": [
         "harness",
@@ -228,7 +228,7 @@
       "description": "Stop フックでビルダー（Claude 本体）の完了主張を外部モデル評価者（Codex/Grok、いずれもサブスク認証・API 従量課金なし）が検証する完了ゲート。ビルダー≠評価者の分離（fresh context・別モデル系統）で「完了しました」の安易な着地を根拠つきで差し戻す。diff ハッシュによる決定論事前チェックで変更のないターンは LLM を起動しない。作業ツリー外のブランチ（隔離 worktree → push → PR）も git の ref から検出して証拠に含める。per-project opt-in（既定 OFF）。「完了ゲート」「評価ゲート」「エバリュエーター」「差し戻し」「外部評価者」で発動。/evaluator-gate で切替、/evaluate でオンデマンド所見評価。",
       "source": "./evaluator-gate",
       "strict": false,
-      "version": "0.4.2",
+      "version": "0.4.3",
       "category": "developer-tools",
       "keywords": [
         "stop-hook",

@@ -45,6 +45,7 @@ const html = fs.readFileSync(absInput, 'utf8');
 const title = args.title || (html.match(/<title>([^<]+)<\/title>/i)?.[1] ?? path.basename(absInput, '.html')).trim();
 
 const { cdp, sessionId, navigate, evaluate, close } = await launchChrome({ prefix: 'bizdoc-pdf-' });
+let failure = null;
 try {
   await navigate('file://' + absInput);
   await delay(300); // フォント・レイアウトの安定待ち
@@ -87,11 +88,15 @@ try {
   //   ページ数 0 / 本文長ゼロ相当（< MIN_PDF_BYTES）は非 0 終了にし、呼び出し側に再実行を促す。
   const MIN_PDF_BYTES = 2048;
   const pageCount = (pdf.toString('latin1').match(/\/Type\s*\/Page[^s]/g) || []).length;
+  //   try の中で die()（process.exit）しない — finally の close() が走らず、デバッグポートを開いた Chrome が
+  //   孤児化する（2026-09-05 のセキュリティレビューで検出）。失敗は finally の後で終了コードにする。
   if (pdf.length < MIN_PDF_BYTES || pageCount === 0) {
-    die(`空 PDF の可能性があります（${pdf.length} bytes / ${pageCount} pages）。load が完了する前に印刷された疑い — マシン負荷を下げて再実行するか、HTML 単体でレンダリングを確認してください`);
+    failure = `空 PDF の可能性があります（${pdf.length} bytes / ${pageCount} pages）。load が完了する前に印刷された疑い — マシン負荷を下げて再実行するか、HTML 単体でレンダリングを確認してください`;
+  } else {
+    fs.writeFileSync(path.resolve(output), pdf);
+    console.log(path.resolve(output));
   }
-  fs.writeFileSync(path.resolve(output), pdf);
-  console.log(path.resolve(output));
 } finally {
-  close();
+  await close();
 }
+if (failure) die(failure);

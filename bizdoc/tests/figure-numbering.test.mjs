@@ -46,7 +46,7 @@ const SECS = ['01', '02', '03'];
 
 let renderer = null;
 before(async () => { renderer = await openRenderer('bizdoc-fig-'); });
-after(() => renderer?.close());
+after(async () => { await renderer?.close(); });
 
 test('render: figure 3 枚で 図1, 図2, 図3 と通し採番され、セクションは 01, 02, 03 のまま', { timeout: 60000 }, async (t) => {
   if (!renderer) return t.skip('Chrome なし');

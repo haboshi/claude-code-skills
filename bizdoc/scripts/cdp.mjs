@@ -60,13 +60,40 @@ export class Cdp {
 }
 
 // Chrome を一時プロファイルで起動し、about:blank のページに attach した CDP セッションを返す。
-// 戻り値の close() は WebSocket を閉じ Chrome を kill して一時プロファイルを消す。
+// 戻り値の close() は async — WebSocket を閉じ、Chrome の終了を待ってから一時プロファイルを消す。
+// 呼び出し側は必ず `finally { await close(); }` で呼び、try の中で process.exit しない（finally が走らず
+// デバッグポートを開いた Chrome が孤児化する。2026-09-05 に print-pdf.mjs の空 PDF 判定で実際に起きた）。
 export async function launchChrome({ prefix = 'bizdoc-cdp-', extraArgs = [], timeoutMs } = {}) {
   if (!fs.existsSync(CHROME)) throw new Error('Chrome が見つかりません（BIZDOC_CHROME で指定できます）');
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
   const chrome = spawn(CHROME, ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${userDataDir}`,
-    '--no-first-run', '--no-default-browser-check', ...extraArgs, 'about:blank'], { stdio: 'ignore' });
+    '--no-first-run', '--no-default-browser-check', ...extraArgs, 'about:blank'],
+    // detached: 自前のプロセスグループにして、close() で renderer / GPU などのヘルパーごと SIGTERM を送れるようにする
+    { stdio: 'ignore', detached: true });
   let ws;
+  // 後片付け。Chrome の終了を待ってからプロファイルを消す — kill 直後はまだ書き込み中で rmSync が
+  // ENOTEMPTY になり、プロファイル（1〜2MB）が一時領域に残り続けていた（2026-09-05 実測: 3 日で 197 個・358MB）。
+  // 二重呼び出しは同じ Promise を返す。
+  let closing;
+  const close = () => (closing ??= (async () => {
+    try { ws?.close(); } catch { /* 未接続か既に閉じている */ }
+    if (chrome.exitCode === null && chrome.signalCode === null) {
+      const exited = new Promise((resolve) => chrome.once('exit', resolve));
+      const signalGroup = (sig) => { try { process.kill(-chrome.pid, sig); } catch { chrome.kill(sig); } };
+      signalGroup('SIGTERM');
+      const hard = setTimeout(() => signalGroup('SIGKILL'), 3000);
+      hard.unref?.();
+      await exited;
+      clearTimeout(hard);
+    }
+    // 成果物は書き出し済みなので後片付けの失敗で終了コードを変えない（「掴んでいる」系だけ握りつぶす）。
+    try {
+      fs.rmSync(userDataDir, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+    } catch (e) {
+      if (!['ENOTEMPTY', 'EBUSY', 'EPERM', 'ENOENT'].includes(e?.code)) throw e;
+      console.warn(`warn: 一時プロファイルを削除できませんでした: ${userDataDir} — ${e.code}`);
+    }
+  })());
   try {
     ws = new WebSocket(await waitForWsUrl(userDataDir));
     await new Promise((resolve, reject) => {
@@ -74,13 +101,20 @@ export async function launchChrome({ prefix = 'bizdoc-cdp-', extraArgs = [], tim
       ws.addEventListener('error', () => reject(new Error('DevTools WebSocket に接続できませんでした')), { once: true });
     });
   } catch (e) {
-    chrome.kill();
+    await close();
     throw e;
   }
   const cdp = new Cdp(ws, { timeoutMs });
-  const { targetId } = await cdp.send('Target.createTarget', { url: 'about:blank' });
-  const { sessionId } = await cdp.send('Target.attachToTarget', { targetId, flatten: true });
-  await cdp.send('Page.enable', {}, sessionId);
+  let sessionId;
+  try {
+    const { targetId } = await cdp.send('Target.createTarget', { url: 'about:blank' });
+    ({ sessionId } = await cdp.send('Target.attachToTarget', { targetId, flatten: true }));
+    await cdp.send('Page.enable', {}, sessionId);
+  } catch (e) {
+    // ここで失敗すると呼び出し側はまだ close() を持っていない。デバッグポートを開いた Chrome を残さない
+    await close();
+    throw e;
+  }
 
   const navigate = async (url, loadTimeoutMs = 10000) => {
     const loaded = new Promise((resolve) => cdp.on((m) => { if (m.method === 'Page.loadEventFired' && m.sessionId === sessionId) resolve(); }));
@@ -96,17 +130,5 @@ export async function launchChrome({ prefix = 'bizdoc-cdp-', extraArgs = [], tim
     }
     return result.value;
   };
-  const close = () => {
-    try { ws.close(); } catch { /* 既に閉じている */ }
-    chrome.kill();
-    // Chrome は kill 直後もプロファイルへ書き込みを続けるため、待たずに消すと ENOTEMPTY で落ちる。
-    // 成果物は書き出し済みなので後片付けの失敗で終了コードを変えない（「掴んでいる」系だけ握りつぶす）。
-    try {
-      fs.rmSync(userDataDir, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
-    } catch (e) {
-      if (!['ENOTEMPTY', 'EBUSY', 'EPERM', 'ENOENT'].includes(e?.code)) throw e;
-      console.warn(`warn: 一時プロファイルを削除できませんでした: ${userDataDir} — ${e.code}`);
-    }
-  };
-  return { cdp, sessionId, navigate, evaluate, close };
+  return { cdp, sessionId, navigate, evaluate, close, userDataDir };
 }

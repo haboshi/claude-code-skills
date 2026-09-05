@@ -100,5 +100,5 @@ try {
   }
   console.log(JSON.stringify({ width, height, scale, segments, crops }, null, 2));
 } finally {
-  close();
+  await close();
 }

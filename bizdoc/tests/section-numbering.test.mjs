@@ -84,7 +84,7 @@ test('add: 整合した文書は warn を出さない', () => {
 
 let renderer = null;
 before(async () => { renderer = await openRenderer('bizdoc-num-'); });
-after(() => renderer?.close());
+after(async () => { await renderer?.close(); });
 
 test('render: <main> なし・3 セクション + conclusion で 01,02,03 の連番になり、conclusion の h2 は番号を持たない', { timeout: 60000 }, async (t) => {
   if (!renderer) return t.skip('Chrome なし');

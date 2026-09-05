@@ -33,7 +33,7 @@ const lum = (rgb) => { const [r, g, b] = rgb.match(/\d+/g).map(Number); return (
 
 let renderer = null;
 before(async () => { renderer = await openRenderer('bizdoc-ccode-'); });
-after(() => renderer?.close());
+after(async () => { await renderer?.close(); });
 
 test('render: 画面ではダーク地の上で code チップ・直下の code・pre が読める配色になり、pre > code は装飾なしのまま', { timeout: 60000 }, async (t) => {
   if (!renderer) return t.skip('Chrome なし');

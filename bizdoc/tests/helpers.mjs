@@ -91,8 +91,8 @@ export async function openRenderer(prefix = 'bizdoc-render-') {
       await load(input, media);
       return evaluate(expression);
     },
-    close() {
-      close();
+    async close() {
+      await close();
       fs.rmSync(dir, { recursive: true, force: true });
     },
   };

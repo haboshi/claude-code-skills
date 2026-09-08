@@ -47,14 +47,14 @@ Claude Code用プラグイン（スキル）のマーケットプレイスコレ
 { "name": "foo", "source": "./foo" }
 ```
 
-### 収録プラグイン一覧（17個）
+### 収録プラグイン一覧（18個）
 
 **ドキュメント生成**: pdf-creator-jp, bizdoc（ビジネス白基調のSVG図解付き1枚HTML生成 + doc-hub 統合管理）
 **画像生成**: image-creator, svg-header-image, svg-diagram, line-sticker-creator
 **画像変換**: svg-to-webp, mermaid-to-webp, drawio-bridge（.drawio の検証・SVG化・HTML埋め込み整形。図の生成は担当しない）
 **音声**: tts（発音辞書機能を内蔵）
 **調査**: brave-research
-**セキュリティ**: web-vuln-report（非破壊の脆弱性診断→日本語報告書 HTML/PDF 生成）
+**セキュリティ**: web-vuln-report（非破壊の脆弱性診断→日本語報告書 HTML/PDF 生成）, aws-harness（プロジェクトごとに AWS Identity を契約で固定し、契約外アカウントを SDK/CLI から解決不能にする起動ガード。契約ファイル + shim + PreToolUse フックで構成）
 **開発ツール**: skill-creator-pro（配布パイプライン特化）, harness-analytics（transcript ログ分析→改善示唆）, provider-harness（外部プロバイダ統合のメタスキル + ドメインスキル + /provider-harvest 知見還流）, evaluator-gate（Stop フック完了ゲート。Codex/Grok の外部評価者が完了主張を検証して差し戻し。/evaluator-gate 切替・/evaluate 所見評価）, orca-spinoff（Orca IDE の `orca` CLI で課題をチケット起票→別 worktree へフルハンドオフ。スクリプトなしの指示書型スキル）
 
 #### 図解系の住み分け

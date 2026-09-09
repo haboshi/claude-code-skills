@@ -25,6 +25,16 @@ const ALLOWED_LITERALS = new Set(['#fff', '#ffffff', 'none', 'currentcolor', 'tr
 const ROOT_TAG_RE = /<svg\b[^>]*>/i;
 const ATTR = (name) => new RegExp(`\\b${name}="([^"]*)"`, 'i');
 
+// 警告文へ差し込む属性値の無害化。属性値は文書の作者が自由に書ける値で、hub は取込（retro）で
+// 他所の HTML も受け取る。制御文字をそのまま端末へ流すと ESC シーケンスで行を消せてしまい、
+// 「警告が出ていない」ように見せられる — 警告は人が採否を決める材料なので、消せる状態にしない。
+const CONTROL_RE = /[\u0000-\u001f\u007f-\u009f]/g;
+
+function safe(value, max = 40) {
+  const flat = String(value).replace(CONTROL_RE, '·');
+  return flat.length > max ? `${flat.slice(0, max)}…` : flat;
+}
+
 function rootAttrs(svg) {
   const tag = svg.match(ROOT_TAG_RE);
   return tag ? tag[0] : '';
@@ -60,7 +70,7 @@ export function lintSvg(svg, label = 'SVG') {
   // 予防則2: width / height の px 直書き（figure svg { width:100% } が効かなくなる）
   for (const name of ['width', 'height']) {
     const v = attr(tag, name);
-    if (v && v !== '100%') out.push(`${label}: ルート要素に ${name}="${v}" があります（予防則2。viewBox のみ指定する）`);
+    if (v && v !== '100%') out.push(`${label}: ルート要素に ${name}="${safe(v)}" があります（予防則2。viewBox のみ指定する）`);
   }
 
   // 予防則4: font-family は本文の system font stack を継承させる
@@ -70,7 +80,7 @@ export function lintSvg(svg, label = 'SVG') {
   const literals = colorLiterals(svg);
   if (literals.length > 0) {
     out.push(
-      `${label}: 色リテラル ${literals.length}種（${literals.slice(0, 4).join(' ')}${literals.length > 4 ? ' …' : ''}）` +
+      `${label}: 色リテラル ${literals.length}種（${literals.slice(0, 4).map((x) => safe(x, 20)).join(' ')}${literals.length > 4 ? ' …' : ''}）` +
         `を直書きしています（予防則5。var(--ink) 等の CSS 変数を参照する）`
     );
   }

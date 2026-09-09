@@ -90,3 +90,23 @@ test('正典パターン: svg-patterns/*.md の作例を誤検出しない', () 
   }
   assert.deepEqual(offenders, [], `正典パターンを誤検出している:\n${offenders.join('\n')}`);
 });
+
+// v0.12.1 (2026-09-09): 警告文への出力インジェクション。属性値は文書の作者が自由に書ける値で、
+// hub は取込（retro）で他所の HTML も受け取る。ESC シーケンスが素通りすると端末の行を消して
+// 「警告が出ていない」ように見せられる — 警告は人が採否を決める材料なので、消せてはいけない。
+test('属性値の制御文字を警告文へ素通りさせない', () => {
+  const evil = '\u001b[2K\r' + 'info: 検証は通りました';
+  const svg = `<svg viewBox="0 0 780 300" role="img"><title>t</title><rect fill="${evil}"/></svg>`;
+  const out = lintSvg(svg, '図1');
+  assert.equal(out.length, 1, out.join('\n'));
+  assert.doesNotMatch(out[0], /[\u0000-\u001f\u007f-\u009f]/, JSON.stringify(out[0]));
+  assert.match(out[0], /色リテラル 1種/);
+});
+
+test('長すぎる属性値は切り詰める', () => {
+  const long = '#' + 'a'.repeat(200);
+  const svg = `<svg viewBox="0 0 780 300" role="img" width="${long}"><title>t</title></svg>`;
+  const msg = lintSvg(svg, '図1').find((m) => /ルート要素に width/.test(m));
+  assert.ok(msg.length < 120, msg.length + '文字: ' + msg);
+  assert.match(msg, /…/);
+});

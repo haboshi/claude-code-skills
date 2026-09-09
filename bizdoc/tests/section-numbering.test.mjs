@@ -82,6 +82,25 @@ test('add: 整合した文書は warn を出さない', () => {
   assert.doesNotMatch(r.stderr, /目次リンク|data-bizdoc="tokens"/);
 });
 
+// v0.12.1 (2026-09-09): 注入済みの文書を再び add したときの誤警告の回帰テスト。
+// tokens.css のコメントには `<section class="conclusion">` という文字列があり、素朴に数えると
+// 開始タグが 1 個増えて section と </section> の対応が 1 つずれ、目次と一致しなくなる。
+// --update での再保存と retheme 後の再 add は正規の手順なので、ここは必ず黙る必要がある。
+test('add: tokens.css 注入済みの文書を再 add しても目次の誤警告を出さない', () => {
+  const { base, hub, proj } = setup();
+  const p = path.join(base, 'injected.html');
+  fs.writeFileSync(
+    p,
+    `<!doctype html><html><head><title>再保存</title><style data-bizdoc="tokens">\n${css}\n</style></head><body>` +
+      '<nav class="toc"><a href="#s-01">一</a><a href="#s-02">二</a></nav>' +
+      '<section id="s-01"><h2>一</h2></section><section id="s-02"><h2>二</h2></section>' +
+      '<aside class="conclusion"><h2>結論</h2></aside></body></html>'
+  );
+  const r = runHubRaw(hub, ['add', p, '--project', proj]);
+  assert.equal(r.status, 0);
+  assert.doesNotMatch(r.stderr, /目次リンク/, r.stderr);
+});
+
 let renderer = null;
 before(async () => { renderer = await openRenderer('bizdoc-num-'); });
 after(async () => { await renderer?.close(); });

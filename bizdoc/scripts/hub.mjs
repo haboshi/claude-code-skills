@@ -21,7 +21,8 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { projectIdFromPath, resolveMainWorktreeRoot, slugify } from './project-id.mjs';
 import { renderIndex } from './render-index.mjs';
-import { hasNavFrame, hasTokensMarker, injectNavFrame, injectTokens, readTokensCss, refreshNavFile } from './inject.mjs';
+import { hasNavFrame, hasTokensMarker, injectNavFrame, injectTokens, maskNonContent, readTokensCss, refreshNavFile } from './inject.mjs';
+import { lintSvgs } from './svg-lint.mjs';
 import {
   applyOverrides,
   createGroup,
@@ -140,14 +141,20 @@ function extractSvgs(html) {
 //   - <style data-bizdoc="tokens"> が無い → tokens.css が注入されず番号・図採番・配色が全て消える
 //   - 番号対象の section > h2（.conclusion を除く）の数と <nav class="toc"> のリンク数が不一致
 //     → 目次の id と h2 の採番がずれる（SKILL.md「目次」の規約違反）
+//   v0.12.1 (2026-09-09): 数える前に maskNonContent を通す。これが無いと <style> や
+//   コメントの中の文字列をタグとして数えてしまい、注入済み tokens.css のコメントにある
+//   `<section class="conclusion">` の 1 行だけで開始タグが 1 個増え、目次との対応がずれて
+//   誤警告が出た（--update での再保存・retheme 後の再 add で必ず踏む）。
 function structureWarn(html) {
   try {
     if (!/<style[^>]*data-bizdoc="tokens"/.test(html)) {
       console.warn('warn: <style data-bizdoc="tokens"> が無いため tokens.css を注入できません（セクション番号・図採番・配色が付きません）');
     }
-    const sections = [...html.matchAll(/<section\b([^>]*)>([\s\S]*?)<\/section>/g)];
+    // 要素として数えてよいのは本文だけ。style / script / コメント等の中身は同じ長さの空白へ潰す
+    const body = maskNonContent(html);
+    const sections = [...body.matchAll(/<section\b([^>]*)>([\s\S]*?)<\/section>/g)];
     const numbered = sections.filter((m) => !/class="[^"]*\bconclusion\b/.test(m[1]) && /<h2\b/.test(m[2])).length;
-    const toc = html.match(/<nav[^>]*class="[^"]*\btoc\b[^"]*"[^>]*>([\s\S]*?)<\/nav>/);
+    const toc = body.match(/<nav[^>]*class="[^"]*\btoc\b[^"]*"[^>]*>([\s\S]*?)<\/nav>/);
     if (toc) {
       const links = (toc[1].match(/<a\s[^>]*href="#s-\d+"/g) || []).length;
       if (links !== numbered) {
@@ -156,6 +163,16 @@ function structureWarn(html) {
     }
   } catch {
     // 検査の失敗で add を止めない
+  }
+}
+
+// v0.12.1 (2026-09-09): 図の予防則の決定論チェック（warn のみ・add は止めない）。
+// 判定できる項目だけを svg-lint.mjs に置いてある（残りは Phase 5 の人の検査）。
+function svgLintWarn(html) {
+  try {
+    for (const msg of lintSvgs(html)) console.warn(`warn: ${msg}`);
+  } catch {
+    // 検査の失敗で add を止めない（svgGate と違い、これは助言であって門ではない）
   }
 }
 
@@ -245,6 +262,7 @@ function cmdAdd(htmlPath, opts) {
   const html = fs.readFileSync(htmlPath, 'utf8');
   svgGate(html);
   structureWarn(html);
+  svgLintWarn(html);
   const proj = resolveProject(opts.project || process.cwd());
   const title = opts.title || readTitle(html, path.basename(htmlPath, path.extname(htmlPath)));
   const slug = slugify(opts.slug || title);

@@ -129,8 +129,16 @@ frontmatter: `name: spark-agent`、日本語トリガーを含む description、
   公式の rules（`prefix_rule` の `decision="allow"` = サンドボックス外で無確認実行）で解決し、
   `scripts/install-codex-rules.sh --yes` が `~/.codex/rules/spark-agent.rules` を生成する。既定は bare `spark <読み取り>`
   のみ allow、スクリプト起動は prompt（作業ツリー内で書き換え可能なスクリプトの無確認実行を避ける。`--allow-scripts` で緩和）。
-- 非対話の `codex exec` では prompt 規則も承認要求なしに実行された。
+- 非対話の `codex exec` では prompt 規則のコマンドは応答待ちで止まり（read-only）、
+  `--dangerously-bypass-approvals-and-sandbox` でも承認ポリシー Never として拒否される。Codex からの書き込み系は
+  対話セッションで承認して実行する運用に確定。読み取りの自動化には `--allow-scripts` が要る。
 - 設計 3.1 の `--delete` は単独オプションのため `--account` を注入しない（Codex コミットレビューの指摘で追加）。
+  また `draft --delete` は取り消せないため --confirm ゲートの対象に加えた（セキュリティレビューの指摘で
+  ゲート対象の動詞は spark-ctx.sh の `GATED_*` に一元化し、全トークン走査に変更）。
+- 検証結果（2026-09-13）: 決定論テスト 53 件 PASS。実機（個人 Gmail = send、他 5 アカウント = triage）で
+  doctor OK・alias 切替・Priority/未読一覧・thread・自分宛下書きの作成と削除・events/availability・
+  参加者なし予定の作成→変更→削除→消失確認まで PASS。Codex 実走（read-only + rules）は Claude と同じ件数
+  （今日 2 / Priority 未読 0 / 今週 51）。
 
 ## 6. 環境構築（GUI）
 

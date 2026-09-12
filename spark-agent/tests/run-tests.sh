@@ -104,7 +104,7 @@ out=$(dry draft --to a@b.com --subject S --body B)
 out=$(dry draft --reply-to 123 --body B)
 [ "$out" = "$SPARK_BIN draft --reply-to 123 --body B" ] && ok "T16 draft 返信は注入しない（スレッドのアカウントを継承）" || bad "T16" "$out"
 
-out=$(dry draft --delete 123)
+out=$(dry --confirm draft --delete 123)
 [ "$out" = "$SPARK_BIN draft --delete 123" ] && ok "T16b draft --delete は単独オプションなので注入しない" || bad "T16b" "$out"
 
 out=$(dry draft signatures)
@@ -129,7 +129,17 @@ out=$(bash "$CTX" run action send 99 2>&1); rc=$?
   && ok "T22 action send は --confirm なしで exit 3・未実行" || bad "T22" "rc=$rc out=$out"
 
 out=$(bash "$CTX" run event delete ABC 2>&1); rc=$?
-[ "$rc" -eq 3 ] && ok "T23 event delete も --confirm なしで exit 3" || bad "$rc"
+[ "$rc" -eq 3 ] && ok "T23 event delete も --confirm なしで exit 3" || bad "T23" "rc=$rc"
+
+out=$(bash "$CTX" run draft --delete 123 2>&1); rc=$?
+[ "$rc" -eq 3 ] && ok "T23d draft --delete（取り消し不能）も --confirm なしで exit 3" || bad "T23d" "rc=$rc"
+out=$(SPARK_AGENT_DRY_RUN=1 bash "$CTX" run --confirm draft --delete 123 2>/dev/null)
+[ "$out" = "$SPARK_BIN draft --delete 123" ] && ok "T23e --confirm 付き draft --delete は注入なしで実行" || bad "T23e" "$out"
+
+# ゲート対象の動詞は spark-ctx.sh の GATED_* が唯一の定義。Codex rules の WRITE 側がそれを包含していることを確認
+for v in action event draft; do
+  grep -q "\"$v\"" "$SCRIPTS/install-codex-rules.sh" && ok "T23f rules の WRITE に '$v' を含む（ゲート対象の包含）" || bad "T23f" "$v missing in WRITE"
+done
 
 out=$(bash "$CTX" run action --date 2026-09-14 send 99 2>&1); rc=$?
 [ "$rc" -eq 3 ] && ok "T23b action の send を後ろにずらしてもゲートされる" || bad "T23b" "rc=$rc"

@@ -22,6 +22,12 @@ STATE_DIR="${SPARK_AGENT_HOME:-$HOME/.config/spark-agent}"
 CTX_FILE="$STATE_DIR/context"
 ALIAS_FILE="$STATE_DIR/aliases"
 
+# --confirm ゲートの対象（唯一の定義。外部へメールが出る操作と取り消せない操作）。
+# Codex 側の rules（install-codex-rules.sh の WRITE）はサブコマンド単位でこれを包含する。
+GATED_ACTION_VERBS="send"                    # action send（Send Later 含む）
+GATED_EVENT_MODES="create update delete rsvp" # event は参加者に iTIP メールが出る
+GATED_DRAFT_FLAGS="--delete"                  # draft --delete は Trash が無く取り消せない
+
 usage() {
   sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
 }
@@ -204,8 +210,9 @@ cmd_run() {
   # 位置をずらしても素通りさせない。フォルダ名等が偶然一致した場合は --confirm を付ければ通る）
   if [ "$confirm" -eq 0 ]; then
     case "$sub" in
-      action) has_token send "$@" && guard_fail action send ;;
-      event)  for v in create update delete rsvp; do has_token "$v" "$@" && guard_fail event "$v"; done ;;
+      action) for v in $GATED_ACTION_VERBS; do has_token "$v" "$@" && guard_fail action "$v"; done ;;
+      event)  for v in $GATED_EVENT_MODES;  do has_token "$v" "$@" && guard_fail event "$v"; done ;;
+      draft)  for v in $GATED_DRAFT_FLAGS;  do has_token "$v" "$@" && guard_fail draft "$v"; done ;;
     esac
   fi
 

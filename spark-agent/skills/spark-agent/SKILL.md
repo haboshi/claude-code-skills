@@ -65,11 +65,12 @@ CTX clear                                 # Unified（全アカウント横断�
 
 ## 4. 安全規約（両エージェント共通）
 
-1. **送信しない**。`draft` は保存だけで外に出ない。`action send` と `event create/update/delete/rsvp` は
-   ユーザーがこのターンで明示的に承認したときだけ `run --confirm` を付けて実行する。`--confirm` 無しは
-   spark-ctx が exit 3 で止める。
+1. **送信しない**。`draft` は保存だけで外に出ない。`action send`、`event create/update/delete/rsvp`、
+   `draft --delete` は、ユーザーがこのターンで明示的に承認したときだけ `run --confirm` を付けて実行する。
+   `--confirm` 無しは spark-ctx が exit 3 で止める。**これらを素の `spark` で直接叩かない**（ゲートは
+   `spark-ctx run` 経由でしか効かない。迂回は規約違反）。
 2. 既存の会話への返信は必ず `--reply-to` / `--reply-all`。本文に署名や結びを書かない（Spark が付ける）。
-3. `draft --delete` は Trash が無く取り消せない。依頼されたときだけ実行し、その旨を伝える。
+3. `draft --delete` は Trash が無く取り消せない。依頼されたときだけ `--confirm` 付きで実行し、その旨を伝える。
 4. 参加者付きの `event` 操作は招待・更新・取消メールを相手に送る。参加者なしで作ってから確認し、
    `--add` は別コマンドで承認後に行う。
 5. 業務アカウントの本文をクラウド LLM に読ませてよいかは、そのアカウントの規程に従う。迷ったら要約ではなく
@@ -98,10 +99,17 @@ bash scripts/install-codex-rules.sh      # ~/.codex/rules/spark-agent.rules を�
 `allow` にしない理由は、作業ツリー内で書き換え可能なスクリプトの無確認実行がサンドボックス脱出の経路になるため
 （`--allow-scripts` で明示的に緩められる）。spark-doctor は rules 未導入を WARN で知らせる。
 
-実測（Codex 0.154.0、2026-09-13）: rules 導入後は `codex exec -s read-only` から `spark accounts` と
-`spark-ctx show/use/run` が通り、Claude Code と同じ件数を返した。非対話の `codex exec` では `prompt` 規則の
-コマンドも承認要求なしに実行されたので、確認が効くのは対話セッションだけと考える。rules を使わない場合は
-`-s danger-full-access` が必要（read-only / workspace-write では IPC で失敗する）。
+実測（Codex 0.154.0、2026-09-13）:
+- `allow` 規則のコマンド（bare `spark` の読み取り、`--allow-scripts` 時の `spark-ctx`）は `codex exec -s read-only`
+  から通り、Claude Code と同じ件数を返した。
+- `prompt` 規則のコマンドは、非対話の `codex exec` では承認者がいないため応答待ちのまま止まる（300 秒超）。
+  `--dangerously-bypass-approvals-and-sandbox` を付けても承認ポリシー Never として拒否され、実行されない。
+  つまり書き込み系（下書き・`draft --delete`・イベント変更・送信）は**対話セッションの Codex で承認して実行する**。
+  `codex exec` からは読み取りだけを扱う。
+- `--allow-scripts` を付けないと `spark-ctx` 経由の読み取りも `prompt` になり、`codex exec` では止まる。
+  Codex から自動で使う運用では `--allow-scripts` を付ける（作業ツリー内でスクリプトを書き換えられる
+  セッションでは脱出経路になることを理解した上で）。
+- rules を使わない場合は `-s danger-full-access` が必要（read-only / workspace-write では IPC で失敗する）。
 
 ## 7. 版の整合
 

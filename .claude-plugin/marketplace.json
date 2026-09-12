@@ -357,6 +357,26 @@
         "アーキテクチャ図",
         "検証"
       ]
+    },
+    {
+      "name": "spark-agent",
+      "description": "Spark Desktop を複数メールアカウント・カレンダーの統合層にし、Claude Code と Codex の両方から同じスキルでメール確認・返信下書き・カレンダー確認と更新を行う運用層。公式 use-spark（コマンド正典）に、アカウント切り替え（spark-ctx）・環境診断（spark-doctor）・送信とイベント変更の承認ゲート・日本語の運用規約を足す。「メール確認」「返信の下書き」「今日の予定」「空き時間」「アカウント切り替え」「Spark」で発動。",
+      "source": "./spark-agent",
+      "strict": false,
+      "version": "0.1.0",
+      "category": "productivity",
+      "keywords": [
+        "spark",
+        "email",
+        "calendar",
+        "codex",
+        "claude-code",
+        "multi-account",
+        "メール",
+        "カレンダー",
+        "下書き",
+        "アカウント切り替え"
+      ]
     }
   ]
 }

@@ -200,10 +200,14 @@ cmd_run() {
   sub="${1:-}"; [ -n "$sub" ] || die "run <spark subcommand> [args...]"
   shift
 
-  case "$sub" in
-    action) [ "${1:-}" = "send" ] && [ "$confirm" -eq 0 ] && guard_fail action send ;;
-    event)  case "${1:-}" in create|update|delete|rsvp) [ "$confirm" -eq 0 ] && guard_fail event "$1" ;; esac ;;
-  esac
+  # ゲートは第 1 引数だけでなく全トークンを見る（`action --date X send 1` や `event --calendar X create` で
+  # 位置をずらしても素通りさせない。フォルダ名等が偶然一致した場合は --confirm を付ければ通る）
+  if [ "$confirm" -eq 0 ]; then
+    case "$sub" in
+      action) has_token send "$@" && guard_fail action send ;;
+      event)  for v in create update delete rsvp; do has_token "$v" "$@" && guard_fail event "$v"; done ;;
+    esac
+  fi
 
   acct=$(current_account)
   if [ -z "$acct" ]; then

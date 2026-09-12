@@ -129,7 +129,12 @@ out=$(bash "$CTX" run action send 99 2>&1); rc=$?
   && ok "T22 action send は --confirm なしで exit 3・未実行" || bad "T22" "rc=$rc out=$out"
 
 out=$(bash "$CTX" run event delete ABC 2>&1); rc=$?
-[ "$rc" -eq 3 ] && ok "T23 event delete も --confirm なしで exit 3" || bad "T23" "rc=$rc"
+[ "$rc" -eq 3 ] && ok "T23 event delete も --confirm なしで exit 3" || bad "$rc"
+
+out=$(bash "$CTX" run action --date 2026-09-14 send 99 2>&1); rc=$?
+[ "$rc" -eq 3 ] && ok "T23b action の send を後ろにずらしてもゲートされる" || bad "T23b" "rc=$rc"
+out=$(bash "$CTX" run event --calendar x@example.com create --title T 2>&1); rc=$?
+[ "$rc" -eq 3 ] && ok "T23c event の create を後ろにずらしてもゲートされる" || bad "T23c" "rc=$rc"
 
 out=$(bash "$CTX" run --confirm action send 99 2>&1); rc=$?
 [ "$rc" -eq 0 ] && [ "$(last_call)" = "action send 99" ] && ok "T24 --confirm 付きなら実行される" || bad "T24" "rc=$rc last=$(last_call)"

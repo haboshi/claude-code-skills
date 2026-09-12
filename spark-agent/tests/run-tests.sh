@@ -40,7 +40,14 @@ out=$(bash "$CTX" use work@example.com 2>&1); rc=$?
   && ok "T2 use が保存し level を表示" || bad "T2" "rc=$rc out=$out"
 
 out=$(bash "$CTX" show 2>&1)
-[ "$out" = "現在アカウント: work@example.com (triage)" ] && ok "T3 show" || bad "T3" "$out"
+[ "$out" = "現在アカウント: work@example.com (triage)" ] && ok "T3 show（他アカウントのカレンダー行の read-only に惑わされない）" || bad "T3" "$out"
+
+out=$(bash "$CTX" use me-alias@example.com 2>&1)
+[ "$out" = "現在アカウント: me-alias@example.com (send)" ] && ok "T3b Spark の Alias は親アカウントの level を継承" || bad "T3b" "$out"
+
+out=$(bash "$CTX" use nobody@example.com 2>&1)
+echo "$out" | grep -qF "  personal@example.com" && ! echo "$out" | grep -qF "me-alias" && ! echo "$out" | grep -q "祝日" \
+  && ok "T3c 候補列挙はアカウント行のみ（Alias・カレンダーを含めない）" || bad "T3c" "$out"
 
 out=$(bash "$CTX" alias set kaisha work@example.com 2>&1) && bash "$CTX" alias set kojin personal@example.com >/dev/null 2>&1
 bash "$CTX" use kojin >/dev/null 2>&1; rc=$?
@@ -53,6 +60,17 @@ out=$(bash "$CTX" use nanika 2>&1); rc=$?
 
 out=$(bash "$CTX" alias set 'a=b' x@example.com 2>&1); rc=$?
 [ "$rc" -eq 1 ] && ok "T6 alias 名の '=' を拒否" || bad "T6" "rc=$rc out=$out"
+
+bash "$CTX" alias set work.prod work@example.com >/dev/null 2>&1; bash "$CTX" alias set workXprod client@example.com >/dev/null 2>&1
+bash "$CTX" use work.prod >/dev/null 2>&1
+out=$(bash "$CTX" show 2>&1)
+bash "$CTX" alias rm work.prod >/dev/null 2>&1
+rest=$(bash "$CTX" alias list 2>&1)
+echo "$out" | grep -q "work@example.com" && echo "$rest" | grep -qF "workXprod=client@example.com" && ! echo "$rest" | grep -qF "work.prod=" \
+  && ok "T6b alias 名は完全一致（'.' を正規表現として扱わない）" || bad "T6b" "show=$out list=$rest"
+
+out=$(SPARK_AGENT_HOME="$WORK/ro" bash -c 'mkdir -p "$SPARK_AGENT_HOME/context" && bash "$0" use work@example.com' "$CTX" 2>&1); rc=$?
+[ "$rc" -eq 1 ] && echo "$out" | grep -q "文脈を保存できません" && ok "T6c 保存失敗は非ゼロで終了し成功表示しない" || bad "T6c" "rc=$rc out=$out"
 
 # --- run: 注入規則（personal@example.com が現在アカウント） ---
 bash "$CTX" use personal@example.com >/dev/null 2>&1
@@ -85,6 +103,9 @@ out=$(dry draft --to a@b.com --subject S --body B)
 
 out=$(dry draft --reply-to 123 --body B)
 [ "$out" = "$SPARK_BIN draft --reply-to 123 --body B" ] && ok "T16 draft 返信は注入しない（スレッドのアカウントを継承）" || bad "T16" "$out"
+
+out=$(dry draft --delete 123)
+[ "$out" = "$SPARK_BIN draft --delete 123" ] && ok "T16b draft --delete は単独オプションなので注入しない" || bad "T16b" "$out"
 
 out=$(dry draft signatures)
 [ "$out" = "$SPARK_BIN draft signatures" ] && ok "T17 draft signatures は素通し" || bad "T17" "$out"
@@ -155,14 +176,20 @@ if command -v codex >/dev/null 2>&1; then
   out=$(SPARK_AGENT_CODEX_RULES="$WORK/none.rules" bash "$DOC" 2>&1); rc=$?
   echo "$out" | grep -q "WARN: Codex rules が未導入" && ok "T34 Codex rules 未導入は WARN" || bad "T34" "out=$out"
   out=$(SPARK_AGENT_CODEX_RULES="$WORK/gen.rules" bash "$SCRIPTS/install-codex-rules.sh" 2>&1); rc=$?
+  [ "$rc" -eq 2 ] && [ ! -f "$WORK/gen.rules" ] && echo "$out" | grep -q "承認を得てから --yes" \
+    && ok "T35a install-codex-rules は --yes なしでは書かず要約だけ出す" || bad "T35a" "rc=$rc out=$out"
+  out=$(SPARK_AGENT_CODEX_RULES="$WORK/gen.rules" bash "$SCRIPTS/install-codex-rules.sh" --yes 2>&1); rc=$?
   [ "$rc" -eq 0 ] && grep -q 'pattern = \["spark", READ\]' "$WORK/gen.rules" && grep -q "$SCRIPTS/spark-ctx.sh" "$WORK/gen.rules" \
-    && ok "T35 install-codex-rules が rules を生成し execpolicy check を通る" || bad "T35" "rc=$rc out=$out"
+    && ok "T35 install-codex-rules --yes が rules を生成し execpolicy check を通る" || bad "T35" "rc=$rc out=$out"
   dec=$(codex execpolicy check --rules "$WORK/gen.rules" -- spark accounts 2>/dev/null)
   echo "$dec" | grep -q '"allow"' && ok "T36 rules: spark accounts は allow" || bad "T36" "$dec"
   dec=$(codex execpolicy check --rules "$WORK/gen.rules" -- spark action send 1 2>/dev/null)
   echo "$dec" | grep -q '"prompt"' && ok "T37 rules: spark action send は prompt" || bad "T37" "$dec"
   dec=$(codex execpolicy check --rules "$WORK/gen.rules" -- bash "$SCRIPTS/spark-ctx.sh" run emails --filter "is:unread" 2>/dev/null)
-  echo "$dec" | grep -q '"allow"' && ok "T38 rules: spark-ctx run emails は allow" || bad "T38" "$dec"
+  echo "$dec" | grep -q '"prompt"' && ok "T38 rules: spark-ctx run emails は既定 prompt（スクリプト書き換えによる脱出を防ぐ）" || bad "T38" "$dec"
+  SPARK_AGENT_CODEX_RULES="$WORK/gen2.rules" bash "$SCRIPTS/install-codex-rules.sh" --yes --allow-scripts >/dev/null 2>&1
+  dec=$(codex execpolicy check --rules "$WORK/gen2.rules" -- bash "$SCRIPTS/spark-ctx.sh" run emails --filter "is:unread" 2>/dev/null)
+  echo "$dec" | grep -q '"allow"' && ok "T38b rules: --allow-scripts なら spark-ctx run emails は allow" || bad "T38b" "$dec"
   dec=$(codex execpolicy check --rules "$WORK/gen.rules" -- bash "$SCRIPTS/spark-ctx.sh" run --confirm event create --title T 2>/dev/null)
   echo "$dec" | grep -q '"prompt"' && ok "T39 rules: spark-ctx run --confirm event は prompt" || bad "T39" "$dec"
 else

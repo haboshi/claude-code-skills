@@ -28,16 +28,23 @@ case "${1:-}" in
     if [ -n "${FAKE_SPARK_ACCOUNTS_FILE:-}" ] && [ -f "$FAKE_SPARK_ACCOUNTS_FILE" ]; then
       cat "$FAKE_SPARK_ACCOUNTS_FILE"
     else
+      # 実機 1.3.1 の形式を example.com に置き換えたもの。personal のカレンダー行に work@ のアドレスと
+      # read-only が現れる（実機と同じ罠）。
       cat <<'EOF'
-Email Accounts:
-  personal@example.com (send)
-    Alias: me-alias@example.com
-    Calendars: Personal, Work
-  work@example.com (triage)
-    Calendars: Work
-  client@example.com (read-only)
-Shared Inboxes:
-  support@example.com (read-only)
+Email Account: personal@example.com "personal@example.com" (Access: send)
+├── Alias: me-alias@example.com "Me"
+├── Calendar: Personal - read-write (personal@example.com:Personal)
+├── Calendar: work@example.com - read-only (personal@example.com:work@example.com)
+└── Calendar: 日本の祝日 - read-only (personal@example.com:日本の祝日)
+
+Email Account: work@example.com (Access: triage)
+├── Calendar: work@example.com - read-write (work@example.com:work@example.com)
+└── Team: dev
+
+Email Account: client@example.com (Access: read-only)
+└── Calendar: client@example.com - read-write (client@example.com:client@example.com)
+
+Shared Inbox: support@example.com (Access: read-only)
 EOF
     fi
     ;;

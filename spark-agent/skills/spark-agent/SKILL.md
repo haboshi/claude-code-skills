@@ -92,10 +92,16 @@ application` になる（`spark --version` だけは通るので誤診しやす�
 bash scripts/install-codex-rules.sh      # ~/.codex/rules/spark-agent.rules を生成
 ```
 
-読み取り系（`spark accounts|emails|search|thread|events|availability` 等と `spark-ctx run <読み取り>`）は
-サンドボックス外で無確認実行、書き込み・送信系（`draft|comment|action|contact-action|event`、`run --confirm`）は
-実行前に確認、になる。spark-doctor は rules 未導入を WARN で知らせる。`codex exec` で rules を使わない場合は
-`-s danger-full-access` が必要（read-only / workspace-write では失敗する）。
+生成前に内容の要約が出るので、ユーザーに示して承認を得てから `--yes` を付ける（Codex の承認設定を書き換える
+操作なので、エージェントが黙って実行しない）。既定では bare `spark <読み取り>` だけがサンドボックス外で無確認実行、
+`spark` の書き込み・送信系と `bash scripts/spark-ctx.sh ...` は実行前に確認（`prompt`）になる。スクリプトを
+`allow` にしない理由は、作業ツリー内で書き換え可能なスクリプトの無確認実行がサンドボックス脱出の経路になるため
+（`--allow-scripts` で明示的に緩められる）。spark-doctor は rules 未導入を WARN で知らせる。
+
+実測（Codex 0.154.0、2026-09-13）: rules 導入後は `codex exec -s read-only` から `spark accounts` と
+`spark-ctx show/use/run` が通り、Claude Code と同じ件数を返した。非対話の `codex exec` では `prompt` 規則の
+コマンドも承認要求なしに実行されたので、確認が効くのは対話セッションだけと考える。rules を使わない場合は
+`-s danger-full-access` が必要（read-only / workspace-write では IPC で失敗する）。
 
 ## 7. 版の整合
 

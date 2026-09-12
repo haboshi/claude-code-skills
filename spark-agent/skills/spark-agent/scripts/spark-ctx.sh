@@ -42,19 +42,34 @@ account_exists() {
   accounts_output | grep -Fqw -- "$1"
 }
 
-# アドレスを含む最初の行から access level 語を拾う（形式差に耐えるため行全体を走査）
+# access level を拾う。実機 1.3.1 の形式:
+#   Email Account: a@x.com "a@x.com" (Access: triage)
+#   ├── Alias: b@x.com "Name"
+#   ├── Calendar: c@y.com - read-only (a@x.com:c@y.com)   ← 他アカウントのアドレスと read-only を含む罠
+# "Access:" を含む行だけをアカウント行とみなし、Alias 行は直前のアカウントの level を継承する。
 account_level() {
-  local line lv
-  line=$(accounts_output | grep -F -- "$1" | head -1)
-  for lv in read-only triage send disabled off; do
-    if printf '%s\n' "$line" | grep -qw -- "$lv"; then echo "$lv"; return 0; fi
-  done
-  echo unknown
+  local lv
+  lv=$(accounts_output | awk -v e="$1" '
+    /Access:/ { cur=$0; sub(/.*Access: */, "", cur); sub(/[) ].*/, "", cur) }
+    index($0, e) && (/Access:/ || /Alias:/) { print cur; exit }
+  ')
+  echo "${lv:-unknown}"
 }
 
+# アカウント行（Access: を含む行）の先頭のメールアドレスだけを列挙
+account_list() {
+  accounts_output | grep -F 'Access:' | grep -oE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+' | awk '!seen[$0]++'
+}
+
+# alias 名は '=' より前を文字列として完全一致（正規表現として解釈しない）
 resolve_alias() {
   [ -f "$ALIAS_FILE" ] || return 0
-  grep -- "^$1=" "$ALIAS_FILE" | head -1 | cut -d= -f2-
+  awk -F= -v n="$1" '$1==n { sub(/^[^=]*=/, ""); print; exit }' "$ALIAS_FILE"
+}
+
+alias_without() {
+  [ -f "$ALIAS_FILE" ] || return 0
+  awk -F= -v n="$1" '$1!=n' "$ALIAS_FILE"
 }
 
 cmd_use() {
@@ -68,11 +83,14 @@ cmd_use() {
   esac
   if ! account_exists "$email"; then
     echo "spark-ctx: '$email' は spark accounts に見つかりません。登録済みアカウント:" >&2
-    accounts_output | grep -oE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+' | sort -u | sed 's/^/  /' >&2
+    account_list | sed 's/^/  /' >&2
     exit 1
   fi
   mkdir -p "$STATE_DIR" || die "状態ディレクトリを作成できません: $STATE_DIR"
-  printf 'account=%s\n' "$email" > "$CTX_FILE"
+  if ! { printf 'account=%s\n' "$email" > "$CTX_FILE"; } 2>/dev/null \
+     || [ "$(current_account)" != "$email" ]; then
+    die "文脈を保存できません: ${CTX_FILE}（書き込み権限とパスを確認してください）"
+  fi
   echo "現在アカウント: $email ($(account_level "$email"))"
 }
 
@@ -85,7 +103,7 @@ cmd_show() {
   fi
   echo "現在アカウント: $acct ($(account_level "$acct"))"
   if [ -f "$ALIAS_FILE" ]; then
-    grep -- "=$acct\$" "$ALIAS_FILE" | cut -d= -f1 | sed 's/^/alias: /'
+    awk -F= -v a="$acct" '$2==a { print "alias: " $1 }' "$ALIAS_FILE"
   fi
 }
 
@@ -104,9 +122,8 @@ cmd_alias() {
       case "$name" in *=*|*" "*) die "alias 名に '=' と空白は使えません" ;; esac
       mkdir -p "$STATE_DIR" || die "状態ディレクトリを作成できません"
       touch "$ALIAS_FILE"
-      grep -v -- "^$name=" "$ALIAS_FILE" > "$ALIAS_FILE.tmp" || true
-      printf '%s=%s\n' "$name" "$email" >> "$ALIAS_FILE.tmp"
-      mv "$ALIAS_FILE.tmp" "$ALIAS_FILE"
+      { alias_without "$name"; printf '%s=%s\n' "$name" "$email"; } > "$ALIAS_FILE.tmp" || die "alias を保存できません"
+      mv "$ALIAS_FILE.tmp" "$ALIAS_FILE" || die "alias を保存できません"
       echo "alias $name -> $email"
       ;;
     list)
@@ -115,8 +132,8 @@ cmd_alias() {
     rm)
       name="${1:-}"; [ -n "$name" ] || die "alias rm <name>"
       [ -f "$ALIAS_FILE" ] || exit 0
-      grep -v -- "^$name=" "$ALIAS_FILE" > "$ALIAS_FILE.tmp" || true
-      mv "$ALIAS_FILE.tmp" "$ALIAS_FILE"
+      alias_without "$name" > "$ALIAS_FILE.tmp" || die "alias を保存できません"
+      mv "$ALIAS_FILE.tmp" "$ALIAS_FILE" || die "alias を保存できません"
       echo "alias $name を削除"
       ;;
     *) die "alias set|list|rm" ;;
@@ -200,8 +217,10 @@ cmd_run() {
     search|events)
       if has_token --in "$@"; then exec_spark "$sub" "$@"; else exec_spark "$sub" "$@" --in "$acct"; fi ;;
     draft)
+      # 返信・転送・編集はスレッドのアカウントを継承、--delete は単独オプション（use-spark 仕様）なので注入しない
       if has_token --account "$@" || has_token --reply-to "$@" || has_token --reply-all "$@" \
-         || has_token --forward "$@" || has_token --edit "$@" || [ "${1:-}" = "signatures" ]; then
+         || has_token --forward "$@" || has_token --edit "$@" || has_token --delete "$@" \
+         || [ "${1:-}" = "signatures" ]; then
         exec_spark draft "$@"
       else
         exec_spark draft --account "$acct" "$@"
@@ -244,7 +263,7 @@ main() {
     alias) cmd_alias "$@" ;;
     run)   cmd_run "$@" ;;
     -h|--help|help) usage ;;
-    *) die "不明なサブコマンド: $cmd（use|show|clear|alias|run）" ;;
+    *) die "不明なサブコマンド: ${cmd}（use|show|clear|alias|run）" ;;
   esac
 }
 

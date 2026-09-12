@@ -119,6 +119,19 @@ frontmatter: `name: spark-agent`、日本語トリガーを含む description、
 3. Codex: `codex exec` に「spark-agent スキルで <同じタスク>」を依頼し、実行コマンドと結果が Claude 側と一致することを確認。加えて SKILL.md への second opinion を取り込む
 4. `/evaluate`（Codex + Grok の所見評価）で PASS
 
+## 5.1 実装で確定した差分（2026-09-13 実機・Codex 0.154.0）
+
+- `spark accounts` の実形式は `Email Account: a@x.com "a@x.com" (Access: triage)` に `├── Calendar: ...` `├── Alias: ...`
+  がぶら下がる木構造。カレンダー行に他アカウントのアドレスと `read-only` が現れるため、level は `Access:` を含む行
+  だけから取り、Alias は直前のアカウントの level を継承する（fake spark も同形式に更新）。
+- `spark --version` は版番号のみ。`spark skill` の出力は GitHub の 1.3.1 と完全一致。
+- Codex の read-only / workspace-write サンドボックスでは Spark の IPC が塞がれる（`spark --version` だけ通る）。
+  公式の rules（`prefix_rule` の `decision="allow"` = サンドボックス外で無確認実行）で解決し、
+  `scripts/install-codex-rules.sh --yes` が `~/.codex/rules/spark-agent.rules` を生成する。既定は bare `spark <読み取り>`
+  のみ allow、スクリプト起動は prompt（作業ツリー内で書き換え可能なスクリプトの無確認実行を避ける。`--allow-scripts` で緩和）。
+- 非対話の `codex exec` では prompt 規則も承認要求なしに実行された。
+- 設計 3.1 の `--delete` は単独オプションのため `--account` を注入しない（Codex コミットレビューの指摘で追加）。
+
 ## 6. 環境構築（GUI）
 
 Spark Desktop を起動し、Orca computer-use で Settings → AI Agents → Setup CLI を進め、個人アカウント 1 つを send、

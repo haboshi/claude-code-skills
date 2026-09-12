@@ -25,6 +25,7 @@ CTX run search "<話題>"                              # 本文込みの意味�
 CTX run thread <MESSAGE_ID>                          # 全文
 ```
 
+`emails` の出力は表で、**第 1 列が message ID**（数値）。`thread` / `draft --reply-to` にはこの値を渡す。
 報告は「緊急 / 今日対応 / 今週対応 / 情報のみ」の 4 区分で、各行に message ID を添える。
 Spark の Priority は送信者単位の設定（`contact-action markContactAsPrimary`）で育つ。誤分類を見つけたら
 ユーザーに確認してから `contact-action changeCategory*` で固定する。
@@ -39,7 +40,8 @@ CTX run draft --reply-to <LATEST_ID> --body "<本文（Markdown）>"
 
 - 既存の会話への返信は必ず `--reply-to` / `--reply-all`（無いと新規スレッドになる）。
 - 本文に署名や結びを書かない（Spark が署名を付ける。`draft signatures` で確認可）。
-- 出力の `Link:` を Markdown リンクでユーザーに渡す。送信はしない。
+- 出力は `Draft created successfully.` に続き、字下げされた `ID:` `Link:` `From:` `To:` `Subject:` `Body:` が並ぶ
+  （実機 1.3.1）。`Link:` を Markdown リンクでユーザーに渡す。送信はしない。
 - 新規メールだけ `--account` が注入される（返信はスレッドのアカウントを継承）。
 
 ## 3. カレンダー確認
@@ -52,6 +54,8 @@ CTX run availability --tomorrow --attendees a@example.com,b@example.com
 ```
 
 `availability` は平日 08:00〜20:00 の枠だけを返す（use-spark の仕様）。
+`events` は日付見出しの下に予定ごとの `ID:`（`RDCALAPI...` 形式の文字列）・`All day` または時刻・`Calendar:` が並ぶ。
+件数は `ID:` 行を数える。`event update/delete` にはこの `ID:` を渡す。
 
 ## 4. カレンダー更新（send 権限が必要）
 

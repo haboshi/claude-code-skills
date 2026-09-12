@@ -100,10 +100,11 @@ check_versions() {
 check_accounts() {
   local out lines
   out=$("$SPARK_BIN" accounts 2>&1) || { ng "spark accounts が失敗: $(echo "$out" | head -3 | tr '\n' ' ')"; return 1; }
-  lines=$(echo "$out" | grep -oE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+' | sort -u)
-  if [ -z "$lines" ]; then ng "spark accounts にアカウントが無い。Spark Desktop でアカウントを追加し、AI Agents でアクセスを許可してください"; return 1; fi
+  # アカウント行（Access: を含む行）だけを見る。カレンダー行にも他アカウントのアドレスが出るため
+  lines=$(echo "$out" | grep -F 'Access:' | sed -E 's/.*(Email Account|Shared Inbox)[^:]*: *//; s/ .*\(Access: */ (/; s/\).*$/)/')
+  if [ -z "$lines" ]; then ng "spark accounts にアカウントが無い。Spark Desktop の 設定 → AIエージェント で各アカウントのアクセスを許可してください"; return 1; fi
   ok "アカウント: $(echo "$lines" | tr '\n' ' ')"
-  echo "$out" | grep -iw send >/dev/null 2>&1 && warn "send 権限のアカウントがある。送信・イベント変更は spark-ctx run --confirm でのみ実行する"
+  echo "$out" | grep -F 'Access:' | grep -qw send && warn "send 権限のアカウントがある。送信・イベント変更は spark-ctx run --confirm でのみ実行する"
   return 0
 }
 
@@ -114,7 +115,7 @@ check_codex_rules() {
   if [ -f "$rules" ]; then
     ok "Codex rules: $rules"
   else
-    warn "Codex rules が未導入。Codex のサンドボックスでは spark の IPC が失敗する。導入: bash $HERE/install-codex-rules.sh"
+    warn "Codex rules が未導入。Codex のサンドボックスでは spark の IPC が失敗する。ユーザー承認の上で: bash $HERE/install-codex-rules.sh --yes"
   fi
 }
 

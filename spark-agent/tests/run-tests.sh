@@ -201,6 +201,26 @@ chmod 600 "$WORK/unread/context"
 [ "$rc" -eq 2 ] && [ "$before" = "$after" ] && echo "$out" | grep -q "読めません" \
   && ok "T26c 文脈ファイルが読めないときは Unified に落とさず spark を呼ばない" || bad "T26c" "rc=$rc out=$out"
 
+mkdir -p "$WORK/badctx" && printf 'garbage\n' > "$WORK/badctx/context"
+before=$(wc -l < "$FAKE_CALL_LOG_DIR/spark-calls.log" | tr -d ' ')
+out=$(SPARK_AGENT_HOME="$WORK/badctx" bash "$CTX" run emails 2>&1); rc=$?
+after=$(wc -l < "$FAKE_CALL_LOG_DIR/spark-calls.log" | tr -d ' ')
+[ "$rc" -eq 2 ] && [ "$before" = "$after" ] && echo "$out" | grep -q "内容が不正" \
+  && ok "T26f 文脈ファイルの内容が不正（account= が無い）なら rc 2 で spark を呼ばない" || bad "T26f" "rc=$rc out=$out"
+: > "$WORK/badctx/context"
+out=$(SPARK_AGENT_HOME="$WORK/badctx" bash "$CTX" run emails 2>&1); rc=$?
+[ "$rc" -eq 2 ] && ok "T26g 空の文脈ファイルも rc 2（Unified に落とさない）" || bad "T26g" "rc=$rc out=$out"
+
+out=$(bash "$CTX" run --json action send 1 2>&1); rc=$?
+[ "$rc" -eq 1 ] && echo "$out" | grep -q "サブコマンド名" && ! grep -q -- "--json" "$FAKE_CALL_LOG_DIR/spark-calls.log" \
+  && ok "T26h サブコマンド前のオプションは拒否（ゲート迂回を防ぐ）" || bad "T26h" "rc=$rc out=$out"
+
+bash "$CTX" use personal@example.com >/dev/null 2>&1
+out=$(FAKE_SPARK_MODE=noipc bash "$CTX" use client@example.com 2>&1); rc=$?
+cur=$(bash "$CTX" show 2>&1)
+[ "$rc" -eq 1 ] && echo "$out" | grep -q "spark accounts が失敗" && echo "$cur" | grep -q "personal@example.com" \
+  && ok "T3f spark accounts が失敗したら use は文脈を変更しない" || bad "T3f" "rc=$rc out=$out cur=$cur"
+
 mkdir -p "$WORK/dirctx/context"
 before=$(wc -l < "$FAKE_CALL_LOG_DIR/spark-calls.log" | tr -d ' ')
 out=$(SPARK_AGENT_HOME="$WORK/dirctx" bash "$CTX" run emails 2>&1); rc=$?
@@ -239,6 +259,10 @@ out=$(FAKE_SPARK_MODE=noipc bash "$DOC" 2>&1); rc=$?
 [ "$rc" -eq 1 ] && echo "$out" | grep -q "NG:   spark accounts が失敗: Error: Spark CLI can't access" \
   && ok "T33 実機文面の IPC エラーは NG として表示" || bad "T33" "rc=$rc out=$out"
 
+out=$(FAKE_SPARK_RC=1 bash "$DOC" 2>&1); rc=$?
+[ "$rc" -eq 1 ] && echo "$out" | grep -q "NG:   spark --version が失敗" && ! echo "$out" | grep -q "OK:   spark CLI" \
+  && ok "T33b spark --version が非ゼロなら版番号が出ていても NG" || bad "T33b" "rc=$rc out=$out"
+
 out=$(SPARK_AGENT_CTX_SCRIPT="$WORK/missing-ctx.sh" bash "$DOC" 2>&1); rc=$?
 [ "$rc" -eq 1 ] && echo "$out" | grep -q "NG:   spark-ctx.sh が見つからない" && ok "T31b spark-ctx 欠落は NG（必須の実行経路）" || bad "T31b" "rc=$rc out=$out"
 
@@ -255,10 +279,14 @@ if command -v codex >/dev/null 2>&1; then
   out=$(SPARK_AGENT_CODEX_RULES="$WORK/gen.rules" bash "$SCRIPTS/install-codex-rules.sh" --yes 2>&1); rc=$?
   [ "$rc" -eq 0 ] && grep -q 'pattern = \["spark", READ\]' "$WORK/gen.rules" && grep -q "$SCRIPTS/spark-ctx.sh" "$WORK/gen.rules" \
     && ok "T35 install-codex-rules --yes が rules を生成し execpolicy check を通る" || bad "T35" "rc=$rc out=$out"
+  dec=$(codex execpolicy check --rules "$WORK/gen.rules" -- "$SPARK_BIN" accounts 2>/dev/null)
+  echo "$dec" | grep -q '"allow"' && ok "T36 rules: 絶対パスの spark accounts は allow" || bad "T36" "$dec"
   dec=$(codex execpolicy check --rules "$WORK/gen.rules" -- spark accounts 2>/dev/null)
-  echo "$dec" | grep -q '"allow"' && ok "T36 rules: spark accounts は allow" || bad "T36" "$dec"
+  echo "$dec" | grep -q '"prompt"' && ok "T36b rules: bare spark accounts は prompt（PATH 差し替え対策）" || bad "T36b" "$dec"
+  dec=$(codex execpolicy check --rules "$WORK/gen.rules" -- "$SPARK_BIN" action send 1 2>/dev/null)
+  echo "$dec" | grep -q '"prompt"' && ok "T37 rules: 絶対パスでも action send は prompt" || bad "T37" "$dec"
   dec=$(codex execpolicy check --rules "$WORK/gen.rules" -- spark action send 1 2>/dev/null)
-  echo "$dec" | grep -q '"prompt"' && ok "T37 rules: spark action send は prompt" || bad "T37" "$dec"
+  echo "$dec" | grep -q '"prompt"' && ok "T37b rules: bare spark action send も prompt" || bad "T37b" "$dec"
   dec=$(codex execpolicy check --rules "$WORK/gen.rules" -- bash "$SCRIPTS/spark-ctx.sh" run emails --filter "is:unread" 2>/dev/null)
   echo "$dec" | grep -q '"prompt"' && ok "T38 rules: spark-ctx run emails は既定 prompt（スクリプト書き換えによる脱出を防ぐ）" || bad "T38" "$dec"
   SPARK_AGENT_CODEX_RULES="$WORK/gen2.rules" bash "$SCRIPTS/install-codex-rules.sh" --yes --allow-scripts >/dev/null 2>&1

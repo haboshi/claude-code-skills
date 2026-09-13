@@ -17,7 +17,10 @@
 # exit code: 0 成功 / 1 使い方・検証エラー / 3 --confirm 無しの送信・イベント変更
 set -u
 
-SPARK_BIN="${SPARK_BIN:-spark}"
+# 既定は /usr/local/bin/spark（Spark Desktop が置く場所）を絶対パスで使い、PATH 差し替えの影響を受けない
+if [ -z "${SPARK_BIN:-}" ]; then
+  if [ -x /usr/local/bin/spark ]; then SPARK_BIN=/usr/local/bin/spark; else SPARK_BIN=spark; fi
+fi
 STATE_DIR="${SPARK_AGENT_HOME:-$HOME/.config/spark-agent}"
 CTX_FILE="$STATE_DIR/context"
 ALIAS_FILE="$STATE_DIR/aliases"
@@ -47,11 +50,20 @@ current_account() {
     echo "spark-ctx: 文脈ファイルの読取に失敗: ${CTX_FILE}" >&2
     return 2
   fi
-  printf '%s\n' "$content" | sed -n 's/^account=//p' | head -1
+  # 内容は「account=<アドレス>」1 行だけを有効とする。空・複数行・不正形式は壊れているとみなして止める
+  case "$content" in
+    account=*@*) ;;
+    *) echo "spark-ctx: 文脈ファイルの内容が不正: ${CTX_FILE}（spark-ctx clear で消してから use し直してください）" >&2; return 2 ;;
+  esac
+  [ "$(printf '%s\n' "$content" | wc -l | tr -d ' ')" = "1" ] || { echo "spark-ctx: 文脈ファイルが複数行: ${CTX_FILE}" >&2; return 2; }
+  printf '%s\n' "${content#account=}"
 }
 
+# spark accounts の標準出力だけを返す。失敗（IPC 不通など）は非ゼロで伝え、部分出力を解析させない
 accounts_output() {
-  "$SPARK_BIN" accounts 2>&1
+  local out
+  out=$("$SPARK_BIN" accounts 2>/dev/null) || return 1
+  printf '%s\n' "$out"
 }
 
 # spark accounts の出力から「アドレス level」の対を列挙する。実機 1.3.1 の形式:
@@ -61,26 +73,34 @@ accounts_output() {
 # "Access:" を含む行（アカウント / Shared Inbox）の先頭アドレスと、"Alias:" 行のアドレス（直前のアカウントの
 # level を継承）だけを対象にする。カレンダー行のアドレスは対象外。比較は部分一致でなく完全一致で行う。
 account_entries() {
-  accounts_output | awk '
+  local out
+  out=$(accounts_output) || return 1
+  printf '%s\n' "$out" | awk '
     function first_addr(s,   m) { if (match(s, /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+/)) return substr(s, RSTART, RLENGTH); return "" }
     /Access:/ { cur=$0; sub(/.*Access: */, "", cur); sub(/[) ].*/, "", cur); a=first_addr($0); if (a != "") print a, cur; next }
     /Alias:/  { a=first_addr($0); if (a != "" && cur != "") print a, cur }
   '
 }
 
+# 0: 存在 / 1: 不在 / 2: spark accounts が失敗
 account_exists() {
-  account_entries | awk -v e="$1" '$1==e { found=1; exit } END { exit !found }'
+  local entries
+  entries=$(account_entries) || return 2
+  printf '%s\n' "$entries" | awk -v e="$1" '$1==e { found=1; exit } END { exit !found }'
 }
 
 account_level() {
-  local lv
-  lv=$(account_entries | awk -v e="$1" '$1==e { print $2; exit }')
+  local entries lv
+  entries=$(account_entries) || { echo "unknown: spark accounts が失敗"; return 0; }
+  lv=$(printf '%s\n' "$entries" | awk -v e="$1" '$1==e { print $2; exit }')
   echo "${lv:-unknown}"
 }
 
 # アカウント行（Access: を含む行）のアドレスだけを列挙（Alias・カレンダーは含めない）
 account_list() {
-  accounts_output | grep -F 'Access:' | grep -oE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+' | awk '!seen[$0]++'
+  local out
+  out=$(accounts_output) || return 1
+  printf '%s\n' "$out" | grep -F 'Access:' | grep -oE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+' | awk '!seen[$0]++'
 }
 
 # alias 名は '=' より前を文字列として完全一致（正規表現として解釈しない）
@@ -95,7 +115,7 @@ alias_without() {
 }
 
 cmd_use() {
-  local target email
+  local target email rc tmp
   target="${1:-}"
   [ -n "$target" ] || die "use には <email|alias> が必要です"
   case "$target" in
@@ -103,14 +123,20 @@ cmd_use() {
     *)   email=$(resolve_alias "$target")
          [ -n "$email" ] || die "alias '$target' は未登録です。spark-ctx alias list で確認してください" ;;
   esac
-  if ! account_exists "$email"; then
+  account_exists "$email"; rc=$?
+  if [ "$rc" -eq 2 ]; then
+    die "spark accounts が失敗したため文脈を変更しません（Spark Desktop の起動と CLI 設定を確認。既存の文脈はそのまま）"
+  elif [ "$rc" -ne 0 ]; then
     echo "spark-ctx: '$email' は spark accounts に見つかりません。登録済みアカウント:" >&2
     account_list | sed 's/^/  /' >&2
     exit 1
   fi
   mkdir -p "$STATE_DIR" || die "状態ディレクトリを作成できません: $STATE_DIR"
-  if ! { printf 'account=%s\n' "$email" > "$CTX_FILE"; } 2>/dev/null \
+  # 同じディレクトリの一時ファイルに書いてから rename（途中状態の空ファイルを読ませない）
+  tmp="$CTX_FILE.tmp.$$"
+  if ! { printf 'account=%s\n' "$email" > "$tmp"; } 2>/dev/null || ! mv -f "$tmp" "$CTX_FILE" 2>/dev/null \
      || [ "$(current_account)" != "$email" ]; then
+    rm -f "$tmp" 2>/dev/null
     die "文脈を保存できません: ${CTX_FILE}（書き込み権限とパスを確認してください）"
   fi
   echo "現在アカウント: $email ($(account_level "$email"))"
@@ -249,6 +275,8 @@ cmd_run() {
   local confirm=0 sub acct
   if [ "${1:-}" = "--confirm" ]; then confirm=1; shift; fi
   sub="${1:-}"; [ -n "$sub" ] || die "run <spark subcommand> [args...]"
+  # サブコマンド前のグローバルオプション（`run --x action send`）はゲート判定を外す経路になるので受け付けない
+  case "$sub" in -*) die "run の直後はサブコマンド名にしてください（'$sub' のようなオプションは不可）" ;; esac
   shift
   # --confirm は run の直後だけ。後ろに置かれたものは spark に渡さず、ゲートも通さない
   has_token --confirm "$@" && die "--confirm は 'run' の直後に置いてください（spark には渡しません）"

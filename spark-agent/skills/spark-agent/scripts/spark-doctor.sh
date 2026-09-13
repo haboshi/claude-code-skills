@@ -9,7 +9,9 @@
 #   SPARK_AGENT_HOME             spark-ctx の状態ディレクトリ
 set -u
 
-SPARK_BIN="${SPARK_BIN:-spark}"
+if [ -z "${SPARK_BIN:-}" ]; then
+  if [ -x /usr/local/bin/spark ]; then SPARK_BIN=/usr/local/bin/spark; else SPARK_BIN=spark; fi
+fi
 HERE=$(cd "$(dirname "$0")" && pwd)
 NG=0
 
@@ -82,9 +84,10 @@ semver_gt() {
 }
 
 check_versions() {
-  local cli skill_file skill_ver
-  cli=$("$SPARK_BIN" --version 2>/dev/null | semver_of)
-  if [ -z "$cli" ]; then ng "spark --version が読めない（Desktop 未起動か IPC 失敗）"; return 1; fi
+  local cli skill_file skill_ver raw
+  if ! raw=$("$SPARK_BIN" --version 2>/dev/null); then ng "spark --version が失敗（終了コード非ゼロ）"; return 1; fi
+  cli=$(printf '%s\n' "$raw" | semver_of)
+  if [ -z "$cli" ]; then ng "spark --version の出力から版番号を読めない"; return 1; fi
   ok "spark CLI $cli"
   skill_file=$(find_use_spark)
   if [ -z "$skill_file" ]; then

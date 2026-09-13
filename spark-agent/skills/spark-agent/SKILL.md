@@ -94,8 +94,9 @@ bash scripts/install-codex-rules.sh      # ~/.codex/rules/spark-agent.rules を�
 ```
 
 生成前に内容の要約が出るので、ユーザーに示して承認を得てから `--yes` を付ける（Codex の承認設定を書き換える
-操作なので、エージェントが黙って実行しない）。既定では bare `spark <読み取り>` だけがサンドボックス外で無確認実行、
-`spark` の書き込み・送信系と `bash scripts/spark-ctx.sh ...` は実行前に確認（`prompt`）になる。スクリプトを
+操作なので、エージェントが黙って実行しない）。既定では**絶対パスの** `/usr/local/bin/spark <読み取り>` だけが
+サンドボックス外で無確認実行（bare `spark` は PATH 差し替えで別バイナリになり得るため `prompt`。spark-ctx は
+既定で絶対パスを使う）、`spark` の書き込み・送信系と `bash scripts/spark-ctx.sh ...` は実行前に確認（`prompt`）になる。スクリプトを
 `allow` にしない理由は、作業ツリー内で書き換え可能なスクリプトの無確認実行がサンドボックス脱出の経路になるため
 （`--allow-scripts` で明示的に緩められる）。spark-doctor は rules 未導入を WARN で知らせる。
 

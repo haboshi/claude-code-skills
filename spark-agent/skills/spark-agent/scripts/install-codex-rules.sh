@@ -21,6 +21,13 @@ set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
 CTX="$HERE/spark-ctx.sh"
 DOCTOR="$HERE/spark-doctor.sh"
+# allow は実行ファイルを絶対パスで固定する（bare "spark" は PATH 差し替えで別バイナリになり得るため prompt）
+if [ -n "${SPARK_BIN:-}" ]; then SPARK_ABS="$SPARK_BIN"
+elif [ -x /usr/local/bin/spark ]; then SPARK_ABS=/usr/local/bin/spark
+else SPARK_ABS=$(command -v spark 2>/dev/null || true); fi
+[ -n "$SPARK_ABS" ] || { echo "install-codex-rules: spark が見つかりません（Spark Desktop で CLI をセットアップしてください）" >&2; exit 1; }
+case "$SPARK_ABS" in /*) ;; *) SPARK_ABS=$(command -v "$SPARK_ABS" 2>/dev/null || true) ;; esac
+[ -n "$SPARK_ABS" ] || { echo "install-codex-rules: spark の絶対パスを解決できません" >&2; exit 1; }
 RULES_DIR="${CODEX_HOME:-$HOME/.codex}/rules"
 OUT="${SPARK_AGENT_CODEX_RULES:-$RULES_DIR/spark-agent.rules}"
 YES=0; SCRIPT_DECISION="prompt"
@@ -36,8 +43,8 @@ done
 if [ "$YES" -ne 1 ]; then
   cat <<EOF
 install-codex-rules: 次の内容で $OUT を書きます（Codex がサンドボックス外で実行してよいコマンドの規則）。
-  allow : spark の読み取り系（accounts / emails / search / thread / events / availability など）
-  prompt: spark の書き込み・送信系（draft / comment / action / contact-action / event）
+  allow : ${SPARK_ABS} の読み取り系（accounts / emails / search / thread / events / availability など。絶対パス固定）
+  prompt: bare 'spark'（PATH 解決に依存するため）と、書き込み・送信系（draft / comment / action / contact-action / event）
   ${SCRIPT_DECISION}: bash ${CTX} ... と bash ${DOCTOR}（--allow-scripts で allow）
 ユーザーの承認を得てから --yes を付けて再実行してください。
 EOF
@@ -59,22 +66,31 @@ cat > "$TMP" <<EOF
 READ = ["accounts", "folders", "emails", "search", "thread", "attachment", "events", "availability",
         "contacts", "team", "meetings", "meeting", "templates", "template", "skill", "--version"]
 WRITE = ["draft", "comment", "action", "contact-action", "event"]
+SPARK = "$SPARK_ABS"
 CTX = "$CTX"
 DOCTOR = "$DOCTOR"
 
+# 読み取りは絶対パスの spark だけ allow。bare "spark" は PATH 次第で別バイナリになるので prompt に留める
 prefix_rule(
-    pattern = ["spark", READ],
+    pattern = [SPARK, READ],
     decision = "allow",
     justification = "Spark CLI の読み取りは Desktop への IPC が必要でサンドボックス内では失敗する",
-    match = ["spark accounts", "spark emails --filter is:unread", "spark events --week"],
-    not_match = ["spark action send 1", "spark draft --to a@b.com"],
+    match = [SPARK + " accounts", SPARK + " emails --filter is:unread", SPARK + " events --week"],
+    not_match = [SPARK + " action send 1", SPARK + " draft --to a@b.com"],
 )
 
 prefix_rule(
-    pattern = ["spark", WRITE],
+    pattern = ["spark", READ],
+    decision = "prompt",
+    justification = "bare spark は PATH 解決に依存する。絶対パス " + SPARK + " を使えば無確認で通る",
+    match = ["spark accounts"],
+)
+
+prefix_rule(
+    pattern = [[SPARK, "spark"], WRITE],
     decision = "prompt",
     justification = "下書き・操作・送信・イベント変更は確認してから実行する",
-    match = ["spark action archive 1", "spark event create --title T"],
+    match = [SPARK + " action archive 1", "spark event create --title T"],
 )
 
 prefix_rule(
@@ -111,7 +127,7 @@ EOF
 [ "${SPARK_AGENT_BREAK_RULES:-0}" = "1" ] && printf 'this is not starlark(\n' >> "$TMP"
 
 if command -v codex >/dev/null 2>&1; then
-  if ! codex execpolicy check --rules "$TMP" -- spark accounts >/dev/null 2>&1; then
+  if ! codex execpolicy check --rules "$TMP" -- "$SPARK_ABS" accounts >/dev/null 2>&1; then
     rm -f "$TMP"
     echo "install-codex-rules: 生成した rules を codex execpolicy check が読めません。既存の $OUT は変更していません" >&2
     exit 1

@@ -119,7 +119,10 @@ cmd_show() {
 }
 
 cmd_clear() {
-  rm -f "$CTX_FILE"
+  if [ -e "$CTX_FILE" ]; then
+    rm -f "$CTX_FILE" 2>/dev/null
+    [ -e "$CTX_FILE" ] && die "文脈を消せません: ${CTX_FILE}（旧アカウントが残っています。権限を確認してください）"
+  fi
   echo "文脈を消しました（Unified 横断）"
 }
 
@@ -151,11 +154,21 @@ cmd_alias() {
   esac
 }
 
-# 引数列に指定トークンが含まれるか
+# 引数列に指定トークンが含まれるか（完全一致）
 has_token() {
   local needle="$1"; shift
   local a
   for a in "$@"; do [ "$a" = "$needle" ] && return 0; done
+  return 1
+}
+
+# フラグが含まれるか。`--in x` と `--in=x` の両形式を検出する（後者を CLI が受理する場合の二重注入防止）
+has_flag() {
+  local needle="$1"; shift
+  local a
+  for a in "$@"; do
+    case "$a" in "$needle"|"$needle"=*) return 0 ;; esac
+  done
   return 1
 }
 
@@ -219,7 +232,7 @@ cmd_run() {
     case "$sub" in
       action) for v in $GATED_ACTION_VERBS; do has_token "$v" "$@" && guard_fail action "$v"; done ;;
       event)  for v in $GATED_EVENT_MODES;  do has_token "$v" "$@" && guard_fail event "$v"; done ;;
-      draft)  for v in $GATED_DRAFT_FLAGS;  do has_token "$v" "$@" && guard_fail draft "$v"; done ;;
+      draft)  for v in $GATED_DRAFT_FLAGS;  do has_flag  "$v" "$@" && guard_fail draft "$v"; done ;;
     esac
   fi
 
@@ -233,18 +246,19 @@ cmd_run() {
   case "$sub" in
     emails|folders) run_positional "$acct" "$sub" "$@" ;;
     search|events)
-      if has_token --in "$@"; then exec_spark "$sub" "$@"; else exec_spark "$sub" "$@" --in "$acct"; fi ;;
+      if has_flag --in "$@"; then exec_spark "$sub" "$@"; else exec_spark "$sub" "$@" --in "$acct"; fi ;;
     draft)
       # 返信・転送・編集はスレッドのアカウントを継承、--delete は単独オプション（use-spark 仕様）なので注入しない
-      if has_token --account "$@" || has_token --reply-to "$@" || has_token --reply-all "$@" \
-         || has_token --forward "$@" || has_token --edit "$@" || has_token --delete "$@" \
+      if has_flag --account "$@" || has_flag --reply-to "$@" || has_flag --reply-all "$@" \
+         || has_flag --forward "$@" || has_flag --edit "$@" || has_flag --delete "$@" \
          || [ "${1:-}" = "signatures" ]; then
         exec_spark draft "$@"
       else
         exec_spark draft --account "$acct" "$@"
       fi ;;
     event)
-      if [ "${1:-}" = "create" ] && ! has_token --calendar "$@"; then
+      # モードの位置はゲートと同じく問わない（`event --title X create` でも注入する）
+      if has_token create "$@" && ! has_flag --calendar "$@"; then
         exec_spark event "$@" --calendar "$acct"
       else
         exec_spark event "$@"

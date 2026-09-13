@@ -124,7 +124,15 @@ check_codex_rules() {
 }
 
 check_context() {
-  bash "$HERE/spark-ctx.sh" show 2>/dev/null | sed 's/^/OK:   /' || warn "spark-ctx が動かない"
+  local ctx out
+  ctx="${SPARK_AGENT_CTX_SCRIPT:-$HERE/spark-ctx.sh}"
+  if [ ! -f "$ctx" ]; then ng "spark-ctx.sh が見つからない: ${ctx}（必須の実行経路）"; return 1; fi
+  if out=$(bash "$ctx" show 2>&1); then
+    printf '%s\n' "$out" | sed 's/^/OK:   /'
+  else
+    ng "spark-ctx show が失敗: $(printf '%s' "$out" | head -1)"
+    return 1
+  fi
 }
 
 main() {

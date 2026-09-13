@@ -126,6 +126,19 @@ out=$(dry --confirm event create --title T --start 2026-09-15T10:00 --end 2026-0
 out=$(dry --confirm event update ABC --title T2)
 [ "$out" = "$SPARK_BIN event update ABC --title T2" ] && ok "T20 event update は calendar 注入しない" || bad "T20" "$out"
 
+out=$(dry --confirm event --title T create --start 2026-09-15T10:00)
+[ "$out" = "$SPARK_BIN event --title T create --start 2026-09-15T10:00 --calendar personal@example.com" ] \
+  && ok "T20b event の create が後方にあっても --calendar を注入" || bad "T20b" "$out"
+
+out=$(dry --confirm event create --title T --calendar=x@example.com)
+[ "$out" = "$SPARK_BIN event create --title T --calendar=x@example.com" ] && ok "T20c --calendar=値 形式があれば二重注入しない" || bad "T20c" "$out"
+
+out=$(dry search "topic" --in=work@example.com)
+[ "$out" = "$SPARK_BIN search topic --in=work@example.com" ] && ok "T14b --in=値 形式があれば二重注入しない" || bad "T14b" "$out"
+
+out=$(bash "$CTX" run draft --delete=123 2>&1); rc=$?
+[ "$rc" -eq 3 ] && ok "T23h draft --delete=値 形式もゲート" || bad "T23h" "rc=$rc"
+
 out=$(dry thread 42)
 [ "$out" = "$SPARK_BIN thread 42" ] && ok "T21 その他は素通し" || bad "T21" "$out"
 
@@ -170,6 +183,9 @@ out=$(SPARK_AGENT_DRY_RUN=1 bash "$CTX" run emails --filter "is:unread" 2>"$WORK
 [ "$out" = "$SPARK_BIN emails --filter is:unread" ] && grep -q "Unified" "$WORK/err" \
   && ok "T26 文脈なしは素通しし stderr で告知" || bad "T26" "out=$out err=$(cat "$WORK/err")"
 
+out=$(SPARK_AGENT_HOME="$WORK/rocl" bash -c 'mkdir -p "$SPARK_AGENT_HOME/context" && bash "$0" clear' "$CTX" 2>&1); rc=$?
+[ "$rc" -eq 1 ] && echo "$out" | grep -q "文脈を消せません" && ok "T26b clear の失敗は非ゼロで終了し成功表示しない" || bad "T26b" "rc=$rc out=$out"
+
 # --- doctor ---
 bash "$CTX" use work@example.com >/dev/null 2>&1
 out=$(bash "$DOC" 2>&1); rc=$?
@@ -199,7 +215,14 @@ out=$(FAKE_SPARK_MODE=noipc bash "$DOC" 2>&1); rc=$?
 [ "$rc" -eq 1 ] && echo "$out" | grep -q "NG:   spark accounts が失敗: Error: Spark CLI can't access" \
   && ok "T33 実機文面の IPC エラーは NG として表示" || bad "T33" "rc=$rc out=$out"
 
+out=$(SPARK_AGENT_CTX_SCRIPT="$WORK/missing-ctx.sh" bash "$DOC" 2>&1); rc=$?
+[ "$rc" -eq 1 ] && echo "$out" | grep -q "NG:   spark-ctx.sh が見つからない" && ok "T31b spark-ctx 欠落は NG（必須の実行経路）" || bad "T31b" "rc=$rc out=$out"
+
 if command -v codex >/dev/null 2>&1; then
+  printf 'garbage(\n' > "$WORK/existing.rules"; cp "$WORK/existing.rules" "$WORK/keep.rules"
+  out=$(SPARK_AGENT_CODEX_RULES="$WORK/keep.rules" SPARK_AGENT_BREAK_RULES=1 bash "$SCRIPTS/install-codex-rules.sh" --yes 2>&1); rc=$?
+  cmp -s "$WORK/existing.rules" "$WORK/keep.rules" && [ "$rc" -eq 1 ] && echo "$out" | grep -q "変更していません" \
+    && ok "T35b 生成物の検証に失敗したら既存 rules を保持して非ゼロ終了" || bad "T35b" "rc=$rc out=$out"
   out=$(SPARK_AGENT_CODEX_RULES="$WORK/none.rules" bash "$DOC" 2>&1); rc=$?
   echo "$out" | grep -q "WARN: Codex rules が未導入" && ok "T34 Codex rules 未導入は WARN" || bad "T34" "out=$out"
   out=$(SPARK_AGENT_CODEX_RULES="$WORK/gen.rules" bash "$SCRIPTS/install-codex-rules.sh" 2>&1); rc=$?

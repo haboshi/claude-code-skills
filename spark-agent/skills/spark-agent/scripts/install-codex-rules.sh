@@ -46,10 +46,16 @@ fi
 
 mkdir -p "$(dirname "$OUT")" || { echo "install-codex-rules: $(dirname "$OUT") を作成できません" >&2; exit 1; }
 
-cat > "$OUT" <<EOF
+# 一時ファイルに書いて検証してから置換する（失敗時は既存の rules を保持する）
+TMP="$OUT.tmp.$$"
+cat > "$TMP" <<EOF
 # spark-agent が生成（$(date +%Y-%m-%d)）。spark は Spark Desktop への IPC のためサンドボックス外で実行する。
 # 再生成: bash $HERE/install-codex-rules.sh --yes$( [ "$SCRIPT_DECISION" = allow ] && printf ' --allow-scripts' )
 
+# READ はメールボックス・カレンダーを変更しないサブコマンドだけ（use-spark 1.3.1 で確認）。prefix_rule は
+# 語の後ろの引数も許可するため、後続引数で書き込みになるものを含めない: draft（signatures 含む）・comment・
+# action・contact-action・event は WRITE 側。thread --download-attachments と attachment --stream は
+# ローカルへの読み出しであり、サーバー側の状態は変えない。
 READ = ["accounts", "folders", "emails", "search", "thread", "attachment", "events", "availability",
         "contacts", "team", "meetings", "meeting", "templates", "template", "skill", "--version"]
 WRITE = ["draft", "comment", "action", "contact-action", "event"]
@@ -100,12 +106,19 @@ prefix_rule(
 )
 EOF
 
-echo "installed: $OUT"
+[ -s "$TMP" ] || { rm -f "$TMP"; echo "install-codex-rules: 一時ファイルに書き込めません: $TMP" >&2; exit 1; }
+# テスト用: 生成物を意図的に壊して「検証失敗時に既存を保持する」経路を確認する
+[ "${SPARK_AGENT_BREAK_RULES:-0}" = "1" ] && printf 'this is not starlark(\n' >> "$TMP"
+
 if command -v codex >/dev/null 2>&1; then
-  if codex execpolicy check --rules "$OUT" -- spark accounts >/dev/null 2>&1; then
-    echo "OK: codex execpolicy check が rules を読み込めた"
-  else
-    echo "WARN: codex execpolicy check が失敗。rules の構文か Codex の版を確認してください" >&2
+  if ! codex execpolicy check --rules "$TMP" -- spark accounts >/dev/null 2>&1; then
+    rm -f "$TMP"
+    echo "install-codex-rules: 生成した rules を codex execpolicy check が読めません。既存の $OUT は変更していません" >&2
     exit 1
   fi
+  verified="verified by codex execpolicy check"
+else
+  verified="unverified: codex コマンドが無いため構文検証をしていない"
 fi
+mv "$TMP" "$OUT" || { rm -f "$TMP"; echo "install-codex-rules: $OUT に置換できません（既存は保持）" >&2; exit 1; }
+echo "installed: $OUT ($verified)"

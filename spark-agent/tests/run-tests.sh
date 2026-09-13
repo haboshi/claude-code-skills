@@ -1,0 +1,395 @@
+#!/usr/bin/env bash
+# spark-agent 決定論テスト（fake spark・実 Spark Desktop 不要）
+# 実行: bash spark-agent/tests/run-tests.sh
+set -u
+
+TESTS_DIR=$(cd "$(dirname "$0")" && pwd)
+PLUG=$(cd "$TESTS_DIR/.." && pwd)
+SCRIPTS="$PLUG/skills/spark-agent/scripts"
+CTX="$SCRIPTS/spark-ctx.sh"
+DOC="$SCRIPTS/spark-doctor.sh"
+
+die() { echo "SETUP FAILED: $*" >&2; exit 2; }
+TMPBASE="${TMPDIR:-/tmp}"; TMPBASE="${TMPBASE%/}"   # TMPDIR の末尾 / を落とす（パスに // を作らない）
+WORK=$(mktemp -d "$TMPBASE/spark-agent-tests.XXXXXX") || die "mktemp"
+trap 'rm -rf "$WORK"' EXIT
+chmod +x "$TESTS_DIR/fakes/spark" || die "chmod"
+
+export SPARK_BIN="$TESTS_DIR/fakes/spark"
+export SPARK_AGENT_HOME="$WORK/home"
+export FAKE_CALL_LOG_DIR="$WORK/log"
+export SPARK_AGENT_DESKTOP_CHECK=running
+export SPARK_AGENT_USE_SPARK="$WORK/use-spark/SKILL.md"
+export SPARK_AGENT_CODEX_RULES="$WORK/codex-rules/spark-agent.rules"
+mkdir -p "$WORK/codex-rules" && : > "$SPARK_AGENT_CODEX_RULES"
+mkdir -p "$FAKE_CALL_LOG_DIR" "$WORK/use-spark"
+printf '%s\n' "---" "name: use-spark" "metadata:" "  version: 1.3.1" "---" > "$SPARK_AGENT_USE_SPARK"
+
+PASS=0; FAIL=0
+ok()  { PASS=$((PASS+1)); echo "PASS: $1"; }
+bad() { FAIL=$((FAIL+1)); echo "FAIL: $1  ($2)"; }
+last_call() { tail -1 "$FAKE_CALL_LOG_DIR/spark-calls.log" 2>/dev/null; }
+dry() { SPARK_AGENT_DRY_RUN=1 bash "$CTX" run "$@" 2>/dev/null; }
+
+# --- ctx: use / show / clear ---
+out=$(bash "$CTX" use nobody@example.com 2>&1); rc=$?
+[ "$rc" -eq 1 ] && echo "$out" | grep -q "見つかりません" && echo "$out" | grep -q "work@example.com" \
+  && ok "T1 未知アカウントは拒否し候補を列挙" || bad "T1" "rc=$rc out=$out"
+
+out=$(bash "$CTX" use work@example.com 2>&1); rc=$?
+[ "$rc" -eq 0 ] && [ "$out" = "現在アカウント: work@example.com (triage)" ] \
+  && ok "T2 use が保存し level を表示" || bad "T2" "rc=$rc out=$out"
+
+out=$(bash "$CTX" show 2>&1)
+[ "$out" = "現在アカウント: work@example.com (triage)" ] && ok "T3 show（他アカウントのカレンダー行の read-only に惑わされない）" || bad "T3" "$out"
+
+out=$(bash "$CTX" use me-alias@example.com 2>&1)
+[ "$out" = "現在アカウント: me-alias@example.com (send)" ] && ok "T3b Spark の Alias は親アカウントの level を継承" || bad "T3b" "$out"
+
+out=$(bash "$CTX" use nobody@example.com 2>&1)
+echo "$out" | grep -qF "  personal@example.com" && ! echo "$out" | grep -qF "me-alias" && ! echo "$out" | grep -q "祝日" \
+  && ok "T3c 候補列挙はアカウント行のみ（Alias・カレンダーを含めない）" || bad "T3c" "$out"
+
+out=$(bash "$CTX" use cal-only@example.com 2>&1); rc=$?
+[ "$rc" -eq 1 ] && echo "$out" | grep -q "見つかりません" && ok "T3d カレンダー行にしか無いアドレスは拒否" || bad "T3d" "rc=$rc out=$out"
+
+out=$(bash "$CTX" use me@example.com 2>&1)
+[ "$out" = "現在アカウント: me@example.com (triage)" ] && ok "T3e 部分文字列を含む先行アカウント（some@）の level を拾わない" || bad "T3e" "$out"
+
+out=$(bash "$CTX" alias set kaisha work@example.com 2>&1) && bash "$CTX" alias set kojin personal@example.com >/dev/null 2>&1
+bash "$CTX" use kojin >/dev/null 2>&1; rc=$?
+out=$(bash "$CTX" show 2>&1)
+[ "$rc" -eq 0 ] && echo "$out" | grep -q "personal@example.com (send)" && echo "$out" | grep -q "alias: kojin" \
+  && ok "T4 alias 解決と show の alias 表示" || bad "T4" "rc=$rc out=$out"
+
+out=$(bash "$CTX" use nanika 2>&1); rc=$?
+[ "$rc" -eq 1 ] && echo "$out" | grep -q "未登録" && ok "T5 未登録 alias は拒否" || bad "T5" "rc=$rc out=$out"
+
+out=$(bash "$CTX" alias set 'a=b' x@example.com 2>&1); rc=$?
+[ "$rc" -eq 1 ] && ok "T6 alias 名の '=' を拒否" || bad "T6" "rc=$rc out=$out"
+
+# awk -v はバックスラッシュをエスケープとして解釈するため、ENVIRON 経由で照合する必要がある
+printf 'keep1=a@example.com\nkeep2=b@example.com\n' > "$WORK/home/aliases"
+chmod 000 "$WORK/home/aliases"
+out=$(bash "$CTX" alias set new c@example.com 2>&1); rc=$?
+chmod 600 "$WORK/home/aliases"
+[ "$rc" -eq 1 ] && echo "$out" | grep -q "既存の alias を読めません" && [ "$(wc -l < "$WORK/home/aliases" | tr -d ' ')" = "2" ] \
+  && ok "T6e 既存 alias が読めないときは保存を中止し 1 件で上書きしない" || bad "T6e" "rc=$rc out=$out"
+rm -f "$WORK/home/aliases"
+bash "$CTX" alias set kaisha work@example.com >/dev/null 2>&1
+bash "$CTX" alias set kojin personal@example.com >/dev/null 2>&1
+
+out=$(bash "$CTX" use 'me@example.com\t' 2>&1); rc=$?
+cur=$(bash "$CTX" show 2>&1)
+[ "$rc" -eq 1 ] && echo "$out" | grep -q "見つかりません" && ! echo "$cur" | grep -qF 'me@example.com\t' \
+  && ok "T6d バックスラッシュを含む入力は一致させない（awk のエスケープ解釈を回避）" || bad "T6d" "rc=$rc cur=$cur"
+
+bash "$CTX" alias set work.prod work@example.com >/dev/null 2>&1; bash "$CTX" alias set workXprod client@example.com >/dev/null 2>&1
+bash "$CTX" use work.prod >/dev/null 2>&1
+out=$(bash "$CTX" show 2>&1)
+bash "$CTX" alias rm work.prod >/dev/null 2>&1
+rest=$(bash "$CTX" alias list 2>&1)
+echo "$out" | grep -q "work@example.com" && echo "$rest" | grep -qF "workXprod=client@example.com" && ! echo "$rest" | grep -qF "work.prod=" \
+  && ok "T6b alias 名は完全一致（'.' を正規表現として扱わない）" || bad "T6b" "show=$out list=$rest"
+
+out=$(SPARK_AGENT_HOME="$WORK/ro" bash -c 'mkdir -p "$SPARK_AGENT_HOME/context" && bash "$0" use work@example.com' "$CTX" 2>&1); rc=$?
+[ "$rc" -eq 1 ] && echo "$out" | grep -q "文脈を保存できません" && ok "T6c 保存失敗は非ゼロで終了し成功表示しない" || bad "T6c" "rc=$rc out=$out"
+
+# --- run: 注入規則（personal@example.com が現在アカウント） ---
+bash "$CTX" use personal@example.com >/dev/null 2>&1
+out=$(dry emails --filter "is:unread")
+[ "$out" = "$SPARK_BIN emails personal@example.com --filter is:unread" ] && ok "T7 emails 位置引数なし → アカウント注入" || bad "T7" "$out"
+
+out=$(dry emails Archive --page 2)
+[ "$out" = "$SPARK_BIN emails personal@example.com:Archive --page 2" ] && ok "T8 emails 裸フォルダ → acct:Folder" || bad "T8" "$out"
+
+out=$(dry emails Inbox)
+[ "$out" = "$SPARK_BIN emails personal@example.com" ] && ok "T9 emails Inbox → アカウント短縮形" || bad "T9" "$out"
+
+out=$(dry emails other@example.com:Archive)
+[ "$out" = "$SPARK_BIN emails other@example.com:Archive" ] && ok "T10 明示アカウントは上書きしない" || bad "T10" "$out"
+
+out=$(dry emails --page-size 20 "My Team")
+[ "$out" = "$SPARK_BIN emails --page-size 20 My\\ Team" ] && ok "T11 値付きフラグ越しの位置引数（チーム名）は素通し" || bad "T11" "$out"
+
+out=$(dry folders)
+[ "$out" = "$SPARK_BIN folders personal@example.com" ] && ok "T12 folders → アカウント注入" || bad "T12" "$out"
+
+out=$(dry search "契約更新")
+[ "$out" = "$SPARK_BIN search 契約更新 --in personal@example.com" ] && ok "T13 search → --in 注入" || bad "T13" "$out"
+
+out=$(dry search --filter "from:a@b.com" --in work@example.com)
+[ "$out" = "$SPARK_BIN search --filter from:a@b.com --in work@example.com" ] && ok "T14 search --in 既存なら二重注入しない" || bad "T14" "$out"
+
+out=$(dry draft --to a@b.com --subject S --body B)
+[ "$out" = "$SPARK_BIN draft --account personal@example.com --to a@b.com --subject S --body B" ] && ok "T15 draft 新規 → --account 注入" || bad "T15" "$out"
+
+out=$(dry draft --reply-to 123 --body B)
+[ "$out" = "$SPARK_BIN draft --reply-to 123 --body B" ] && ok "T16 draft 返信は注入しない（スレッドのアカウントを継承）" || bad "T16" "$out"
+
+out=$(dry --confirm draft --delete 123)
+[ "$out" = "$SPARK_BIN draft --delete 123" ] && ok "T16b draft --delete は単独オプションなので注入しない" || bad "T16b" "$out"
+
+out=$(dry draft signatures)
+[ "$out" = "$SPARK_BIN draft signatures" ] && ok "T17 draft signatures は素通し" || bad "T17" "$out"
+
+out=$(dry events --week)
+[ "$out" = "$SPARK_BIN events --week --in personal@example.com" ] && ok "T18 events → --in 注入" || bad "T18" "$out"
+
+out=$(dry --confirm event create --title T --start 2026-09-15T10:00 --end 2026-09-15T10:30)
+[ "$out" = "$SPARK_BIN event create --title T --start 2026-09-15T10:00 --end 2026-09-15T10:30 --calendar personal@example.com" ] \
+  && ok "T19 event create → --calendar 注入" || bad "T19" "$out"
+
+out=$(dry --confirm event update ABC --title T2)
+[ "$out" = "$SPARK_BIN event update ABC --title T2" ] && ok "T20 event update は calendar 注入しない" || bad "T20" "$out"
+
+out=$(dry --confirm event --title T create --start 2026-09-15T10:00)
+[ "$out" = "$SPARK_BIN event --title T create --start 2026-09-15T10:00 --calendar personal@example.com" ] \
+  && ok "T20b event の create が後方にあっても --calendar を注入" || bad "T20b" "$out"
+
+out=$(dry --confirm event update ABC --title create)
+[ "$out" = "$SPARK_BIN event update ABC --title create" ] && ok "T20d オプションの値 'create' をモードと誤認して注入しない" || bad "T20d" "$out"
+
+out=$(dry --confirm event --all-day create --title T --start 2026-09-20)
+[ "$out" = "$SPARK_BIN event --all-day create --title T --start 2026-09-20 --calendar personal@example.com" ] \
+  && ok "T20e 真偽フラグ（--all-day）を読み飛ばしてモードを判定" || bad "T20e" "$out"
+
+out=$(dry --confirm event create --title T --calendar=x@example.com)
+[ "$out" = "$SPARK_BIN event create --title T --calendar=x@example.com" ] && ok "T20c --calendar=値 形式があれば二重注入しない" || bad "T20c" "$out"
+
+out=$(dry search "topic" --in=work@example.com)
+[ "$out" = "$SPARK_BIN search topic --in=work@example.com" ] && ok "T14b --in=値 形式があれば二重注入しない" || bad "T14b" "$out"
+
+out=$(bash "$CTX" run draft --delete=123 2>&1); rc=$?
+[ "$rc" -eq 3 ] && ok "T23h draft --delete=値 形式もゲート" || bad "T23h" "rc=$rc"
+
+out=$(dry thread 42)
+[ "$out" = "$SPARK_BIN thread 42" ] && ok "T21 その他は素通し" || bad "T21" "$out"
+
+# --- 安全ゲート ---
+before=$(wc -l < "$FAKE_CALL_LOG_DIR/spark-calls.log" | tr -d ' ')
+out=$(bash "$CTX" run action send 99 2>&1); rc=$?
+after=$(wc -l < "$FAKE_CALL_LOG_DIR/spark-calls.log" | tr -d ' ')
+[ "$rc" -eq 3 ] && [ "$before" = "$after" ] && ! grep -qx "action send 99" "$FAKE_CALL_LOG_DIR/spark-calls.log" \
+  && ok "T22 action send は --confirm なしで exit 3・spark は一切呼ばれない" || bad "T22" "rc=$rc before=$before after=$after"
+
+out=$(bash "$CTX" run event create --title T --confirm 2>&1); rc=$?
+[ "$rc" -eq 1 ] && echo "$out" | grep -q "run' の直後" && ! grep -q -- "--confirm" "$FAKE_CALL_LOG_DIR/spark-calls.log" \
+  && ok "T22b 後置の --confirm は拒否され spark に渡らない" || bad "T22b" "rc=$rc out=$out"
+
+out=$(bash "$CTX" run event delete ABC 2>&1); rc=$?
+[ "$rc" -eq 3 ] && ok "T23 event delete も --confirm なしで exit 3" || bad "T23" "rc=$rc"
+
+out=$(bash "$CTX" run draft --delete 123 2>&1); rc=$?
+[ "$rc" -eq 3 ] && ok "T23d draft --delete（取り消し不能）も --confirm なしで exit 3" || bad "T23d" "rc=$rc"
+out=$(SPARK_AGENT_DRY_RUN=1 bash "$CTX" run --confirm draft --delete 123 2>/dev/null)
+[ "$out" = "$SPARK_BIN draft --delete 123" ] && ok "T23e --confirm 付き draft --delete は注入なしで実行" || bad "T23e" "$out"
+
+# ゲート対象の動詞は spark-ctx.sh の GATED_* が唯一の定義。Codex rules の WRITE 側がそれを包含していることを確認
+for v in action event draft; do
+  grep -q "\"$v\"" "$SCRIPTS/install-codex-rules.sh" && ok "T23f rules の WRITE に '$v' を含む（ゲート対象の包含）" || bad "T23f" "$v missing in WRITE"
+done
+
+out=$(bash "$CTX" run action --date 2026-09-14 send 99 2>&1); rc=$?
+[ "$rc" -eq 3 ] && ok "T23b action の send を後ろにずらしてもゲートされる" || bad "T23b" "rc=$rc"
+out=$(bash "$CTX" run event --calendar x@example.com create --title T 2>&1); rc=$?
+[ "$rc" -eq 3 ] && ok "T23c event の create を後ろにずらしてもゲートされる" || bad "T23c" "rc=$rc"
+
+out=$(bash "$CTX" run --confirm action send 99 2>&1); rc=$?
+[ "$rc" -eq 0 ] && [ "$(last_call)" = "action send 99" ] && ok "T24 --confirm 付きなら実行される" || bad "T24" "rc=$rc last=$(last_call)"
+
+out=$(bash "$CTX" run action archive 5 6 2>&1); rc=$?
+[ "$rc" -eq 0 ] && [ "$(last_call)" = "action archive 5 6" ] && ok "T25 action archive はゲート対象外" || bad "T25" "rc=$rc"
+
+# --- 文脈なし ---
+bash "$CTX" clear >/dev/null 2>&1
+out=$(SPARK_AGENT_DRY_RUN=1 bash "$CTX" run emails --filter "is:unread" 2>"$WORK/err")
+[ "$out" = "$SPARK_BIN emails --filter is:unread" ] && grep -q "Unified" "$WORK/err" \
+  && ok "T26 文脈なしは素通しし stderr で告知" || bad "T26" "out=$out err=$(cat "$WORK/err")"
+
+out=$(SPARK_AGENT_HOME="$WORK/rocl" bash -c 'mkdir -p "$SPARK_AGENT_HOME/context" && bash "$0" clear' "$CTX" 2>&1); rc=$?
+[ "$rc" -eq 1 ] && echo "$out" | grep -q "文脈を消せません" && ok "T26b clear の失敗は非ゼロで終了し成功表示しない" || bad "T26b" "rc=$rc out=$out"
+
+mkdir -p "$WORK/unread" && printf 'account=work@example.com\n' > "$WORK/unread/context" && chmod 000 "$WORK/unread/context"
+before=$(wc -l < "$FAKE_CALL_LOG_DIR/spark-calls.log" | tr -d ' ')
+out=$(SPARK_AGENT_HOME="$WORK/unread" bash "$CTX" run emails 2>&1); rc=$?
+after=$(wc -l < "$FAKE_CALL_LOG_DIR/spark-calls.log" | tr -d ' ')
+chmod 600 "$WORK/unread/context"
+[ "$rc" -eq 2 ] && [ "$before" = "$after" ] && echo "$out" | grep -q "読めません" \
+  && ok "T26c 文脈ファイルが読めないときは Unified に落とさず spark を呼ばない" || bad "T26c" "rc=$rc out=$out"
+
+mkdir -p "$WORK/symctx" && ln -s "$WORK/nonexistent-target" "$WORK/symctx/context"
+before=$(wc -l < "$FAKE_CALL_LOG_DIR/spark-calls.log" | tr -d ' ')
+out=$(SPARK_AGENT_HOME="$WORK/symctx" bash "$CTX" run emails 2>&1); rc=$?
+after=$(wc -l < "$FAKE_CALL_LOG_DIR/spark-calls.log" | tr -d ' ')
+[ "$rc" -eq 2 ] && [ "$before" = "$after" ] \
+  && ok "T26i 壊れた symlink の文脈は未設定と誤認せず rc 2（-e が偽になる経路）" || bad "T26i" "rc=$rc out=$out"
+
+mkdir -p "$WORK/nlctx" && printf 'account=work@example.com\n\n\n' > "$WORK/nlctx/context"
+before=$(wc -l < "$FAKE_CALL_LOG_DIR/spark-calls.log" | tr -d ' ')
+out=$(SPARK_AGENT_HOME="$WORK/nlctx" bash "$CTX" run emails 2>&1); rc=$?
+after=$(wc -l < "$FAKE_CALL_LOG_DIR/spark-calls.log" | tr -d ' ')
+[ "$rc" -eq 2 ] && [ "$before" = "$after" ] && echo "$out" | grep -q "1 行ではありません" \
+  && ok "T26j 末尾に余分な空行がある文脈を拒否（\$() の改行除去で素通りしない）" || bad "T26j" "rc=$rc out=$out"
+
+mkdir -p "$WORK/badctx" && printf 'garbage\n' > "$WORK/badctx/context"
+before=$(wc -l < "$FAKE_CALL_LOG_DIR/spark-calls.log" | tr -d ' ')
+out=$(SPARK_AGENT_HOME="$WORK/badctx" bash "$CTX" run emails 2>&1); rc=$?
+after=$(wc -l < "$FAKE_CALL_LOG_DIR/spark-calls.log" | tr -d ' ')
+[ "$rc" -eq 2 ] && [ "$before" = "$after" ] && echo "$out" | grep -q "内容が不正" \
+  && ok "T26f 文脈ファイルの内容が不正（account= が無い）なら rc 2 で spark を呼ばない" || bad "T26f" "rc=$rc out=$out"
+: > "$WORK/badctx/context"
+out=$(SPARK_AGENT_HOME="$WORK/badctx" bash "$CTX" run emails 2>&1); rc=$?
+[ "$rc" -eq 2 ] && ok "T26g 空の文脈ファイルも rc 2（Unified に落とさない）" || bad "T26g" "rc=$rc out=$out"
+
+out=$(bash "$CTX" run --json action send 1 2>&1); rc=$?
+[ "$rc" -eq 1 ] && echo "$out" | grep -q "サブコマンド名" && ! grep -q -- "--json" "$FAKE_CALL_LOG_DIR/spark-calls.log" \
+  && ok "T26h サブコマンド前のオプションは拒否（ゲート迂回を防ぐ）" || bad "T26h" "rc=$rc out=$out"
+
+bash "$CTX" use personal@example.com >/dev/null 2>&1
+out=$(FAKE_SPARK_MODE=noipc bash "$CTX" use client@example.com 2>&1); rc=$?
+cur=$(bash "$CTX" show 2>&1)
+[ "$rc" -eq 1 ] && echo "$out" | grep -q "spark accounts が失敗" && echo "$cur" | grep -q "personal@example.com" \
+  && ok "T3f spark accounts が失敗したら use は文脈を変更しない" || bad "T3f" "rc=$rc out=$out cur=$cur"
+
+mkdir -p "$WORK/dirctx/context"
+before=$(wc -l < "$FAKE_CALL_LOG_DIR/spark-calls.log" | tr -d ' ')
+out=$(SPARK_AGENT_HOME="$WORK/dirctx" bash "$CTX" run emails 2>&1); rc=$?
+after=$(wc -l < "$FAKE_CALL_LOG_DIR/spark-calls.log" | tr -d ' ')
+[ "$rc" -eq 2 ] && [ "$before" = "$after" ] && echo "$out" | grep -q "通常ファイルでない" \
+  && ok "T26d 文脈がディレクトリ（読取可能）でも Unified に落とさず spark を呼ばない" || bad "T26d" "rc=$rc out=$out"
+out=$(SPARK_AGENT_HOME="$WORK/dirctx" bash "$CTX" show 2>&1); rc=$?
+[ "$rc" -eq 2 ] && ok "T26e show も同様に rc 2" || bad "T26e" "rc=$rc out=$out"
+
+# --- doctor ---
+bash "$CTX" use work@example.com >/dev/null 2>&1
+out=$(bash "$DOC" 2>&1); rc=$?
+[ "$rc" -eq 0 ] && echo "$out" | grep -q "RESULT: OK" && echo "$out" | grep -q "spark CLI 1.3.1" \
+  && echo "$out" | grep -q "WARN: send" && echo "$out" | grep -q "OK:   現在アカウント: work@example.com" \
+  && ok "T27 doctor 全 OK（send は WARN、文脈表示）" || bad "T27" "rc=$rc out=$out"
+
+out=$(SPARK_AGENT_DESKTOP_CHECK=stopped bash "$DOC" 2>&1); rc=$?
+[ "$rc" -eq 1 ] && echo "$out" | grep -q "NG:   Spark Desktop が起動していない" && ! echo "$out" | grep -q "spark CLI 1.3.1" \
+  && ok "T28 Desktop 停止は NG・以降の IPC 依存チェックを飛ばす" || bad "T28" "rc=$rc out=$out"
+
+out=$(FAKE_SPARK_VERSION=1.4.0 bash "$DOC" 2>&1); rc=$?
+[ "$rc" -eq 0 ] && echo "$out" | grep -q "WARN: CLI 1.4.0 > use-spark 1.3.1" && ok "T29 版ずれは WARN と更新手順" || bad "T29" "rc=$rc out=$out"
+
+out=$(bash "$DOC" 2>&1); rc=$?
+[ "$rc" -eq 0 ] && echo "$out" | grep -q "^WARN:" && ! echo "$out" | grep -q "^NG:" && echo "$out" | grep -q "RESULT: OK" \
+  && ok "T29b WARN のみなら終了コード 0（NG だけが失敗）" || bad "T29b" "rc=$rc"
+
+out=$(SPARK_BIN=/nonexistent/spark bash "$DOC" 2>&1); rc=$?
+[ "$rc" -eq 1 ] && echo "$out" | grep -q "NG:   spark が見つからない" && echo "$out" | grep -q "セットアップ" \
+  && ok "T30 spark 不在は NG とセットアップ案内" || bad "T30" "rc=$rc out=$out"
+
+out=$(SPARK_AGENT_USE_SPARK="$WORK/none.md" bash "$DOC" 2>&1); rc=$?
+[ "$rc" -eq 1 ] && echo "$out" | grep -q "NG:   use-spark スキル（コマンド正典・必須依存）が未導入" && ok "T31 use-spark 未導入は NG（必須依存）" || bad "T31" "rc=$rc out=$out"
+
+out=$(FAKE_SPARK_MODE=noaccounts bash "$DOC" 2>&1); rc=$?
+[ "$rc" -eq 1 ] && echo "$out" | grep -q "NG:   spark accounts にアカウントが無い" \
+  && ok "T32 実機文面 'No accounts found.' は NG（アクセス未許可）" || bad "T32" "rc=$rc out=$out"
+
+out=$(FAKE_SPARK_MODE=noipc bash "$DOC" 2>&1); rc=$?
+[ "$rc" -eq 1 ] && echo "$out" | grep -q "NG:   spark accounts が失敗: Error: Spark CLI can't access" \
+  && ok "T33 実機文面の IPC エラーは NG として表示" || bad "T33" "rc=$rc out=$out"
+
+out=$(FAKE_SPARK_RC=1 bash "$DOC" 2>&1); rc=$?
+[ "$rc" -eq 1 ] && echo "$out" | grep -q "NG:   spark --version が失敗" && ! echo "$out" | grep -q "OK:   spark CLI" \
+  && ok "T33b spark --version が非ゼロなら版番号が出ていても NG" || bad "T33b" "rc=$rc out=$out"
+
+out=$(SPARK_AGENT_CTX_SCRIPT="$WORK/missing-ctx.sh" bash "$DOC" 2>&1); rc=$?
+[ "$rc" -eq 1 ] && echo "$out" | grep -q "NG:   spark-ctx.sh が見つからない" && ok "T31b spark-ctx 欠落は NG（必須の実行経路）" || bad "T31b" "rc=$rc out=$out"
+
+if command -v codex >/dev/null 2>&1; then
+  # 既定の信頼配置先では、作業ツリー内の fake spark は allow に登録できない
+  out=$(SPARK_AGENT_CODEX_RULES="$WORK/untrusted.rules" bash "$SCRIPTS/install-codex-rules.sh" --yes 2>&1); rc=$?
+  [ "$rc" -eq 1 ] && [ ! -f "$WORK/untrusted.rules" ] && echo "$out" | grep -q "信頼できる配置先" \
+    && ok "T35e 作業ツリー内の実行ファイルは allow に登録しない（既定の信頼配置先）" || bad "T35e" "rc=$rc out=$out"
+  # 以降の rules テストは、テスト用の信頼配置先を明示して実行する
+  export SPARK_AGENT_TRUSTED_PREFIXES="$TESTS_DIR/fakes/"
+
+  printf 'garbage(\n' > "$WORK/existing.rules"; cp "$WORK/existing.rules" "$WORK/keep.rules"
+  out=$(SPARK_AGENT_CODEX_RULES="$WORK/keep.rules" SPARK_AGENT_BREAK_RULES=1 bash "$SCRIPTS/install-codex-rules.sh" --yes 2>&1); rc=$?
+  cmp -s "$WORK/existing.rules" "$WORK/keep.rules" && [ "$rc" -eq 1 ] && echo "$out" | grep -q "変更していません" \
+    && ok "T35b 生成物の検証に失敗したら既存 rules を保持して非ゼロ終了" || bad "T35b" "rc=$rc out=$out"
+  printf 'keep\n' > "$WORK/rel.rules"
+  out=$(cd "$TESTS_DIR" && SPARK_BIN="fakes/spark" SPARK_AGENT_CODEX_RULES="$WORK/rel.rules" bash "$SCRIPTS/install-codex-rules.sh" --yes 2>&1); rc=$?
+  [ "$rc" -eq 1 ] && grep -qx keep "$WORK/rel.rules" && echo "$out" | grep -q "絶対パス" \
+    && ok "T35c 相対パスの SPARK_BIN は拒否し既存 rules を保持" || bad "T35c" "rc=$rc out=$out"
+  out=$(SPARK_BIN="$WORK/not-executable" SPARK_AGENT_CODEX_RULES="$WORK/x.rules" bash "$SCRIPTS/install-codex-rules.sh" --yes 2>&1); rc=$?
+  [ "$rc" -eq 1 ] && [ ! -f "$WORK/x.rules" ] && ok "T35d 実行可能でない SPARK_BIN は生成前に拒否" || bad "T35d" "rc=$rc out=$out"
+
+  # 信頼配置先にある symlink が、信頼外（ホーム相当）を指しているケース
+  mkdir -p "$WORK/untrusted-home" && cp "$TESTS_DIR/fakes/spark" "$WORK/untrusted-home/spark" && chmod +x "$WORK/untrusted-home/spark"
+  ln -sf "$WORK/untrusted-home/spark" "$TESTS_DIR/fakes/spark-link"
+  out=$(SPARK_BIN="$TESTS_DIR/fakes/spark-link" SPARK_AGENT_CODEX_RULES="$WORK/link.rules" bash "$SCRIPTS/install-codex-rules.sh" --yes 2>&1); rc=$?
+  rm -f "$TESTS_DIR/fakes/spark-link"
+  [ "$rc" -eq 1 ] && [ ! -f "$WORK/link.rules" ] && echo "$out" | grep -q "信頼できる配置先" \
+    && ok "T35f 信頼配置先の symlink でも実体が信頼外なら拒否" || bad "T35f" "rc=$rc out=$out"
+
+  # 逆向き: 信頼外（作業ツリー相当）の symlink が信頼配置先の実体を指すケース。後でリンクを差し替えられるため拒否する
+  ln -sf "$TESTS_DIR/fakes/spark" "$WORK/untrusted-home/spark-link"
+  out=$(SPARK_BIN="$WORK/untrusted-home/spark-link" SPARK_AGENT_CODEX_RULES="$WORK/link2.rules" bash "$SCRIPTS/install-codex-rules.sh" --yes 2>&1); rc=$?
+  [ "$rc" -eq 1 ] && [ ! -f "$WORK/link2.rules" ] && echo "$out" | grep -q "信頼できる配置先" \
+    && ok "T35g 信頼外に置かれた symlink は実体が信頼先でも拒否（後の差し替え対策）" || bad "T35g" "rc=$rc out=$out"
+
+  # 実体解決に失敗する経路（壊れた symlink）は生成せず既存を保持する
+  printf 'keep\n' > "$WORK/broken.rules"
+  ln -sf "$WORK/no-such-target" "$TESTS_DIR/fakes/spark-broken"
+  out=$(SPARK_BIN="$TESTS_DIR/fakes/spark-broken" SPARK_AGENT_CODEX_RULES="$WORK/broken.rules" bash "$SCRIPTS/install-codex-rules.sh" --yes 2>&1); rc=$?
+  rm -f "$TESTS_DIR/fakes/spark-broken"
+  [ "$rc" -eq 1 ] && grep -qx keep "$WORK/broken.rules" && ok "T35h 壊れた symlink は生成せず既存 rules を保持" || bad "T35h" "rc=$rc out=$out"
+
+  # 前方一致をすり抜けるパス（/usr/local/bin/../../<信頼外>）を拒否する
+  for bad_path in "/usr/local/bin/../../..$WORK/untrusted-home/spark" "/usr/local/bin/./spark" "/usr/local//bin/spark"; do
+    out=$(SPARK_BIN="$bad_path" SPARK_AGENT_CODEX_RULES="$WORK/norm.rules" bash "$SCRIPTS/install-codex-rules.sh" --yes 2>&1); rc=$?
+    [ "$rc" -eq 1 ] && [ ! -f "$WORK/norm.rules" ] && echo "$out" | grep -q "正規化した絶対パス" \
+      && ok "T35j 正規化されていないパスを拒否: $(printf '%s' "$bad_path" | sed "s#$WORK#<work>#")" || bad "T35j" "path=$bad_path rc=$rc out=$out"
+  done
+
+  out=$(SPARK_BIN="$WORK/no-such-spark" bash "$SCRIPTS/install-codex-rules.sh" --help 2>&1); rc=$?
+  [ "$rc" -eq 0 ] && echo "$out" | grep -q -- "--allow-scripts" \
+    && ok "T35i spark 未導入でも --help を表示できる" || bad "T35i" "rc=$rc out=$out"
+
+  out=$(SPARK_AGENT_CODEX_RULES="$WORK/none.rules" bash "$DOC" 2>&1); rc=$?
+  echo "$out" | grep -q "WARN: Codex rules が未導入" && ok "T34 Codex rules 未導入は WARN" || bad "T34" "out=$out"
+  out=$(SPARK_AGENT_CODEX_RULES="$WORK/gen.rules" bash "$SCRIPTS/install-codex-rules.sh" 2>&1); rc=$?
+  [ "$rc" -eq 2 ] && [ ! -f "$WORK/gen.rules" ] && echo "$out" | grep -q "承認を得てから --yes" \
+    && ok "T35a install-codex-rules は --yes なしでは書かず要約だけ出す" || bad "T35a" "rc=$rc out=$out"
+  out=$(SPARK_AGENT_CODEX_RULES="$WORK/gen.rules" bash "$SCRIPTS/install-codex-rules.sh" --yes 2>&1); rc=$?
+  [ "$rc" -eq 0 ] && grep -q 'pattern = \["spark", READ\]' "$WORK/gen.rules" && grep -q "$SCRIPTS/spark-ctx.sh" "$WORK/gen.rules" \
+    && ok "T35 install-codex-rules --yes が rules を生成し execpolicy check を通る" || bad "T35" "rc=$rc out=$out"
+  dec=$(codex execpolicy check --rules "$WORK/gen.rules" -- "$SPARK_BIN" accounts 2>/dev/null)
+  echo "$dec" | grep -q '"allow"' && ok "T36 rules: 絶対パスの spark accounts は allow" || bad "T36" "$dec"
+  dec=$(codex execpolicy check --rules "$WORK/gen.rules" -- spark accounts 2>/dev/null)
+  echo "$dec" | grep -q '"prompt"' && ok "T36b rules: bare spark accounts は prompt（PATH 差し替え対策）" || bad "T36b" "$dec"
+  dec=$(codex execpolicy check --rules "$WORK/gen.rules" -- "$SPARK_BIN" action send 1 2>/dev/null)
+  echo "$dec" | grep -q '"prompt"' && ok "T37 rules: 絶対パスでも action send は prompt" || bad "T37" "$dec"
+  dec=$(codex execpolicy check --rules "$WORK/gen.rules" -- spark action send 1 2>/dev/null)
+  echo "$dec" | grep -q '"prompt"' && ok "T37b rules: bare spark action send も prompt" || bad "T37b" "$dec"
+  dec=$(codex execpolicy check --rules "$WORK/gen.rules" -- bash "$SCRIPTS/spark-ctx.sh" run emails --filter "is:unread" 2>/dev/null)
+  echo "$dec" | grep -q '"prompt"' && ok "T38 rules: spark-ctx run emails は既定 prompt（スクリプト書き換えによる脱出を防ぐ）" || bad "T38" "$dec"
+  SPARK_AGENT_CODEX_RULES="$WORK/gen2.rules" bash "$SCRIPTS/install-codex-rules.sh" --yes --allow-scripts >/dev/null 2>&1
+  dec=$(codex execpolicy check --rules "$WORK/gen2.rules" -- bash "$SCRIPTS/spark-ctx.sh" run emails --filter "is:unread" 2>/dev/null)
+  echo "$dec" | grep -q '"allow"' && ok "T38b rules: --allow-scripts なら spark-ctx run emails は allow" || bad "T38b" "$dec"
+  dec=$(codex execpolicy check --rules "$WORK/gen.rules" -- bash "$SCRIPTS/spark-ctx.sh" run --confirm event create --title T 2>/dev/null)
+  echo "$dec" | grep -q '"prompt"' && ok "T39 rules: spark-ctx run --confirm event は prompt" || bad "T39" "$dec"
+else
+  echo "SKIP: T34-T39 codex 未導入"
+fi
+
+# --- 静的検査: bash 3.2 は "$VAR。" のように非 ASCII が直後に続くと変数名を誤認する（実際に 3 度踏んだ） ---
+badvar=$(grep -nP '\$[A-Za-z_][A-Za-z0-9_]*[^\x00-\x7F]' "$SCRIPTS"/*.sh "$TESTS_DIR/run-tests.sh" "$TESTS_DIR/fakes/spark" 2>/dev/null \
+         | grep -vE ':[0-9]+: *#' || true)
+[ -z "$badvar" ] && ok "T40 非 ASCII が直後に続く裸の変数参照がない（bash 3.2 の変数名誤認）" \
+  || bad "T40" "$(printf '%s' "$badvar" | head -3)"
+
+for f in "$SCRIPTS"/*.sh "$TESTS_DIR/fakes/spark"; do
+  bash -n "$f" 2>/dev/null || { bad "T41 構文検査" "$f"; continue; }
+done
+ok "T41 全スクリプトが bash -n を通る"
+
+echo "----"
+echo "PASS=$PASS FAIL=$FAIL"
+[ "$FAIL" -eq 0 ]

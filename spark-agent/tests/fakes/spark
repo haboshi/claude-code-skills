@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# テスト用 fake spark: 呼び出し引数を FAKE_CALL_LOG_DIR/spark-calls.log に追記し、固定出力を返す。
+# 実 CLI の出力形式は FAKE_SPARK_ACCOUNTS_FILE で差し替えられる（実機で採取した出力を流用するため）。
+logdir="${FAKE_CALL_LOG_DIR:-/tmp}"
+mkdir -p "$logdir" 2>/dev/null || true
+printf '%s\n' "$*" >> "$logdir/spark-calls.log"
+
+ver="${FAKE_SPARK_VERSION:-1.3.1}"
+
+# 実機で採取したエラー文面（2026-09-13、CLI 1.3.1）
+if [ "${FAKE_SPARK_MODE:-}" = "noipc" ] && [ "${1:-}" != "--version" ] && [ "${1:-}" != "skill" ]; then
+  echo "Error: Spark CLI can't access your Spark Desktop application. Please check that the app is running and CLI settings are enabled."
+  exit 1
+fi
+if [ "${FAKE_SPARK_MODE:-}" = "noaccounts" ] && [ "${1:-}" = "accounts" ]; then
+  printf '\nNo accounts found.\n'
+  exit 0
+fi
+
+case "${1:-}" in
+  --version)
+    echo "$ver"      # 実機は版番号のみを出す
+    ;;
+  skill)
+    printf '%s\n' "---" "name: use-spark" "metadata:" "  version: $ver" "---" "# Using spark"
+    ;;
+  accounts)
+    if [ -n "${FAKE_SPARK_ACCOUNTS_FILE:-}" ] && [ -f "$FAKE_SPARK_ACCOUNTS_FILE" ]; then
+      cat "$FAKE_SPARK_ACCOUNTS_FILE"
+    else
+      # 実機 1.3.1 の形式を example.com に置き換えたもの。personal のカレンダー行に work@ のアドレスと
+      # read-only が現れる（実機と同じ罠）。
+      # some@example.com は me@example.com を部分文字列として含む（部分一致の罠）。cal-only@ はカレンダー行にしか無い。
+      cat <<'EOF'
+Email Account: some@example.com (Access: read-only)
+└── Calendar: cal-only@example.com - read-only (some@example.com:cal-only@example.com)
+
+Email Account: me@example.com (Access: triage)
+
+Email Account: personal@example.com "personal@example.com" (Access: send)
+├── Alias: me-alias@example.com "Me"
+├── Calendar: Personal - read-write (personal@example.com:Personal)
+├── Calendar: work@example.com - read-only (personal@example.com:work@example.com)
+└── Calendar: 日本の祝日 - read-only (personal@example.com:日本の祝日)
+
+Email Account: work@example.com (Access: triage)
+├── Calendar: work@example.com - read-write (work@example.com:work@example.com)
+└── Team: dev
+
+Email Account: client@example.com (Access: read-only)
+└── Calendar: client@example.com - read-write (client@example.com:client@example.com)
+
+Shared Inbox: support@example.com (Access: read-only)
+EOF
+    fi
+    ;;
+  *)
+    echo "fake spark ok: $*"
+    ;;
+esac
+exit "${FAKE_SPARK_RC:-0}"

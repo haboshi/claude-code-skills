@@ -47,7 +47,7 @@ Claude Code用プラグイン（スキル）のマーケットプレイスコレ
 { "name": "foo", "source": "./foo" }
 ```
 
-### 収録プラグイン一覧（17個）
+### 収録プラグイン一覧（18個）
 
 **ドキュメント生成**: pdf-creator-jp, bizdoc（ビジネス白基調のSVG図解付き1枚HTML生成 + doc-hub 統合管理）
 **画像生成**: image-creator, svg-header-image, svg-diagram, line-sticker-creator
@@ -55,6 +55,7 @@ Claude Code用プラグイン（スキル）のマーケットプレイスコレ
 **音声**: tts（発音辞書機能を内蔵）
 **調査**: brave-research
 **セキュリティ**: web-vuln-report（非破壊の脆弱性診断→日本語報告書 HTML/PDF 生成）
+**メール・カレンダー**: spark-agent（Spark Desktop を複数アカウントの統合層にし、Claude Code と Codex の両方から同じスキルでメール確認・返信下書き・カレンダー確認と更新を行う運用層。コマンド正典は公式 use-spark、本プラグインはアカウント切り替え spark-ctx・診断 spark-doctor・送信/イベント変更の --confirm ゲート・Codex rules 生成を担う）
 **開発ツール**: skill-creator-pro（配布パイプライン特化）, harness-analytics（transcript ログ分析→改善示唆）, provider-harness（外部プロバイダ統合のメタスキル + ドメインスキル + /provider-harvest 知見還流）, evaluator-gate（Stop フック完了ゲート。Codex/Grok の外部評価者が完了主張を検証して差し戻し。/evaluator-gate 切替・/evaluate 所見評価）, orca-spinoff（Orca IDE の `orca` CLI で課題をチケット起票→別 worktree へフルハンドオフ。スクリプトなしの指示書型スキル）
 
 #### 図解系の住み分け
@@ -85,7 +86,7 @@ drawio-bridge が補う、という分担にしている。
 
 - Python スクリプト: image-creator, pdf-creator-jp, brave-research, skill-creator-pro, line-sticker-creator
 - Node.js スクリプト: svg-to-webp, svg-header-image, svg-diagram, mermaid-to-webp, tts, harness-analytics, bizdoc, drawio-bridge
-- Bash スクリプト: provider-harness（SessionEnd/SessionStart フック用。macOS 標準 bash 3.2 互換）, evaluator-gate（Stop フック用。同じく bash 3.2 互換）
+- Bash スクリプト: provider-harness（SessionEnd/SessionStart フック用。macOS 標準 bash 3.2 互換）, evaluator-gate（Stop フック用。同じく bash 3.2 互換）, spark-agent（両エージェント共通の運用スクリプト。bash 3.2 互換。`$VAR` の直後に日本語が続くと変数名を誤認するため `${VAR}` で囲む）
 
 Python は `uv run --with <deps>` で実行（venv不要）。Node.js は各プラグインの `node_modules` を使用。
 
@@ -136,6 +137,9 @@ cd drawio-bridge && npm test
 
 # Bash テスト（evaluator-gate — fake 評価者による決定論テスト、実 LLM 呼び出しなし）
 bash evaluator-gate/tests/run-tests.sh
+
+# Bash テスト（spark-agent — fake spark による決定論テスト。codex CLI があれば rules の判定も検証）
+bash spark-agent/tests/run-tests.sh
 ```
 
 ### 必要な環境変数（プラグインごと）

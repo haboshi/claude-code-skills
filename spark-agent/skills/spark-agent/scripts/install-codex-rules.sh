@@ -27,7 +27,12 @@ elif [ -x /usr/local/bin/spark ]; then SPARK_ABS=/usr/local/bin/spark
 else SPARK_ABS=$(command -v spark 2>/dev/null || true); fi
 [ -n "$SPARK_ABS" ] || { echo "install-codex-rules: spark が見つかりません（Spark Desktop で CLI をセットアップしてください）" >&2; exit 1; }
 case "$SPARK_ABS" in /*) ;; *) SPARK_ABS=$(command -v "$SPARK_ABS" 2>/dev/null || true) ;; esac
-[ -n "$SPARK_ABS" ] || { echo "install-codex-rules: spark の絶対パスを解決できません" >&2; exit 1; }
+# 解決後も絶対パスかつ実行可能なファイルであることを確認する（相対パスのまま allow を書かない）
+case "$SPARK_ABS" in
+  /*) [ -f "$SPARK_ABS" ] && [ -x "$SPARK_ABS" ] || {
+        echo "install-codex-rules: spark が実行可能なファイルではありません: $SPARK_ABS" >&2; exit 1; } ;;
+  *)  echo "install-codex-rules: spark の絶対パスを解決できません（SPARK_BIN=${SPARK_ABS}）。絶対パスで指定してください" >&2; exit 1 ;;
+esac
 RULES_DIR="${CODEX_HOME:-$HOME/.codex}/rules"
 OUT="${SPARK_AGENT_CODEX_RULES:-$RULES_DIR/spark-agent.rules}"
 YES=0; SCRIPT_DECISION="prompt"
@@ -55,7 +60,8 @@ mkdir -p "$(dirname "$OUT")" || { echo "install-codex-rules: $(dirname "$OUT") �
 
 # 一時ファイルに書いて検証してから置換する（失敗時は既存の rules を保持する）
 TMP="$OUT.tmp.$$"
-cat > "$TMP" <<EOF
+write_failed=0
+cat > "$TMP" <<EOF || write_failed=1
 # spark-agent が生成（$(date +%Y-%m-%d)）。spark は Spark Desktop への IPC のためサンドボックス外で実行する。
 # 再生成: bash $HERE/install-codex-rules.sh --yes$( [ "$SCRIPT_DECISION" = allow ] && printf ' --allow-scripts' )
 
@@ -122,7 +128,11 @@ prefix_rule(
 )
 EOF
 
-[ -s "$TMP" ] || { rm -f "$TMP"; echo "install-codex-rules: 一時ファイルに書き込めません: $TMP" >&2; exit 1; }
+if [ "$write_failed" -ne 0 ] || [ ! -s "$TMP" ]; then
+  rm -f "$TMP"
+  echo "install-codex-rules: 一時ファイルに書き込めません: ${TMP}（既存の ${OUT} は変更していません）" >&2
+  exit 1
+fi
 # テスト用: 生成物を意図的に壊して「検証失敗時に既存を保持する」経路を確認する
 [ "${SPARK_AGENT_BREAK_RULES:-0}" = "1" ] && printf 'this is not starlark(\n' >> "$TMP"
 

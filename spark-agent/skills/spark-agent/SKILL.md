@@ -101,8 +101,9 @@ bash scripts/install-codex-rules.sh      # ~/.codex/rules/spark-agent.rules を�
 （`--allow-scripts` で明示的に緩められる）。spark-doctor は rules 未導入を WARN で知らせる。
 
 実測（Codex 0.154.0、2026-09-13）:
-- `allow` 規則のコマンド（bare `spark` の読み取り、`--allow-scripts` 時の `spark-ctx`）は `codex exec -s read-only`
-  から通り、Claude Code と同じ件数を返した。
+- `allow` 規則のコマンド（絶対パスの `spark` の読み取り、`--allow-scripts` 時の `spark-ctx`）は
+  `codex exec -s read-only` から通り、Claude Code と同じ件数を返した。初期実測は bare `spark` を allow に
+  した版で行い、その後 PATH 差し替え対策として絶対パス固定に変更している（bare は `prompt`）。
 - `prompt` 規則のコマンドは、非対話の `codex exec` では承認者がいないため応答待ちのまま止まる（300 秒超）。
   `--dangerously-bypass-approvals-and-sandbox` を付けても承認ポリシー Never として拒否され、実行されない。
   つまり書き込み系（下書き・`draft --delete`・イベント変更・送信）は**対話セッションの Codex で承認して実行する**。

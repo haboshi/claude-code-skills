@@ -201,6 +201,20 @@ chmod 600 "$WORK/unread/context"
 [ "$rc" -eq 2 ] && [ "$before" = "$after" ] && echo "$out" | grep -q "読めません" \
   && ok "T26c 文脈ファイルが読めないときは Unified に落とさず spark を呼ばない" || bad "T26c" "rc=$rc out=$out"
 
+mkdir -p "$WORK/symctx" && ln -s "$WORK/nonexistent-target" "$WORK/symctx/context"
+before=$(wc -l < "$FAKE_CALL_LOG_DIR/spark-calls.log" | tr -d ' ')
+out=$(SPARK_AGENT_HOME="$WORK/symctx" bash "$CTX" run emails 2>&1); rc=$?
+after=$(wc -l < "$FAKE_CALL_LOG_DIR/spark-calls.log" | tr -d ' ')
+[ "$rc" -eq 2 ] && [ "$before" = "$after" ] \
+  && ok "T26i 壊れた symlink の文脈は未設定と誤認せず rc 2（-e が偽になる経路）" || bad "T26i" "rc=$rc out=$out"
+
+mkdir -p "$WORK/nlctx" && printf 'account=work@example.com\n\n\n' > "$WORK/nlctx/context"
+before=$(wc -l < "$FAKE_CALL_LOG_DIR/spark-calls.log" | tr -d ' ')
+out=$(SPARK_AGENT_HOME="$WORK/nlctx" bash "$CTX" run emails 2>&1); rc=$?
+after=$(wc -l < "$FAKE_CALL_LOG_DIR/spark-calls.log" | tr -d ' ')
+[ "$rc" -eq 2 ] && [ "$before" = "$after" ] && echo "$out" | grep -q "1 行ではありません" \
+  && ok "T26j 末尾に余分な空行がある文脈を拒否（\$() の改行除去で素通りしない）" || bad "T26j" "rc=$rc out=$out"
+
 mkdir -p "$WORK/badctx" && printf 'garbage\n' > "$WORK/badctx/context"
 before=$(wc -l < "$FAKE_CALL_LOG_DIR/spark-calls.log" | tr -d ' ')
 out=$(SPARK_AGENT_HOME="$WORK/badctx" bash "$CTX" run emails 2>&1); rc=$?
@@ -244,6 +258,10 @@ out=$(SPARK_AGENT_DESKTOP_CHECK=stopped bash "$DOC" 2>&1); rc=$?
 out=$(FAKE_SPARK_VERSION=1.4.0 bash "$DOC" 2>&1); rc=$?
 [ "$rc" -eq 0 ] && echo "$out" | grep -q "WARN: CLI 1.4.0 > use-spark 1.3.1" && ok "T29 版ずれは WARN と更新手順" || bad "T29" "rc=$rc out=$out"
 
+out=$(bash "$DOC" 2>&1); rc=$?
+[ "$rc" -eq 0 ] && echo "$out" | grep -q "^WARN:" && ! echo "$out" | grep -q "^NG:" && echo "$out" | grep -q "RESULT: OK" \
+  && ok "T29b WARN のみなら終了コード 0（NG だけが失敗）" || bad "T29b" "rc=$rc"
+
 out=$(SPARK_BIN=/nonexistent/spark bash "$DOC" 2>&1); rc=$?
 [ "$rc" -eq 1 ] && echo "$out" | grep -q "NG:   spark が見つからない" && echo "$out" | grep -q "セットアップ" \
   && ok "T30 spark 不在は NG とセットアップ案内" || bad "T30" "rc=$rc out=$out"
@@ -271,6 +289,13 @@ if command -v codex >/dev/null 2>&1; then
   out=$(SPARK_AGENT_CODEX_RULES="$WORK/keep.rules" SPARK_AGENT_BREAK_RULES=1 bash "$SCRIPTS/install-codex-rules.sh" --yes 2>&1); rc=$?
   cmp -s "$WORK/existing.rules" "$WORK/keep.rules" && [ "$rc" -eq 1 ] && echo "$out" | grep -q "変更していません" \
     && ok "T35b 生成物の検証に失敗したら既存 rules を保持して非ゼロ終了" || bad "T35b" "rc=$rc out=$out"
+  printf 'keep\n' > "$WORK/rel.rules"
+  out=$(cd "$TESTS_DIR" && SPARK_BIN="fakes/spark" SPARK_AGENT_CODEX_RULES="$WORK/rel.rules" bash "$SCRIPTS/install-codex-rules.sh" --yes 2>&1); rc=$?
+  [ "$rc" -eq 1 ] && grep -qx keep "$WORK/rel.rules" && echo "$out" | grep -q "絶対パス" \
+    && ok "T35c 相対パスの SPARK_BIN は拒否し既存 rules を保持" || bad "T35c" "rc=$rc out=$out"
+  out=$(SPARK_BIN="$WORK/not-executable" SPARK_AGENT_CODEX_RULES="$WORK/x.rules" bash "$SCRIPTS/install-codex-rules.sh" --yes 2>&1); rc=$?
+  [ "$rc" -eq 1 ] && [ ! -f "$WORK/x.rules" ] && ok "T35d 実行可能でない SPARK_BIN は生成前に拒否" || bad "T35d" "rc=$rc out=$out"
+
   out=$(SPARK_AGENT_CODEX_RULES="$WORK/none.rules" bash "$DOC" 2>&1); rc=$?
   echo "$out" | grep -q "WARN: Codex rules が未導入" && ok "T34 Codex rules 未導入は WARN" || bad "T34" "out=$out"
   out=$(SPARK_AGENT_CODEX_RULES="$WORK/gen.rules" bash "$SCRIPTS/install-codex-rules.sh" 2>&1); rc=$?
@@ -297,6 +322,17 @@ if command -v codex >/dev/null 2>&1; then
 else
   echo "SKIP: T34-T39 codex 未導入"
 fi
+
+# --- 静的検査: bash 3.2 は "$VAR。" のように非 ASCII が直後に続くと変数名を誤認する（実際に 3 度踏んだ） ---
+badvar=$(grep -nP '\$[A-Za-z_][A-Za-z0-9_]*[^\x00-\x7F]' "$SCRIPTS"/*.sh "$TESTS_DIR/run-tests.sh" "$TESTS_DIR/fakes/spark" 2>/dev/null \
+         | grep -vE ':[0-9]+: *#' || true)
+[ -z "$badvar" ] && ok "T40 非 ASCII が直後に続く裸の変数参照がない（bash 3.2 の変数名誤認）" \
+  || bad "T40" "$(printf '%s' "$badvar" | head -3)"
+
+for f in "$SCRIPTS"/*.sh "$TESTS_DIR/fakes/spark"; do
+  bash -n "$f" 2>/dev/null || { bad "T41 構文検査" "$f"; continue; }
+done
+ok "T41 全スクリプトが bash -n を通る"
 
 echo "----"
 echo "PASS=$PASS FAIL=$FAIL"

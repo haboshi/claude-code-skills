@@ -39,8 +39,9 @@ die() { echo "spark-ctx: $*" >&2; exit 1; }
 
 # 文脈ファイルが無ければ空（Unified）。あるのに読めないときは失敗（rc 2）にし、呼び出し側で止める
 current_account() {
-  local content
-  [ -e "$CTX_FILE" ] || return 0
+  local content lines bytes
+  # -e は壊れた symlink に偽を返すので -L も見る（壊れた文脈を「未設定」と誤認しない）
+  if [ ! -e "$CTX_FILE" ] && [ ! -L "$CTX_FILE" ]; then return 0; fi
   if [ ! -f "$CTX_FILE" ] || [ ! -r "$CTX_FILE" ]; then
     echo "spark-ctx: 文脈ファイルが通常ファイルでないか読めません: ${CTX_FILE}" >&2
     return 2
@@ -50,12 +51,18 @@ current_account() {
     echo "spark-ctx: 文脈ファイルの読取に失敗: ${CTX_FILE}" >&2
     return 2
   fi
-  # 内容は「account=<アドレス>」1 行だけを有効とする。空・複数行・不正形式は壊れているとみなして止める
+  # 内容は「account=<アドレス>\n」ちょうど 1 行だけを有効とする。$(...) は末尾改行を落とすので、
+  # 行数はファイルの実バイト長と突き合わせて検証する（末尾の余分な空行を通さない）
   case "$content" in
     account=*@*) ;;
     *) echo "spark-ctx: 文脈ファイルの内容が不正: ${CTX_FILE}（spark-ctx clear で消してから use し直してください）" >&2; return 2 ;;
   esac
-  [ "$(printf '%s\n' "$content" | wc -l | tr -d ' ')" = "1" ] || { echo "spark-ctx: 文脈ファイルが複数行: ${CTX_FILE}" >&2; return 2; }
+  lines=$(printf '%s\n' "$content" | wc -l | tr -d ' ')
+  bytes=$(wc -c < "$CTX_FILE" | tr -d ' ')
+  if [ "$lines" != "1" ] || [ "$bytes" != "$(( ${#content} + 1 ))" ]; then
+    echo "spark-ctx: 文脈ファイルが 1 行ではありません: ${CTX_FILE}" >&2
+    return 2
+  fi
   printf '%s\n' "${content#account=}"
 }
 
@@ -156,9 +163,9 @@ cmd_show() {
 }
 
 cmd_clear() {
-  if [ -e "$CTX_FILE" ]; then
+  if [ -e "$CTX_FILE" ] || [ -L "$CTX_FILE" ]; then
     rm -f "$CTX_FILE" 2>/dev/null
-    [ -e "$CTX_FILE" ] && die "文脈を消せません: ${CTX_FILE}（旧アカウントが残っています。権限を確認してください）"
+    { [ -e "$CTX_FILE" ] || [ -L "$CTX_FILE" ]; } && die "文脈を消せません: ${CTX_FILE}（旧アカウントが残っています。権限を確認してください）"
   fi
   echo "文脈を消しました（Unified 横断）"
 }

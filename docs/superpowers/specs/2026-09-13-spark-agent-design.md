@@ -70,8 +70,9 @@ scripts/ を skills/spark-agent/ 配下に置くのは、skill ディレクト�
 
 文脈が未設定なら注入せず素通しし、stderr に「Unified で実行」と 1 行出す。
 
-安全ゲート: `run` で `action send` と `event create/update/delete/rsvp` は `--confirm` を先頭に付けたときだけ実行する。
-無ければ実行せず exit 3 と理由を出す。`--confirm` は「このターンでユーザーが明示承認した」ときだけ付ける規約を SKILL.md に書く。
+安全ゲート: `run` で `action send`、`event create/update/delete/rsvp`、`draft --delete`（取り消し不能）は
+`--confirm` を `run` の直後に付けたときだけ実行する。無ければ実行せず exit 3 と理由を出す。対象の動詞は
+spark-ctx.sh の `GATED_*` が唯一の定義で、引数のどの位置にあっても検出する。`--confirm` は「このターンでユーザーが明示承認した」ときだけ付ける規約を SKILL.md に書く。
 `SPARK_BIN` で実行バイナリを差し替えられる（テスト用）。
 
 ### 3.2 spark-doctor.sh（環境診断）

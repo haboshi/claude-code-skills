@@ -43,26 +43,31 @@ accounts_output() {
   "$SPARK_BIN" accounts 2>&1
 }
 
-# メールアドレスが spark accounts の出力に単語として現れるか
-account_exists() {
-  accounts_output | grep -Fqw -- "$1"
-}
-
-# access level を拾う。実機 1.3.1 の形式:
+# spark accounts の出力から「アドレス level」の対を列挙する。実機 1.3.1 の形式:
 #   Email Account: a@x.com "a@x.com" (Access: triage)
 #   ├── Alias: b@x.com "Name"
 #   ├── Calendar: c@y.com - read-only (a@x.com:c@y.com)   ← 他アカウントのアドレスと read-only を含む罠
-# "Access:" を含む行だけをアカウント行とみなし、Alias 行は直前のアカウントの level を継承する。
+# "Access:" を含む行（アカウント / Shared Inbox）の先頭アドレスと、"Alias:" 行のアドレス（直前のアカウントの
+# level を継承）だけを対象にする。カレンダー行のアドレスは対象外。比較は部分一致でなく完全一致で行う。
+account_entries() {
+  accounts_output | awk '
+    function first_addr(s,   m) { if (match(s, /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+/)) return substr(s, RSTART, RLENGTH); return "" }
+    /Access:/ { cur=$0; sub(/.*Access: */, "", cur); sub(/[) ].*/, "", cur); a=first_addr($0); if (a != "") print a, cur; next }
+    /Alias:/  { a=first_addr($0); if (a != "" && cur != "") print a, cur }
+  '
+}
+
+account_exists() {
+  account_entries | awk -v e="$1" '$1==e { found=1; exit } END { exit !found }'
+}
+
 account_level() {
   local lv
-  lv=$(accounts_output | awk -v e="$1" '
-    /Access:/ { cur=$0; sub(/.*Access: */, "", cur); sub(/[) ].*/, "", cur) }
-    index($0, e) && (/Access:/ || /Alias:/) { print cur; exit }
-  ')
+  lv=$(account_entries | awk -v e="$1" '$1==e { print $2; exit }')
   echo "${lv:-unknown}"
 }
 
-# アカウント行（Access: を含む行）の先頭のメールアドレスだけを列挙
+# アカウント行（Access: を含む行）のアドレスだけを列挙（Alias・カレンダーは含めない）
 account_list() {
   accounts_output | grep -F 'Access:' | grep -oE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+' | awk '!seen[$0]++'
 }
@@ -205,6 +210,8 @@ cmd_run() {
   if [ "${1:-}" = "--confirm" ]; then confirm=1; shift; fi
   sub="${1:-}"; [ -n "$sub" ] || die "run <spark subcommand> [args...]"
   shift
+  # --confirm は run の直後だけ。後ろに置かれたものは spark に渡さず、ゲートも通さない
+  has_token --confirm "$@" && die "--confirm は 'run' の直後に置いてください（spark には渡しません）"
 
   # ゲートは第 1 引数だけでなく全トークンを見る（`action --date X send 1` や `event --calendar X create` で
   # 位置をずらしても素通りさせない。フォルダ名等が偶然一致した場合は --confirm を付ければ通る）

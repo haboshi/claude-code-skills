@@ -44,6 +44,10 @@ check_desktop() {
     stopped) ng "Spark Desktop が起動していない（override）"; return 1 ;;
     skip)    warn "Spark Desktop の起動判定をスキップ"; return 0 ;;
   esac
+  if [ "$(uname -s)" != "Darwin" ]; then
+    warn "Spark Desktop の起動判定は macOS のみ実装（pgrep）。Windows では spark accounts の成否で判断する"
+    return 0
+  fi
   if pgrep -x "Spark Desktop" >/dev/null 2>&1; then
     ok "Spark Desktop 起動中"
   else
@@ -84,8 +88,8 @@ check_versions() {
   ok "spark CLI $cli"
   skill_file=$(find_use_spark)
   if [ -z "$skill_file" ]; then
-    warn "use-spark スキルが未導入。npx skills add https://github.com/readdle/spark-cli-skills -g -s use-spark -y"
-    return 0
+    ng "use-spark スキル（コマンド正典・必須依存）が未導入。npx skills add https://github.com/readdle/spark-cli-skills -g -s use-spark -y"
+    return 1
   fi
   # bash 3.2 は "$var。" のように非 ASCII が続くと変数名を誤認するため ${var} で囲む
   skill_ver=$(sed -n '/^metadata:/,/^---/p' "${skill_file}" | grep -E '^[[:space:]]*version:' | semver_of)

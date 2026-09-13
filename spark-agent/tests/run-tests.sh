@@ -49,6 +49,12 @@ out=$(bash "$CTX" use nobody@example.com 2>&1)
 echo "$out" | grep -qF "  personal@example.com" && ! echo "$out" | grep -qF "me-alias" && ! echo "$out" | grep -q "祝日" \
   && ok "T3c 候補列挙はアカウント行のみ（Alias・カレンダーを含めない）" || bad "T3c" "$out"
 
+out=$(bash "$CTX" use cal-only@example.com 2>&1); rc=$?
+[ "$rc" -eq 1 ] && echo "$out" | grep -q "見つかりません" && ok "T3d カレンダー行にしか無いアドレスは拒否" || bad "T3d" "rc=$rc out=$out"
+
+out=$(bash "$CTX" use me@example.com 2>&1)
+[ "$out" = "現在アカウント: me@example.com (triage)" ] && ok "T3e 部分文字列を含む先行アカウント（some@）の level を拾わない" || bad "T3e" "$out"
+
 out=$(bash "$CTX" alias set kaisha work@example.com 2>&1) && bash "$CTX" alias set kojin personal@example.com >/dev/null 2>&1
 bash "$CTX" use kojin >/dev/null 2>&1; rc=$?
 out=$(bash "$CTX" show 2>&1)
@@ -124,9 +130,15 @@ out=$(dry thread 42)
 [ "$out" = "$SPARK_BIN thread 42" ] && ok "T21 その他は素通し" || bad "T21" "$out"
 
 # --- 安全ゲート ---
+before=$(wc -l < "$FAKE_CALL_LOG_DIR/spark-calls.log" | tr -d ' ')
 out=$(bash "$CTX" run action send 99 2>&1); rc=$?
-[ "$rc" -eq 3 ] && ! grep -q "action send" "$FAKE_CALL_LOG_DIR/spark-calls.log" 2>/dev/null \
-  && ok "T22 action send は --confirm なしで exit 3・未実行" || bad "T22" "rc=$rc out=$out"
+after=$(wc -l < "$FAKE_CALL_LOG_DIR/spark-calls.log" | tr -d ' ')
+[ "$rc" -eq 3 ] && [ "$before" = "$after" ] && ! grep -qx "action send 99" "$FAKE_CALL_LOG_DIR/spark-calls.log" \
+  && ok "T22 action send は --confirm なしで exit 3・spark は一切呼ばれない" || bad "T22" "rc=$rc before=$before after=$after"
+
+out=$(bash "$CTX" run event create --title T --confirm 2>&1); rc=$?
+[ "$rc" -eq 1 ] && echo "$out" | grep -q "run' の直後" && ! grep -q -- "--confirm" "$FAKE_CALL_LOG_DIR/spark-calls.log" \
+  && ok "T22b 後置の --confirm は拒否され spark に渡らない" || bad "T22b" "rc=$rc out=$out"
 
 out=$(bash "$CTX" run event delete ABC 2>&1); rc=$?
 [ "$rc" -eq 3 ] && ok "T23 event delete も --confirm なしで exit 3" || bad "T23" "rc=$rc"
@@ -177,7 +189,7 @@ out=$(SPARK_BIN=/nonexistent/spark bash "$DOC" 2>&1); rc=$?
   && ok "T30 spark 不在は NG とセットアップ案内" || bad "T30" "rc=$rc out=$out"
 
 out=$(SPARK_AGENT_USE_SPARK="$WORK/none.md" bash "$DOC" 2>&1); rc=$?
-[ "$rc" -eq 0 ] && echo "$out" | grep -q "WARN: use-spark スキルが未導入" && ok "T31 use-spark 未導入は WARN" || bad "T31" "rc=$rc out=$out"
+[ "$rc" -eq 1 ] && echo "$out" | grep -q "NG:   use-spark スキル（コマンド正典・必須依存）が未導入" && ok "T31 use-spark 未導入は NG（必須依存）" || bad "T31" "rc=$rc out=$out"
 
 out=$(FAKE_SPARK_MODE=noaccounts bash "$DOC" 2>&1); rc=$?
 [ "$rc" -eq 1 ] && echo "$out" | grep -q "NG:   spark accounts にアカウントが無い" \

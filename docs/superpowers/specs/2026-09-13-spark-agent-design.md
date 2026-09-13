@@ -136,10 +136,14 @@ frontmatter: `name: spark-agent`、日本語トリガーを含む description、
 - 設計 3.1 の `--delete` は単独オプションのため `--account` を注入しない（Codex コミットレビューの指摘で追加）。
   また `draft --delete` は取り消せないため --confirm ゲートの対象に加えた（セキュリティレビューの指摘で
   ゲート対象の動詞は spark-ctx.sh の `GATED_*` に一元化し、全トークン走査に変更）。
-- 検証結果（2026-09-13）: 決定論テスト 53 件 PASS。実機（個人 Gmail = send、他 5 アカウント = triage）で
-  doctor OK・alias 切替・Priority/未読一覧・thread・自分宛下書きの作成と削除・events/availability・
-  参加者なし予定の作成→変更→削除→消失確認まで PASS。Codex 実走（read-only + rules）は Claude と同じ件数
-  （今日 2 / Priority 未読 0 / 今週 51）。
+- 検証結果（2026-09-13、最終 466a74e）: 決定論テスト 92 件 PASS（静的検査含む）。実機（個人 Gmail = send、
+  他 5 アカウント = triage）で doctor OK・alias 切替・未読一覧・thread・自分宛下書きの作成と削除（--confirm
+  ゲート含む）・events/availability・参加者なし予定の作成→変更→削除→消失確認まで PASS。Codex 実走
+  （read-only + rules）は Claude と同じ件数（今週の予定 31 件）。外部評価 /evaluate は spark-ctx.sh・
+  install-codex-rules.sh・spark-doctor.sh + workflows.md の 3 分割で Codex / Grok とも PASS（8 ラウンド、
+  指摘 20 件超に対応）。
+- Codex の同一セッションで spark コマンドを連続実行すると 2 本目以降が応答待ちになることがある（再現条件未確定）。
+  SKILL.md に「1 依頼 1〜2 コマンドに分ける」と注記。
 
 ## 6. 環境構築（GUI）
 

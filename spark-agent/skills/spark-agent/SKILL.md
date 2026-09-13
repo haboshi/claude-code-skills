@@ -108,6 +108,9 @@ bash scripts/install-codex-rules.sh      # ~/.codex/rules/spark-agent.rules を�
   `--dangerously-bypass-approvals-and-sandbox` を付けても承認ポリシー Never として拒否され、実行されない。
   つまり書き込み系（下書き・`draft --delete`・イベント変更・送信）は**対話セッションの Codex で承認して実行する**。
   `codex exec` からは読み取りだけを扱う。
+- 同じ `codex exec` セッションで spark コマンドを続けて叩くと、2 本目以降が「IPC が応答しない」で止まることが
+  ある（単体なら 0.1 秒で返る。Claude Code 側からは常に通る）。再現条件は未確定。Codex から使うときは
+  1 依頼 1〜2 コマンドに分け、止まったら分割して再実行する。
 - `--allow-scripts` を付けないと `spark-ctx` 経由の読み取りも `prompt` になり、`codex exec` では止まる。
   Codex から自動で使う運用では `--allow-scripts` を付ける（作業ツリー内でスクリプトを書き換えられる
   セッションでは脱出経路になることを理解した上で）。

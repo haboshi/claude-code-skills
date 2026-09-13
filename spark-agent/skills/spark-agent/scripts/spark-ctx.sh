@@ -34,8 +34,13 @@ usage() {
 
 die() { echo "spark-ctx: $*" >&2; exit 1; }
 
+# 文脈ファイルが無ければ空（Unified）。あるのに読めないときは失敗（rc 2）にし、呼び出し側で止める
 current_account() {
-  [ -f "$CTX_FILE" ] || return 0
+  [ -e "$CTX_FILE" ] || return 0
+  if [ ! -r "$CTX_FILE" ]; then
+    echo "spark-ctx: 文脈ファイルを読めません: ${CTX_FILE}（権限を確認してください）" >&2
+    return 2
+  fi
   sed -n 's/^account=//p' "$CTX_FILE" | head -1
 }
 
@@ -107,7 +112,7 @@ cmd_use() {
 
 cmd_show() {
   local acct
-  acct=$(current_account)
+  acct=$(current_account) || exit 2
   if [ -z "$acct" ]; then
     echo "現在アカウント: (未設定。Unified 横断で実行)"
     return 0
@@ -172,12 +177,28 @@ has_flag() {
   return 1
 }
 
-# 値を取るフラグ（emails / folders / search / events 共通で十分な集合）
+# 値を取るフラグ（emails / folders / search / events / event で使う集合。use-spark 1.3.1）
 is_value_flag() {
   case "$1" in
     --filter|--page|--page-size|--order|--in|--start|--end|--account|--calendar) return 0 ;;
+    --title|--description|--alerts|--location|--video-conference|--add|--remove|--date|--attendees) return 0 ;;
     *) return 1 ;;
   esac
+}
+
+# event のモード（create/update/delete/rsvp）。値付きオプションの値は読み飛ばし、`--title create` を
+# モードと誤認しない。位置は問わない。見つからなければ空
+event_mode() {
+  local skip=0 a
+  for a in "$@"; do
+    if [ "$skip" -eq 1 ]; then skip=0; continue; fi
+    case "$a" in
+      --*=*) continue ;;
+      --*) is_value_flag "$a" && skip=1; continue ;;
+      create|update|delete|rsvp) echo "$a"; return 0 ;;
+    esac
+  done
+  return 0
 }
 
 # 最初の位置引数のインデックス（1 始まり）を出す。無ければ 0
@@ -228,6 +249,8 @@ cmd_run() {
 
   # ゲートは第 1 引数だけでなく全トークンを見る（`action --date X send 1` や `event --calendar X create` で
   # 位置をずらしても素通りさせない。フォルダ名等が偶然一致した場合は --confirm を付ければ通る）
+  # ゲートは保守的に「どのトークンにあっても」止める（値に偶然含まれた場合の過剰検出は --confirm で通る）。
+  # 注入側は event_mode で実際のモードを判定する（値を誤認して注入しない）
   if [ "$confirm" -eq 0 ]; then
     case "$sub" in
       action) for v in $GATED_ACTION_VERBS; do has_token "$v" "$@" && guard_fail action "$v"; done ;;
@@ -236,7 +259,7 @@ cmd_run() {
     esac
   fi
 
-  acct=$(current_account)
+  acct=$(current_account) || exit 2   # 文脈ファイルが読めないときは Unified に落とさず止める
   if [ -z "$acct" ]; then
     echo "spark-ctx: 文脈なし。Unified（全アカウント）で実行します" >&2
     exec_spark "$sub" "$@"
@@ -257,8 +280,8 @@ cmd_run() {
         exec_spark draft --account "$acct" "$@"
       fi ;;
     event)
-      # モードの位置はゲートと同じく問わない（`event --title X create` でも注入する）
-      if has_token create "$@" && ! has_flag --calendar "$@"; then
+      # モードの位置は問わないが、オプションの値（`--title create`）はモードとみなさない
+      if [ "$(event_mode "$@")" = "create" ] && ! has_flag --calendar "$@"; then
         exec_spark event "$@" --calendar "$acct"
       else
         exec_spark event "$@"

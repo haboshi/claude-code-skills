@@ -130,6 +130,13 @@ out=$(dry --confirm event --title T create --start 2026-09-15T10:00)
 [ "$out" = "$SPARK_BIN event --title T create --start 2026-09-15T10:00 --calendar personal@example.com" ] \
   && ok "T20b event の create が後方にあっても --calendar を注入" || bad "T20b" "$out"
 
+out=$(dry --confirm event update ABC --title create)
+[ "$out" = "$SPARK_BIN event update ABC --title create" ] && ok "T20d オプションの値 'create' をモードと誤認して注入しない" || bad "T20d" "$out"
+
+out=$(dry --confirm event --all-day create --title T --start 2026-09-20)
+[ "$out" = "$SPARK_BIN event --all-day create --title T --start 2026-09-20 --calendar personal@example.com" ] \
+  && ok "T20e 真偽フラグ（--all-day）を読み飛ばしてモードを判定" || bad "T20e" "$out"
+
 out=$(dry --confirm event create --title T --calendar=x@example.com)
 [ "$out" = "$SPARK_BIN event create --title T --calendar=x@example.com" ] && ok "T20c --calendar=値 形式があれば二重注入しない" || bad "T20c" "$out"
 
@@ -185,6 +192,14 @@ out=$(SPARK_AGENT_DRY_RUN=1 bash "$CTX" run emails --filter "is:unread" 2>"$WORK
 
 out=$(SPARK_AGENT_HOME="$WORK/rocl" bash -c 'mkdir -p "$SPARK_AGENT_HOME/context" && bash "$0" clear' "$CTX" 2>&1); rc=$?
 [ "$rc" -eq 1 ] && echo "$out" | grep -q "文脈を消せません" && ok "T26b clear の失敗は非ゼロで終了し成功表示しない" || bad "T26b" "rc=$rc out=$out"
+
+mkdir -p "$WORK/unread" && printf 'account=work@example.com\n' > "$WORK/unread/context" && chmod 000 "$WORK/unread/context"
+before=$(wc -l < "$FAKE_CALL_LOG_DIR/spark-calls.log" | tr -d ' ')
+out=$(SPARK_AGENT_HOME="$WORK/unread" bash "$CTX" run emails 2>&1); rc=$?
+after=$(wc -l < "$FAKE_CALL_LOG_DIR/spark-calls.log" | tr -d ' ')
+chmod 600 "$WORK/unread/context"
+[ "$rc" -eq 2 ] && [ "$before" = "$after" ] && echo "$out" | grep -q "読めません" \
+  && ok "T26c 文脈ファイルが読めないときは Unified に落とさず spark を呼ばない" || bad "T26c" "rc=$rc out=$out"
 
 # --- doctor ---
 bash "$CTX" use work@example.com >/dev/null 2>&1

@@ -37,7 +37,20 @@ esac
 # allow に書けるのは「信頼できる配置先の実体」に限る。エージェントが書き換えられる場所（ホーム配下・作業ツリー）の
 # 実行ファイルを無確認実行の対象にしない。symlink は実体で判定する（実機の spark は /usr/local/bin から
 # /Applications/Spark Desktop.app/... への symlink）。
-SPARK_REAL=$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$SPARK_ABS" 2>/dev/null || echo "$SPARK_ABS")
+# symlink の実体を解決する。解決できないときは検査をすり抜けさせず中止する（fail-closed）
+SPARK_REAL=""
+if command -v python3 >/dev/null 2>&1; then
+  SPARK_REAL=$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$SPARK_ABS" 2>/dev/null || true)
+fi
+if [ -z "$SPARK_REAL" ] && command -v perl >/dev/null 2>&1; then
+  SPARK_REAL=$(perl -MCwd=abs_path -e 'print abs_path($ARGV[0]) // ""' "$SPARK_ABS" 2>/dev/null || true)
+fi
+case "$SPARK_REAL" in
+  /*) ;;
+  *) echo "install-codex-rules: spark の実体（symlink 解決後の絶対パス）を求められません: ${SPARK_ABS}。既存の ${OUT} は変更していません" >&2; exit 1 ;;
+esac
+[ -f "$SPARK_REAL" ] && [ -x "$SPARK_REAL" ] || {
+  echo "install-codex-rules: spark の実体が実行可能なファイルではありません: ${SPARK_REAL}" >&2; exit 1; }
 # 既定の信頼配置先。管理者が別の配置を使う場合と、テストのために上書きできる（空白区切り）
 TRUSTED_PREFIXES="${SPARK_AGENT_TRUSTED_PREFIXES:-/Applications/ /usr/local/bin/ /usr/local/libexec/ /opt/homebrew/bin/ /usr/bin/ /bin/ /System/}"
 trusted=0

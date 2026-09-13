@@ -118,9 +118,14 @@ resolve_alias() {
   SPARK_CTX_MATCH="$1" awk -F= '$1==ENVIRON["SPARK_CTX_MATCH"] { sub(/^[^=]*=/, ""); print; exit }' "$ALIAS_FILE"
 }
 
+# 指定 alias 以外の行を返す。読取に失敗したら非ゼロ（呼び出し側で保存を中止するため）
 alias_without() {
+  local content
   [ -f "$ALIAS_FILE" ] || return 0
-  SPARK_CTX_MATCH="$1" awk -F= '$1!=ENVIRON["SPARK_CTX_MATCH"]' "$ALIAS_FILE"
+  [ -r "$ALIAS_FILE" ] || return 1
+  content=$(cat "$ALIAS_FILE" 2>/dev/null) || return 1
+  [ -n "$content" ] || return 0
+  printf '%s\n' "$content" | SPARK_CTX_MATCH="$1" awk -F= '$1!=ENVIRON["SPARK_CTX_MATCH"]'
 }
 
 cmd_use() {
@@ -173,7 +178,7 @@ cmd_clear() {
 }
 
 cmd_alias() {
-  local sub name email
+  local sub name email rest
   sub="${1:-list}"; shift || true
   case "$sub" in
     set)
@@ -182,8 +187,11 @@ cmd_alias() {
       case "$name" in *=*|*" "*) die "alias 名に '=' と空白は使えません" ;; esac
       mkdir -p "$STATE_DIR" || die "状態ディレクトリを作成できません"
       touch "$ALIAS_FILE"
-      { alias_without "$name"; printf '%s=%s\n' "$name" "$email"; } > "$ALIAS_FILE.tmp" || die "alias を保存できません"
-      mv "$ALIAS_FILE.tmp" "$ALIAS_FILE" || die "alias を保存できません"
+      # 既存 alias の読取に失敗したら保存しない（1 件で上書きして他を失わない）
+      rest=$(alias_without "$name") || die "既存の alias を読めません: ${ALIAS_FILE}（保存を中止しました）"
+      { [ -n "$rest" ] && printf '%s\n' "$rest"; printf '%s=%s\n' "$name" "$email"; } > "$ALIAS_FILE.tmp" 2>/dev/null \
+        || die "alias を保存できません"
+      mv -f "$ALIAS_FILE.tmp" "$ALIAS_FILE" || { rm -f "$ALIAS_FILE.tmp"; die "alias を保存できません"; }
       echo "alias $name -> $email"
       ;;
     list)
@@ -192,8 +200,9 @@ cmd_alias() {
     rm)
       name="${1:-}"; [ -n "$name" ] || die "alias rm <name>"
       [ -f "$ALIAS_FILE" ] || exit 0
-      alias_without "$name" > "$ALIAS_FILE.tmp" || die "alias を保存できません"
-      mv "$ALIAS_FILE.tmp" "$ALIAS_FILE" || die "alias を保存できません"
+      rest=$(alias_without "$name") || die "既存の alias を読めません: ${ALIAS_FILE}（削除を中止しました）"
+      { [ -n "$rest" ] && printf '%s\n' "$rest"; } > "$ALIAS_FILE.tmp" 2>/dev/null || die "alias を保存できません"
+      mv -f "$ALIAS_FILE.tmp" "$ALIAS_FILE" || { rm -f "$ALIAS_FILE.tmp"; die "alias を保存できません"; }
       echo "alias $name を削除"
       ;;
     *) die "alias set|list|rm" ;;

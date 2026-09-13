@@ -68,6 +68,16 @@ out=$(bash "$CTX" alias set 'a=b' x@example.com 2>&1); rc=$?
 [ "$rc" -eq 1 ] && ok "T6 alias 名の '=' を拒否" || bad "T6" "rc=$rc out=$out"
 
 # awk -v はバックスラッシュをエスケープとして解釈するため、ENVIRON 経由で照合する必要がある
+printf 'keep1=a@example.com\nkeep2=b@example.com\n' > "$WORK/home/aliases"
+chmod 000 "$WORK/home/aliases"
+out=$(bash "$CTX" alias set new c@example.com 2>&1); rc=$?
+chmod 600 "$WORK/home/aliases"
+[ "$rc" -eq 1 ] && echo "$out" | grep -q "既存の alias を読めません" && [ "$(wc -l < "$WORK/home/aliases" | tr -d ' ')" = "2" ] \
+  && ok "T6e 既存 alias が読めないときは保存を中止し 1 件で上書きしない" || bad "T6e" "rc=$rc out=$out"
+rm -f "$WORK/home/aliases"
+bash "$CTX" alias set kaisha work@example.com >/dev/null 2>&1
+bash "$CTX" alias set kojin personal@example.com >/dev/null 2>&1
+
 out=$(bash "$CTX" use 'me@example.com\t' 2>&1); rc=$?
 cur=$(bash "$CTX" show 2>&1)
 [ "$rc" -eq 1 ] && echo "$out" | grep -q "見つかりません" && ! echo "$cur" | grep -qF 'me@example.com\t' \
@@ -308,6 +318,14 @@ if command -v codex >/dev/null 2>&1; then
     && ok "T35c 相対パスの SPARK_BIN は拒否し既存 rules を保持" || bad "T35c" "rc=$rc out=$out"
   out=$(SPARK_BIN="$WORK/not-executable" SPARK_AGENT_CODEX_RULES="$WORK/x.rules" bash "$SCRIPTS/install-codex-rules.sh" --yes 2>&1); rc=$?
   [ "$rc" -eq 1 ] && [ ! -f "$WORK/x.rules" ] && ok "T35d 実行可能でない SPARK_BIN は生成前に拒否" || bad "T35d" "rc=$rc out=$out"
+
+  # 信頼配置先にある symlink が、信頼外（ホーム相当）を指しているケース
+  mkdir -p "$WORK/untrusted-home" && cp "$TESTS_DIR/fakes/spark" "$WORK/untrusted-home/spark" && chmod +x "$WORK/untrusted-home/spark"
+  ln -sf "$WORK/untrusted-home/spark" "$TESTS_DIR/fakes/spark-link"
+  out=$(SPARK_BIN="$TESTS_DIR/fakes/spark-link" SPARK_AGENT_CODEX_RULES="$WORK/link.rules" bash "$SCRIPTS/install-codex-rules.sh" --yes 2>&1); rc=$?
+  rm -f "$TESTS_DIR/fakes/spark-link"
+  [ "$rc" -eq 1 ] && [ ! -f "$WORK/link.rules" ] && echo "$out" | grep -q "信頼できる配置先" \
+    && ok "T35f 信頼配置先の symlink でも実体が信頼外なら拒否" || bad "T35f" "rc=$rc out=$out"
 
   out=$(SPARK_AGENT_CODEX_RULES="$WORK/none.rules" bash "$DOC" 2>&1); rc=$?
   echo "$out" | grep -q "WARN: Codex rules が未導入" && ok "T34 Codex rules 未導入は WARN" || bad "T34" "out=$out"

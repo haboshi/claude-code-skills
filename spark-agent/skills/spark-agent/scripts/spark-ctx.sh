@@ -36,12 +36,18 @@ die() { echo "spark-ctx: $*" >&2; exit 1; }
 
 # 文脈ファイルが無ければ空（Unified）。あるのに読めないときは失敗（rc 2）にし、呼び出し側で止める
 current_account() {
+  local content
   [ -e "$CTX_FILE" ] || return 0
-  if [ ! -r "$CTX_FILE" ]; then
-    echo "spark-ctx: 文脈ファイルを読めません: ${CTX_FILE}（権限を確認してください）" >&2
+  if [ ! -f "$CTX_FILE" ] || [ ! -r "$CTX_FILE" ]; then
+    echo "spark-ctx: 文脈ファイルが通常ファイルでないか読めません: ${CTX_FILE}" >&2
     return 2
   fi
-  sed -n 's/^account=//p' "$CTX_FILE" | head -1
+  # 読取は単一コマンドで行い、その終了状態を見る（パイプ末尾の成功で失敗を隠さない）
+  if ! content=$(cat "$CTX_FILE" 2>/dev/null); then
+    echo "spark-ctx: 文脈ファイルの読取に失敗: ${CTX_FILE}" >&2
+    return 2
+  fi
+  printf '%s\n' "$content" | sed -n 's/^account=//p' | head -1
 }
 
 accounts_output() {

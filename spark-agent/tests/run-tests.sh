@@ -201,6 +201,15 @@ chmod 600 "$WORK/unread/context"
 [ "$rc" -eq 2 ] && [ "$before" = "$after" ] && echo "$out" | grep -q "読めません" \
   && ok "T26c 文脈ファイルが読めないときは Unified に落とさず spark を呼ばない" || bad "T26c" "rc=$rc out=$out"
 
+mkdir -p "$WORK/dirctx/context"
+before=$(wc -l < "$FAKE_CALL_LOG_DIR/spark-calls.log" | tr -d ' ')
+out=$(SPARK_AGENT_HOME="$WORK/dirctx" bash "$CTX" run emails 2>&1); rc=$?
+after=$(wc -l < "$FAKE_CALL_LOG_DIR/spark-calls.log" | tr -d ' ')
+[ "$rc" -eq 2 ] && [ "$before" = "$after" ] && echo "$out" | grep -q "通常ファイルでない" \
+  && ok "T26d 文脈がディレクトリ（読取可能）でも Unified に落とさず spark を呼ばない" || bad "T26d" "rc=$rc out=$out"
+out=$(SPARK_AGENT_HOME="$WORK/dirctx" bash "$CTX" show 2>&1); rc=$?
+[ "$rc" -eq 2 ] && ok "T26e show も同様に rc 2" || bad "T26e" "rc=$rc out=$out"
+
 # --- doctor ---
 bash "$CTX" use work@example.com >/dev/null 2>&1
 out=$(bash "$DOC" 2>&1); rc=$?

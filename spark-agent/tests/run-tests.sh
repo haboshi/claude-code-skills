@@ -67,6 +67,12 @@ out=$(bash "$CTX" use nanika 2>&1); rc=$?
 out=$(bash "$CTX" alias set 'a=b' x@example.com 2>&1); rc=$?
 [ "$rc" -eq 1 ] && ok "T6 alias 名の '=' を拒否" || bad "T6" "rc=$rc out=$out"
 
+# awk -v はバックスラッシュをエスケープとして解釈するため、ENVIRON 経由で照合する必要がある
+out=$(bash "$CTX" use 'me@example.com\t' 2>&1); rc=$?
+cur=$(bash "$CTX" show 2>&1)
+[ "$rc" -eq 1 ] && echo "$out" | grep -q "見つかりません" && ! echo "$cur" | grep -qF 'me@example.com\t' \
+  && ok "T6d バックスラッシュを含む入力は一致させない（awk のエスケープ解釈を回避）" || bad "T6d" "rc=$rc cur=$cur"
+
 bash "$CTX" alias set work.prod work@example.com >/dev/null 2>&1; bash "$CTX" alias set workXprod client@example.com >/dev/null 2>&1
 bash "$CTX" use work.prod >/dev/null 2>&1
 out=$(bash "$CTX" show 2>&1)
@@ -285,6 +291,13 @@ out=$(SPARK_AGENT_CTX_SCRIPT="$WORK/missing-ctx.sh" bash "$DOC" 2>&1); rc=$?
 [ "$rc" -eq 1 ] && echo "$out" | grep -q "NG:   spark-ctx.sh が見つからない" && ok "T31b spark-ctx 欠落は NG（必須の実行経路）" || bad "T31b" "rc=$rc out=$out"
 
 if command -v codex >/dev/null 2>&1; then
+  # 既定の信頼配置先では、作業ツリー内の fake spark は allow に登録できない
+  out=$(SPARK_AGENT_CODEX_RULES="$WORK/untrusted.rules" bash "$SCRIPTS/install-codex-rules.sh" --yes 2>&1); rc=$?
+  [ "$rc" -eq 1 ] && [ ! -f "$WORK/untrusted.rules" ] && echo "$out" | grep -q "信頼できる配置先" \
+    && ok "T35e 作業ツリー内の実行ファイルは allow に登録しない（既定の信頼配置先）" || bad "T35e" "rc=$rc out=$out"
+  # 以降の rules テストは、テスト用の信頼配置先を明示して実行する
+  export SPARK_AGENT_TRUSTED_PREFIXES="$TESTS_DIR/fakes/"
+
   printf 'garbage(\n' > "$WORK/existing.rules"; cp "$WORK/existing.rules" "$WORK/keep.rules"
   out=$(SPARK_AGENT_CODEX_RULES="$WORK/keep.rules" SPARK_AGENT_BREAK_RULES=1 bash "$SCRIPTS/install-codex-rules.sh" --yes 2>&1); rc=$?
   cmp -s "$WORK/existing.rules" "$WORK/keep.rules" && [ "$rc" -eq 1 ] && echo "$out" | grep -q "変更していません" \

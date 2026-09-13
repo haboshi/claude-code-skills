@@ -33,6 +33,36 @@ case "$SPARK_ABS" in
         echo "install-codex-rules: spark が実行可能なファイルではありません: $SPARK_ABS" >&2; exit 1; } ;;
   *)  echo "install-codex-rules: spark の絶対パスを解決できません（SPARK_BIN=${SPARK_ABS}）。絶対パスで指定してください" >&2; exit 1 ;;
 esac
+
+# allow に書けるのは「信頼できる配置先の実体」に限る。エージェントが書き換えられる場所（ホーム配下・作業ツリー）の
+# 実行ファイルを無確認実行の対象にしない。symlink は実体で判定する（実機の spark は /usr/local/bin から
+# /Applications/Spark Desktop.app/... への symlink）。
+SPARK_REAL=$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$SPARK_ABS" 2>/dev/null || echo "$SPARK_ABS")
+# 既定の信頼配置先。管理者が別の配置を使う場合と、テストのために上書きできる（空白区切り）
+TRUSTED_PREFIXES="${SPARK_AGENT_TRUSTED_PREFIXES:-/Applications/ /usr/local/bin/ /usr/local/libexec/ /opt/homebrew/bin/ /usr/bin/ /bin/ /System/}"
+trusted=0
+for p in $TRUSTED_PREFIXES; do
+  case "$SPARK_REAL" in "$p"*) trusted=1; break ;; esac
+done
+if [ "$trusted" -ne 1 ]; then
+  cat >&2 <<EOF
+install-codex-rules: spark の実体が信頼できる配置先にありません。
+  指定: ${SPARK_ABS}
+  実体: ${SPARK_REAL}
+信頼する配置先: ${TRUSTED_PREFIXES}
+ホーム配下や作業ツリー内の実行ファイルを無確認実行（allow）の対象にはできません。
+EOF
+  exit 1
+fi
+
+# Starlark 文字列に引用符・バックスラッシュ・制御文字を含むパスは埋め込まない（生成物が壊れるため事前に拒否）
+for p in "$SPARK_ABS" "$CTX" "$DOCTOR"; do
+  case "$p" in
+    *\"*|*\\*) echo "install-codex-rules: パスに \" や \\ を含むため rules を生成できません: $p" >&2; exit 1 ;;
+  esac
+  printf '%s' "$p" | LC_ALL=C grep -q '[[:cntrl:]]' && {
+    echo "install-codex-rules: パスに制御文字が含まれます: $p" >&2; exit 1; }
+done
 RULES_DIR="${CODEX_HOME:-$HOME/.codex}/rules"
 OUT="${SPARK_AGENT_CODEX_RULES:-$RULES_DIR/spark-agent.rules}"
 YES=0; SCRIPT_DECISION="prompt"

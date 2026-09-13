@@ -90,16 +90,18 @@ account_entries() {
 }
 
 # 0: 存在 / 1: 不在 / 2: spark accounts が失敗
+# 照合は ENVIRON 経由で渡す（awk -v は値中の \t 等をエスケープとして解釈するため、
+# `a\tb` のような入力が別の文字列と一致しうる）
 account_exists() {
   local entries
   entries=$(account_entries) || return 2
-  printf '%s\n' "$entries" | awk -v e="$1" '$1==e { found=1; exit } END { exit !found }'
+  printf '%s\n' "$entries" | SPARK_CTX_MATCH="$1" awk '$1==ENVIRON["SPARK_CTX_MATCH"] { found=1; exit } END { exit !found }'
 }
 
 account_level() {
   local entries lv
   entries=$(account_entries) || { echo "unknown: spark accounts が失敗"; return 0; }
-  lv=$(printf '%s\n' "$entries" | awk -v e="$1" '$1==e { print $2; exit }')
+  lv=$(printf '%s\n' "$entries" | SPARK_CTX_MATCH="$1" awk '$1==ENVIRON["SPARK_CTX_MATCH"] { print $2; exit }')
   echo "${lv:-unknown}"
 }
 
@@ -113,12 +115,12 @@ account_list() {
 # alias 名は '=' より前を文字列として完全一致（正規表現として解釈しない）
 resolve_alias() {
   [ -f "$ALIAS_FILE" ] || return 0
-  awk -F= -v n="$1" '$1==n { sub(/^[^=]*=/, ""); print; exit }' "$ALIAS_FILE"
+  SPARK_CTX_MATCH="$1" awk -F= '$1==ENVIRON["SPARK_CTX_MATCH"] { sub(/^[^=]*=/, ""); print; exit }' "$ALIAS_FILE"
 }
 
 alias_without() {
   [ -f "$ALIAS_FILE" ] || return 0
-  awk -F= -v n="$1" '$1!=n' "$ALIAS_FILE"
+  SPARK_CTX_MATCH="$1" awk -F= '$1!=ENVIRON["SPARK_CTX_MATCH"]' "$ALIAS_FILE"
 }
 
 cmd_use() {
@@ -158,7 +160,7 @@ cmd_show() {
   fi
   echo "現在アカウント: $acct ($(account_level "$acct"))"
   if [ -f "$ALIAS_FILE" ]; then
-    awk -F= -v a="$acct" '$2==a { print "alias: " $1 }' "$ALIAS_FILE"
+    SPARK_CTX_MATCH="$acct" awk -F= '$2==ENVIRON["SPARK_CTX_MATCH"] { print "alias: " $1 }' "$ALIAS_FILE"
   fi
 }
 

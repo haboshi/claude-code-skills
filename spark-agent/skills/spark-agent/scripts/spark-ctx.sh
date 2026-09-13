@@ -98,9 +98,11 @@ account_exists() {
   printf '%s\n' "$entries" | SPARK_CTX_MATCH="$1" awk '$1==ENVIRON["SPARK_CTX_MATCH"] { found=1; exit } END { exit !found }'
 }
 
+# 表示専用。権限の分岐やゲート判定には使わない（ゲートは GATED_* と --confirm、実際の可否は Spark 側が強制する）。
+# spark accounts が失敗しても表示のために unknown を返す。可否判定に使う場合は account_exists の rc を見ること。
 account_level() {
   local entries lv
-  entries=$(account_entries) || { echo "unknown: spark accounts が失敗"; return 0; }
+  entries=$(account_entries) || { echo "unknown（spark accounts が失敗）"; return 0; }
   lv=$(printf '%s\n' "$entries" | SPARK_CTX_MATCH="$1" awk '$1==ENVIRON["SPARK_CTX_MATCH"] { print $2; exit }')
   echo "${lv:-unknown}"
 }

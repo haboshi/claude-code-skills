@@ -327,6 +327,19 @@ if command -v codex >/dev/null 2>&1; then
   [ "$rc" -eq 1 ] && [ ! -f "$WORK/link.rules" ] && echo "$out" | grep -q "信頼できる配置先" \
     && ok "T35f 信頼配置先の symlink でも実体が信頼外なら拒否" || bad "T35f" "rc=$rc out=$out"
 
+  # 逆向き: 信頼外（作業ツリー相当）の symlink が信頼配置先の実体を指すケース。後でリンクを差し替えられるため拒否する
+  ln -sf "$TESTS_DIR/fakes/spark" "$WORK/untrusted-home/spark-link"
+  out=$(SPARK_BIN="$WORK/untrusted-home/spark-link" SPARK_AGENT_CODEX_RULES="$WORK/link2.rules" bash "$SCRIPTS/install-codex-rules.sh" --yes 2>&1); rc=$?
+  [ "$rc" -eq 1 ] && [ ! -f "$WORK/link2.rules" ] && echo "$out" | grep -q "信頼できる配置先" \
+    && ok "T35g 信頼外に置かれた symlink は実体が信頼先でも拒否（後の差し替え対策）" || bad "T35g" "rc=$rc out=$out"
+
+  # 実体解決に失敗する経路（壊れた symlink）は生成せず既存を保持する
+  printf 'keep\n' > "$WORK/broken.rules"
+  ln -sf "$WORK/no-such-target" "$TESTS_DIR/fakes/spark-broken"
+  out=$(SPARK_BIN="$TESTS_DIR/fakes/spark-broken" SPARK_AGENT_CODEX_RULES="$WORK/broken.rules" bash "$SCRIPTS/install-codex-rules.sh" --yes 2>&1); rc=$?
+  rm -f "$TESTS_DIR/fakes/spark-broken"
+  [ "$rc" -eq 1 ] && grep -qx keep "$WORK/broken.rules" && ok "T35h 壊れた symlink は生成せず既存 rules を保持" || bad "T35h" "rc=$rc out=$out"
+
   out=$(SPARK_AGENT_CODEX_RULES="$WORK/none.rules" bash "$DOC" 2>&1); rc=$?
   echo "$out" | grep -q "WARN: Codex rules が未導入" && ok "T34 Codex rules 未導入は WARN" || bad "T34" "out=$out"
   out=$(SPARK_AGENT_CODEX_RULES="$WORK/gen.rules" bash "$SCRIPTS/install-codex-rules.sh" 2>&1); rc=$?

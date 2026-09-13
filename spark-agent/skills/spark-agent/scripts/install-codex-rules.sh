@@ -21,6 +21,8 @@ set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
 CTX="$HERE/spark-ctx.sh"
 DOCTOR="$HERE/spark-doctor.sh"
+RULES_DIR="${CODEX_HOME:-$HOME/.codex}/rules"
+OUT="${SPARK_AGENT_CODEX_RULES:-$RULES_DIR/spark-agent.rules}"
 # allow は実行ファイルを絶対パスで固定する（bare "spark" は PATH 差し替えで別バイナリになり得るため prompt）
 if [ -n "${SPARK_BIN:-}" ]; then SPARK_ABS="$SPARK_BIN"
 elif [ -x /usr/local/bin/spark ]; then SPARK_ABS=/usr/local/bin/spark
@@ -53,20 +55,27 @@ esac
   echo "install-codex-rules: spark の実体が実行可能なファイルではありません: ${SPARK_REAL}" >&2; exit 1; }
 # 既定の信頼配置先。管理者が別の配置を使う場合と、テストのために上書きできる（空白区切り）
 TRUSTED_PREFIXES="${SPARK_AGENT_TRUSTED_PREFIXES:-/Applications/ /usr/local/bin/ /usr/local/libexec/ /opt/homebrew/bin/ /usr/bin/ /bin/ /System/}"
-trusted=0
-for p in $TRUSTED_PREFIXES; do
-  case "$SPARK_REAL" in "$p"*) trusted=1; break ;; esac
-done
-if [ "$trusted" -ne 1 ]; then
-  cat >&2 <<EOF
-install-codex-rules: spark の実体が信頼できる配置先にありません。
+# allow に書くパス（SPARK_ABS）と、その実体（SPARK_REAL）の両方を検査する。
+# 実体だけを見ると、作業ツリー内の symlink が信頼先を指している間に登録され、後でリンクを差し替えると
+# 別プログラムが無確認実行される。allow に書くパス自体が書き換え可能な場所にあってはならない。
+for target in "$SPARK_ABS" "$SPARK_REAL"; do
+  trusted=0
+  for p in $TRUSTED_PREFIXES; do
+    case "$target" in "$p"*) trusted=1; break ;; esac
+  done
+  if [ "$trusted" -ne 1 ]; then
+    cat >&2 <<EOF
+install-codex-rules: spark が信頼できる配置先にありません（allow に登録できません）。
   指定: ${SPARK_ABS}
   実体: ${SPARK_REAL}
+  該当: ${target}
 信頼する配置先: ${TRUSTED_PREFIXES}
-ホーム配下や作業ツリー内の実行ファイルを無確認実行（allow）の対象にはできません。
+ホーム配下や作業ツリー内の実行ファイル（およびそこに置かれた symlink）は無確認実行の対象にできません。
+既存の ${OUT} は変更していません。
 EOF
-  exit 1
-fi
+    exit 1
+  fi
+done
 
 # Starlark 文字列に引用符・バックスラッシュ・制御文字を含むパスは埋め込まない（生成物が壊れるため事前に拒否）
 for p in "$SPARK_ABS" "$CTX" "$DOCTOR"; do
@@ -76,8 +85,6 @@ for p in "$SPARK_ABS" "$CTX" "$DOCTOR"; do
   printf '%s' "$p" | LC_ALL=C grep -q '[[:cntrl:]]' && {
     echo "install-codex-rules: パスに制御文字が含まれます: $p" >&2; exit 1; }
 done
-RULES_DIR="${CODEX_HOME:-$HOME/.codex}/rules"
-OUT="${SPARK_AGENT_CODEX_RULES:-$RULES_DIR/spark-agent.rules}"
 YES=0; SCRIPT_DECISION="prompt"
 for a in "$@"; do
   case "$a" in

@@ -23,6 +23,18 @@ CTX="$HERE/spark-ctx.sh"
 DOCTOR="$HERE/spark-doctor.sh"
 RULES_DIR="${CODEX_HOME:-$HOME/.codex}/rules"
 OUT="${SPARK_AGENT_CODEX_RULES:-$RULES_DIR/spark-agent.rules}"
+
+# 引数解析は依存コマンドの検査より先に行う（spark 未導入でも --help を出せるようにする）
+YES=0; SCRIPT_DECISION="prompt"
+for a in "$@"; do
+  case "$a" in
+    --yes) YES=1 ;;
+    --allow-scripts) SCRIPT_DECISION="allow" ;;
+    -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "install-codex-rules: 不明な引数 $a" >&2; exit 1 ;;
+  esac
+done
+
 # allow は実行ファイルを絶対パスで固定する（bare "spark" は PATH 差し替えで別バイナリになり得るため prompt）
 if [ -n "${SPARK_BIN:-}" ]; then SPARK_ABS="$SPARK_BIN"
 elif [ -x /usr/local/bin/spark ]; then SPARK_ABS=/usr/local/bin/spark
@@ -39,6 +51,13 @@ esac
 # allow に書けるのは「信頼できる配置先の実体」に限る。エージェントが書き換えられる場所（ホーム配下・作業ツリー）の
 # 実行ファイルを無確認実行の対象にしない。symlink は実体で判定する（実機の spark は /usr/local/bin から
 # /Applications/Spark Desktop.app/... への symlink）。
+#
+# まず ".." や "." を含むパスを拒否する。/usr/local/bin/../../<ホーム配下> のようなパスが前方一致検査を
+# すり抜けるのを防ぐ（symlink はここでは解決しない。それは SPARK_REAL の役目）
+case "$SPARK_ABS" in
+  */../*|*/..|*/./*|*/.|*//*) echo "install-codex-rules: パスに .. や . や // が含まれます。正規化した絶対パスで指定してください: ${SPARK_ABS}" >&2; exit 1 ;;
+esac
+
 # symlink の実体を解決する。解決できないときは検査をすり抜けさせず中止する（fail-closed）
 SPARK_REAL=""
 if command -v python3 >/dev/null 2>&1; then
@@ -84,15 +103,6 @@ for p in "$SPARK_ABS" "$CTX" "$DOCTOR"; do
   esac
   printf '%s' "$p" | LC_ALL=C grep -q '[[:cntrl:]]' && {
     echo "install-codex-rules: パスに制御文字が含まれます: $p" >&2; exit 1; }
-done
-YES=0; SCRIPT_DECISION="prompt"
-for a in "$@"; do
-  case "$a" in
-    --yes) YES=1 ;;
-    --allow-scripts) SCRIPT_DECISION="allow" ;;
-    -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    *) echo "install-codex-rules: 不明な引数 $a" >&2; exit 1 ;;
-  esac
 done
 
 if [ "$YES" -ne 1 ]; then

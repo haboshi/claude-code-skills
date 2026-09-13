@@ -10,7 +10,8 @@ CTX="$SCRIPTS/spark-ctx.sh"
 DOC="$SCRIPTS/spark-doctor.sh"
 
 die() { echo "SETUP FAILED: $*" >&2; exit 2; }
-WORK=$(mktemp -d "${TMPDIR:-/tmp}/spark-agent-tests.XXXXXX") || die "mktemp"
+TMPBASE="${TMPDIR:-/tmp}"; TMPBASE="${TMPBASE%/}"   # TMPDIR の末尾 / を落とす（パスに // を作らない）
+WORK=$(mktemp -d "$TMPBASE/spark-agent-tests.XXXXXX") || die "mktemp"
 trap 'rm -rf "$WORK"' EXIT
 chmod +x "$TESTS_DIR/fakes/spark" || die "chmod"
 
@@ -339,6 +340,17 @@ if command -v codex >/dev/null 2>&1; then
   out=$(SPARK_BIN="$TESTS_DIR/fakes/spark-broken" SPARK_AGENT_CODEX_RULES="$WORK/broken.rules" bash "$SCRIPTS/install-codex-rules.sh" --yes 2>&1); rc=$?
   rm -f "$TESTS_DIR/fakes/spark-broken"
   [ "$rc" -eq 1 ] && grep -qx keep "$WORK/broken.rules" && ok "T35h 壊れた symlink は生成せず既存 rules を保持" || bad "T35h" "rc=$rc out=$out"
+
+  # 前方一致をすり抜けるパス（/usr/local/bin/../../<信頼外>）を拒否する
+  for bad_path in "/usr/local/bin/../../..$WORK/untrusted-home/spark" "/usr/local/bin/./spark" "/usr/local//bin/spark"; do
+    out=$(SPARK_BIN="$bad_path" SPARK_AGENT_CODEX_RULES="$WORK/norm.rules" bash "$SCRIPTS/install-codex-rules.sh" --yes 2>&1); rc=$?
+    [ "$rc" -eq 1 ] && [ ! -f "$WORK/norm.rules" ] && echo "$out" | grep -q "正規化した絶対パス" \
+      && ok "T35j 正規化されていないパスを拒否: $(printf '%s' "$bad_path" | sed "s#$WORK#<work>#")" || bad "T35j" "path=$bad_path rc=$rc out=$out"
+  done
+
+  out=$(SPARK_BIN="$WORK/no-such-spark" bash "$SCRIPTS/install-codex-rules.sh" --help 2>&1); rc=$?
+  [ "$rc" -eq 0 ] && echo "$out" | grep -q -- "--allow-scripts" \
+    && ok "T35i spark 未導入でも --help を表示できる" || bad "T35i" "rc=$rc out=$out"
 
   out=$(SPARK_AGENT_CODEX_RULES="$WORK/none.rules" bash "$DOC" 2>&1); rc=$?
   echo "$out" | grep -q "WARN: Codex rules が未導入" && ok "T34 Codex rules 未導入は WARN" || bad "T34" "out=$out"

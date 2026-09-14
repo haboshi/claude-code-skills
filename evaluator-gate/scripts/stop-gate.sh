@@ -57,6 +57,7 @@ done
 
 ensure_dirs
 gc_old_state
+gc_stale_projects
 
 # --- 数値 env の検証（typo で比較が壊れて保護が消えるのを防ぐ） ---
 MAX_BLOCKS="${EVALUATOR_GATE_MAX_BLOCKS:-3}"
@@ -354,6 +355,13 @@ if grep -rls '"stopReviewGate": *true' "$HOME/.claude/plugins/data/codex-openai-
   note "注意: codex 公式プラグインの stop-review-gate が有効な workspace があります。同一プロジェクトでの併用は避けてください"
 fi
 
+# 最短間隔（既定 0 = 無効）。有効時は見送る。eval_base は進めないので、
+# 同一セッション内では次の停止でまとめて評価される。
+if ! min_interval_ok; then
+  note "前回の評価から間隔が空いていないため今回は見送ります（EVALUATOR_GATE_MIN_INTERVAL）"
+  exit 0
+fi
+
 t0=$(date +%s)
 # cwd は evidence ディレクトリ（$wdir）を渡す: 評価者にリポジトリ本体の読取をさせない。
 # EVALUATOR_GATE_PROJECT で sandbox プロファイルの read-deny 対象（リポジトリ本体）を伝える
@@ -381,6 +389,12 @@ t1=$(date +%s); dur=$((t1 - t0))
 
 v_c=$(parse_verdict "$wdir/out-codex.txt" "$rc_c" "$wdir/reason-codex.txt")
 v_g=$(parse_verdict "$wdir/out-grok.txt" "$rc_g" "$wdir/reason-grok.txt")
+
+# 実行を記録する（頻度とコストを後から測るため）。集計は runs.log を見る。
+if [ "$v_c" = "BLOCK" ] || [ "$v_g" = "BLOCK" ]; then _agg=BLOCK
+elif [ "$v_c" = "ALLOW" ] || [ "$v_g" = "ALLOW" ]; then _agg=ALLOW
+else _agg=UNAVAILABLE; fi
+record_run "$project" "$_agg" "$v_c" "$v_g" "$dur"
 [ "$v_c" = "UNAVAILABLE" ] && detect_auth_hint "$wdir/out-codex.txt" "$wdir/log-codex.txt" codex
 [ "$v_g" = "UNAVAILABLE" ] && detect_auth_hint "$wdir/out-grok.txt" "$wdir/log-grok.txt" grok
 

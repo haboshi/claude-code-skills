@@ -90,7 +90,28 @@ Stop 発火
 
 **opt-in 督促**: プラグインは全プロジェクトでロードされるが、ゲートが実際に作動するのは `on` した git リポジトリだけ（既定 OFF）。能動的に `on` しないと死蔵しやすいため、SessionStart フックが「まだ on/off の判断をしていない git リポジトリ」では **24時間に1回だけ**「`/evaluator-gate on` で有効化できます」と context に督促を出す。`on` でも `off` でも一度判断すれば二度と出さない。督促間隔は `EVALUATOR_GATE_NUDGE_INTERVAL`（秒、既定 86400）で調整可。
 
-状態ファイル: `~/.claude/evaluator-gate/`（config.json / state/<session_id>.json / tmp/ / nudged/）。7日より古い state/tmp は自動 GC。
+状態ファイル: `~/.claude/evaluator-gate/`（config.json / state/<session_id>.json / tmp/ / nudged/ / runs.log）。7日より古い state/tmp は自動 GC。**config.json から消失した worktree のエントリも自動で落とす**（2026-09-15 実測: 有効 24 件のうち 19 件が既に削除された worktree を指しており、有効範囲が実態と乖離していた）。
+
+### 実行頻度（runs.log と最短間隔）
+
+ゲートは Stop ごとに、完了主張が検出され、かつ差分が変わっているときに作動する。1 回の作動で
+Codex と Grok の両方を呼ぶ（判定は「どちらかが BLOCK なら差し戻し」なので、片方を後追いにすると
+差し戻しが減る。2 モデルは設計上の必然で、無料では削れない）。
+
+`runs.log` に 1 行ずつ記録する（時刻・プロジェクト・総合判定・各評価者の判定・所要秒）。頻度と
+コストはこれで測る。2026-09-15 時点の実績評価にはゲートの消費が含まれておらず、頻度の妥当性を
+判断できなかったため追加した。
+
+```bash
+wc -l < ~/.claude/evaluator-gate/runs.log                    # 総実行数
+cut -f1 ~/.claude/evaluator-gate/runs.log | cut -dT -f1 | uniq -c   # 日別
+cut -f3 ~/.claude/evaluator-gate/runs.log | sort | uniq -c          # 判定の内訳
+```
+
+`EVALUATOR_GATE_MIN_INTERVAL`（秒、**既定 0 = 無効**）で最短間隔を置ける。見送っても `eval_base` は
+進めないので、同一セッション内では次の停止でまとめて評価される。ただし**見送った直後にセッションが
+終わると、その分は検証されないまま残る**。ゲートの保証が変わるため既定は無効。まず `runs.log` で
+実際の頻度を測ってから設定すること。
 
 ## 縮退動作一覧
 

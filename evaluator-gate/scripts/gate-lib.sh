@@ -19,6 +19,73 @@ gc_old_state() {
   find "$GATE_STATE_DIR" "$GATE_TMP_DIR" -mindepth 1 -mtime +7 -exec rm -rf {} + 2>/dev/null || true
 }
 
+# config に残った「存在しないプロジェクト」を落とす。
+# worktree を畳んでも config のエントリは残り続け、有効範囲が実態と合わなくなる
+# （2026-09-15 実測: 有効 24 件のうち 19 件が消失した worktree）。
+gc_stale_projects() {
+  [ -f "$GATE_CONFIG" ] || return 0
+  command -v jq >/dev/null 2>&1 || return 0
+  local keys stale tmpf
+  keys=$(jq -r '.projects | keys[]?' "$GATE_CONFIG" 2>/dev/null) || return 0
+  [ -n "$keys" ] || return 0
+  stale=""
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    [ -d "$p" ] || stale="${stale}${p}"$'\n'
+  done <<EOF
+$keys
+EOF
+  [ -n "$stale" ] || return 0
+  tmpf="$GATE_CONFIG.gc.$$"
+  if printf '%s' "$stale" | jq -R -s --slurpfile cfg "$GATE_CONFIG" \
+       'split("\n") | map(select(length > 0)) as $del
+        | $cfg[0] | .projects |= with_entries(select(.key as $k | ($del | index($k)) | not))' \
+       > "$tmpf" 2>/dev/null && [ -s "$tmpf" ]; then
+    mv "$tmpf" "$GATE_CONFIG" 2>/dev/null || rm -f "$tmpf" 2>/dev/null
+  else
+    rm -f "$tmpf" 2>/dev/null
+  fi
+  return 0
+}
+
+# 実行の記録。頻度とコストを後から測れるようにする。
+# 2026-09-15 の実績評価では、レビュー機構の消費は測れたのに本ゲートの消費は
+# どのデータセットにも入っておらず、頻度の妥当性を判断できなかった。
+# 引数: project verdict codex_verdict grok_verdict duration_sec
+record_run() {
+  local logf n
+  logf="$GATE_HOME/runs.log"
+  mkdir -p "$GATE_HOME" 2>/dev/null || return 0
+  printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$(now_iso)" "$(basename "$1")" "$2" "$3" "$4" "$5" >> "$logf" 2>/dev/null || true
+  n=$(wc -l < "$logf" 2>/dev/null | tr -cd '0-9')
+  if [ -n "$n" ] && [ "$n" -gt 2000 ]; then
+    tail -n 2000 "$logf" > "$logf.tmp" 2>/dev/null && mv "$logf.tmp" "$logf" 2>/dev/null || true
+  fi
+  return 0
+}
+
+# 直近の評価からの最短間隔。既定 0（無効）。
+# 有効にするとゲートの保証が変わる: 見送った完了主張はその時点では検証されない。
+# 範囲（eval_base）は進めないので同一セッション内では次回にまとめて評価されるが、
+# 直後にセッションが終わるとその分は検証されないまま残る。既定を 0 にしているのはこのため。
+# 引数: なし。戻り値 0=実行してよい / 1=見送る
+min_interval_ok() {
+  local floor last now
+  floor="${EVALUATOR_GATE_MIN_INTERVAL:-0}"
+  case "$floor" in ''|*[!0-9]*) return 0 ;; esac
+  [ "$floor" -gt 0 ] || return 0
+  [ -f "$GATE_HOME/runs.log" ] || return 0
+  last=$(tail -1 "$GATE_HOME/runs.log" 2>/dev/null | cut -f1)
+  [ -n "$last" ] || return 0
+  # now_iso は UTC。-u を付けずに解釈するとローカル時刻として読まれ、
+  # JST なら常に 9 時間古く見えて間隔判定が素通りする（2026-09-15 実測）。
+  last=$(date -j -u -f '%Y-%m-%dT%H:%M:%SZ' "$last" +%s 2>/dev/null || date -u -d "$last" +%s 2>/dev/null) || return 0
+  case "$last" in ''|*[!0-9]*) return 0 ;; esac
+  now=$(date +%s)
+  [ $((now - last)) -ge "$floor" ]
+}
+
 # 引数: cwd → stdout: git toplevel（非 git なら非ゼロ終了）
 resolve_project_root() {
   git -C "$1" rev-parse --show-toplevel 2>/dev/null

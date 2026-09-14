@@ -137,6 +137,13 @@ echo "=== Codex Push Review (fake...range) ==="
 EOS
 chmod +x "${FAKE_HOME}/.claude/skills/codex-bridge/scripts/codex-push-review.sh"
 
+echo "T5g: 読めない設定ファイルがあるなら送らない（判断できないなら送らない）"
+mkrepo r5h >/dev/null 2>&1
+mkdir -p .claude; echo 'CBR_PR_REVIEW=1' > .claude/codex-review-limits; chmod 000 .claude/codex-review-limits
+OUT=$(HOME="${FAKE_HOME}" bash "${HOOK}" 2>&1)
+chmod 644 .claude/codex-review-limits
+[ -z "$OUT" ] && ok "読めない設定ファイルがあるなら送らない" || ng "読めなくても送った" "$OUT"
+
 echo "T6: git リポジトリ外では無音"
 mkdir -p "${WORK}/notrepo"; cd "${WORK}/notrepo"
 OUT=$(HOME="${FAKE_HOME}" bash "${HOOK}" 2>&1)

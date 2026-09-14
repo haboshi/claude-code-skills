@@ -88,25 +88,31 @@ strong { font-weight: 700; }
 }
 .exec-summary ol li small { display: block; font-weight: 400; color: var(--ink-2); font-size: 14px; line-height: 1.75; margin-top: .1rem; }
 
-/* ── セクション（番号つきメッセージ見出し）── */
+/* ── セクション（番号 ＋「役割ラベル — 主張句」見出し）── */
 /* sec カウンタのリセットは body の counter-reset（上）に統合済み。ここに body / main の counter-reset を
    再び書かないこと。旧 `main { counter-reset: sec }` は v0.11.2 で削除 — body で足りるうえ、section が
    <main> の内外に分かれた文書では main 側のリセットで番号が 01 からやり直しになる（互換ではなく再採番の罠）。 */
 section { margin: 3.4rem 0; }
-section > h2 { counter-increment: sec; font-size: 23px; line-height: 1.5; margin: 0 0 .4rem; display: flex; gap: .7rem; align-items: baseline; }
+/* 番号は太いアクセント色の数字＋左バー（v0.12.0）。v0.11 までの小さな枠付きチップは、拾い読み時の現在地
+   信号として弱かった（2026-09-08 A/B）。h2 本文は「役割ラベル — 主張句」（SKILL.md §6） */
+section > h2 { counter-increment: sec; font-size: 23px; line-height: 1.5; margin: 0 0 .4rem; display: flex; gap: .7rem; align-items: baseline; border-left: 4px solid var(--accent); padding-left: .75rem; }
 /* 終端の結論パネル（.conclusion）は番号対象外。<section class="conclusion"> と書かれても採番を消費しない */
 section.conclusion > h2, .conclusion > h2 { counter-increment: none; }
 section.conclusion > h2::before, .conclusion > h2::before { content: none; border: none; padding: 0; }
 section > h2::before {
-  content: counter(sec, decimal-leading-zero); flex: none; transform: translateY(-2px);
-  font-size: 11.5px; font-weight: 700; letter-spacing: .1em; color: var(--accent);
-  border: 1px solid var(--accent); border-radius: 4px; padding: .08rem .42rem;
+  content: counter(sec, decimal-leading-zero); flex: none;
+  font-size: 1em; font-weight: 800; letter-spacing: .02em; color: var(--accent);
+  font-variant-numeric: tabular-nums;
 }
 .sec-lede { color: var(--ink-2); font-size: 15px; margin: 0 0 1rem; }
 /* 本文の行長を絞る。figure / table / .kpi-grid / .cols-2 / .compare-cols / .steps /
    .callout / .callout-warn は意図的に対象外（視覚要素は紙面いっぱいを使う）。
    囲みを器幅で使う前提として、囲みの本文は4行以内に収める（SKILL.md §6 の役割固定） */
-section > p, section > ul, section > ol:not(.steps), .sec-lede { max-width: var(--measure); }
+/* .sec-lede は measure の対象外（v0.12.0）: h2 と同じ幅で 1 行に組む。measure を掛けると 45 字未満の
+   lede でも 2 行目に数文字の端切れが出て、見出し直下で視線が止まる（2026-09-08 実指摘）。
+   lede は <p class="sec-lede"> なので `section > p` にも当たる — :not() で明示的に外す（一覧から
+   .sec-lede を消すだけでは効かなかった実測あり）。代わりに SKILL.md §6 が lede を全角 60 字以内に縛る（954px ÷ 15px ≒ 63 字） */
+section > p:not(.sec-lede), section > ul, section > ol:not(.steps) { max-width: var(--measure); }
 h3 { font-size: 16.5px; margin: 1.4rem 0 .5rem; }
 
 /* ── 目次（section 5個以上のとき exec-summary の直後に置く）── */

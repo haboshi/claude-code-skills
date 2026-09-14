@@ -23,7 +23,7 @@ mkdir -p "${FAKE_HOME}/.claude/skills/codex-bridge/scripts"
 cat > "${FAKE_HOME}/.claude/skills/codex-bridge/scripts/codex-push-review.sh" <<'EOS'
 #!/bin/bash
 printf '%s\n' "$*" >> "${CBR_FAKE_LOG}"
-echo "=== Codex Push Review (fake) ==="
+echo "=== Codex Push Review (fake...range) ==="
 EOS
 chmod +x "${FAKE_HOME}/.claude/skills/codex-bridge/scripts/codex-push-review.sh"
 export PATH="${BIN}:${PATH}"
@@ -93,7 +93,47 @@ have "$OUT2" "スキップ" && ng "未完了なのに次回スキップされた
 cat > "${FAKE_HOME}/.claude/skills/codex-bridge/scripts/codex-push-review.sh" <<'EOS'
 #!/bin/bash
 printf '%s\n' "$*" >> "${CBR_FAKE_LOG}"
-echo "=== Codex Push Review (fake) ==="
+echo "=== Codex Push Review (fake...range) ==="
+EOS
+chmod +x "${FAKE_HOME}/.claude/skills/codex-bridge/scripts/codex-push-review.sh"
+
+echo "T5d: 無効化の書き方の揺れを拾う（効いたつもりで送るのを防ぐ）"
+for v in "0" "false" "no" "off" "0  # 機密リポジトリ" " 0 "; do
+  mkrepo r5d >/dev/null 2>&1
+  mkdir -p .claude; printf 'CBR_PR_REVIEW=%s\n' "$v" > .claude/codex-review-limits
+  OUT=$(HOME="${FAKE_HOME}" bash "${HOOK}" 2>&1)
+  [ -z "$OUT" ] || { ng "T5d" "「${v}」で無効化できない: $OUT"; break; }
+done
+[ -z "$OUT" ] && ok "0 / false / no / off / 行末コメント / 空白を無効化と読む"
+mkrepo r5d2 >/dev/null 2>&1
+mkdir -p .claude; echo 'CBR_PR_REVIEW=1' > .claude/codex-review-limits
+OUT=$(HOME="${FAKE_HOME}" bash "${HOOK}" 2>&1)
+have "$OUT" "ブランチ全差分をレビュー" && ok "1 のときは走る" || ng "1 でも走らない" "$OUT"
+
+echo "T5e: jq が無くても draft ガードが死なない"
+mkrepo r5e >/dev/null 2>&1
+NOJQ="${WORK}/nojq"; mkdir -p "$NOJQ"
+for c in git grep sed tr head cut basename dirname mkdir printf cat bash timeout codex shasum awk wc; do
+  src=$(command -v "$c" 2>/dev/null) && ln -sf "$src" "$NOJQ/$c" 2>/dev/null
+done
+OUT=$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"gh pr create --draft"}}' | PATH="$NOJQ" HOME="${FAKE_HOME}" bash "${HOOK}" 2>&1)
+[ -z "$OUT" ] && ok "jq 不在でも draft をスキップする" || ng "jq 不在で draft が素通り" "$OUT"
+
+echo "T5f: スキップを完了と読み違えない"
+mkrepo r5f >/dev/null 2>&1
+cat > "${FAKE_HOME}/.claude/skills/codex-bridge/scripts/codex-push-review.sh" <<'EOS'
+#!/bin/bash
+echo "=== Codex Push Review: スキップ（差分が大きすぎる）==="
+EOS
+chmod +x "${FAKE_HOME}/.claude/skills/codex-bridge/scripts/codex-push-review.sh"
+OUT=$(HOME="${FAKE_HOME}" bash "${HOOK}" 2>&1)
+have "$OUT" "記録しません" && ok "スキップを完了扱いしない" || ng "スキップを完了として記録した" "$OUT"
+OUT2=$(HOME="${FAKE_HOME}" bash "${HOOK}" 2>&1)
+have "$OUT2" "スキップ（この HEAD は PR レビュー済み）" && ng "一度も見ていない HEAD が検収を通る" "$OUT2" || ok "次回もレビューを試みる"
+cat > "${FAKE_HOME}/.claude/skills/codex-bridge/scripts/codex-push-review.sh" <<'EOS'
+#!/bin/bash
+printf '%s\n' "$*" >> "${CBR_FAKE_LOG}"
+echo "=== Codex Push Review (fake...range) ==="
 EOS
 chmod +x "${FAKE_HOME}/.claude/skills/codex-bridge/scripts/codex-push-review.sh"
 

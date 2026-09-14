@@ -25,13 +25,33 @@ gc_old_state() {
 gc_stale_projects() {
   [ -f "$GATE_CONFIG" ] || return 0
   command -v jq >/dev/null 2>&1 || return 0
+
+  # 毎 Stop で config を読み書きすると、並行セッションとの間で lost update の窓が広がる。
+  # 掃除は 1 日 1 回で足りる（worktree はそんなに速く消えない）。
+  local marker
+  marker="$GATE_HOME/.gc-projects-at"
+  if [ -f "$marker" ]; then
+    local mt now
+    mt=$(stat -f %m "$marker" 2>/dev/null || stat -c %Y "$marker" 2>/dev/null || echo 0)
+    now=$(date +%s)
+    case "$mt" in ''|*[!0-9]*) mt=0 ;; esac
+    [ $((now - mt)) -lt 86400 ] && return 0
+  fi
+  mkdir -p "$GATE_HOME" 2>/dev/null || return 0
+  : > "$marker" 2>/dev/null || true
+
   local keys stale tmpf
   keys=$(jq -r '.projects | keys[]?' "$GATE_CONFIG" 2>/dev/null) || return 0
   [ -n "$keys" ] || return 0
   stale=""
   while IFS= read -r p; do
     [ -n "$p" ] || continue
-    [ -d "$p" ] || stale="${stale}${p}"$'\n'
+    [ -d "$p" ] && continue
+    # 親ディレクトリが無いときは落とさない。外付けディスクや未マウントの共有、
+    # まだ clone していないリポジトリを「消えた」と誤判定すると、
+    # 有効化の判断（opt-in）を勝手に取り消してゲートが黙って外れる。
+    [ -d "$(dirname "$p")" ] || continue
+    stale="${stale}${p}"$'\n'
   done <<EOF
 $keys
 EOF
@@ -40,12 +60,24 @@ EOF
   if printf '%s' "$stale" | jq -R -s --slurpfile cfg "$GATE_CONFIG" \
        'split("\n") | map(select(length > 0)) as $del
         | $cfg[0] | .projects |= with_entries(select(.key as $k | ($del | index($k)) | not))' \
-       > "$tmpf" 2>/dev/null && [ -s "$tmpf" ]; then
-    mv "$tmpf" "$GATE_CONFIG" 2>/dev/null || rm -f "$tmpf" 2>/dev/null
+       > "$tmpf" 2>/dev/null && [ -s "$tmpf" ] && jq -e '.projects' "$tmpf" >/dev/null 2>&1; then
+    command mv -f "$tmpf" "$GATE_CONFIG" 2>/dev/null || rm -f "$tmpf" 2>/dev/null
   else
     rm -f "$tmpf" 2>/dev/null
   fi
   return 0
+}
+
+# ログ用の 1 フィールド整形。制御文字を落とし長さを切る。
+# プロジェクト名やモデル出力由来の判定文字列に改行やタブが混ざると、
+# 1 行 1 レコードの前提が崩れて偽のレコードを差し込めてしまう。
+sanitize_field() {
+  printf '%s' "$1" | tr -d '\000-\037' | cut -c1-200
+}
+
+# プロジェクトごとの最終実行マーカー（パスをハッシュ化して安全なファイル名にする）
+project_run_marker() {
+  printf '%s/lastrun/%s' "$GATE_HOME" "$(printf '%s' "$1" | shasum -a 256 | cut -d' ' -f1)"
 }
 
 # 実行の記録。頻度とコストを後から測れるようにする。
@@ -53,14 +85,22 @@ EOF
 # どのデータセットにも入っておらず、頻度の妥当性を判断できなかった。
 # 引数: project verdict codex_verdict grok_verdict duration_sec
 record_run() {
-  local logf n
+  local logf n marker
   logf="$GATE_HOME/runs.log"
-  mkdir -p "$GATE_HOME" 2>/dev/null || return 0
+  mkdir -p "$GATE_HOME/lastrun" 2>/dev/null || return 0
+  # 全フィールドを整形してから書く（改行・タブ混入によるレコード偽装を防ぐ）
   printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
-    "$(now_iso)" "$(basename "$1")" "$2" "$3" "$4" "$5" >> "$logf" 2>/dev/null || true
+    "$(now_iso)" "$(sanitize_field "$(basename "$1")")" \
+    "$(sanitize_field "$2")" "$(sanitize_field "$3")" \
+    "$(sanitize_field "$4")" "$(sanitize_field "$5")" >> "$logf" 2>/dev/null || true
+  # 間隔判定はこのマーカーで行う。runs.log の末尾を見ると、
+  # 別プロジェクトの実行が無関係なプロジェクトの評価を抑制してしまう。
+  marker=$(project_run_marker "$1")
+  : > "$marker" 2>/dev/null || true
   n=$(wc -l < "$logf" 2>/dev/null | tr -cd '0-9')
   if [ -n "$n" ] && [ "$n" -gt 2000 ]; then
-    tail -n 2000 "$logf" > "$logf.tmp" 2>/dev/null && mv "$logf.tmp" "$logf" 2>/dev/null || true
+    tail -n 2000 "$logf" > "$logf.tmp" 2>/dev/null &&
+      command mv -f "$logf.tmp" "$logf" 2>/dev/null || rm -f "$logf.tmp" 2>/dev/null
   fi
   return 0
 }
@@ -70,17 +110,18 @@ record_run() {
 # 範囲（eval_base）は進めないので同一セッション内では次回にまとめて評価されるが、
 # 直後にセッションが終わるとその分は検証されないまま残る。既定を 0 にしているのはこのため。
 # 引数: なし。戻り値 0=実行してよい / 1=見送る
+# 引数: project（必須）。プロジェクトをまたいで抑制しないよう、マーカーは per-project。
 min_interval_ok() {
-  local floor last now
+  local floor marker last now
   floor="${EVALUATOR_GATE_MIN_INTERVAL:-0}"
   case "$floor" in ''|*[!0-9]*) return 0 ;; esac
   [ "$floor" -gt 0 ] || return 0
-  [ -f "$GATE_HOME/runs.log" ] || return 0
-  last=$(tail -1 "$GATE_HOME/runs.log" 2>/dev/null | cut -f1)
-  [ -n "$last" ] || return 0
-  # now_iso は UTC。-u を付けずに解釈するとローカル時刻として読まれ、
-  # JST なら常に 9 時間古く見えて間隔判定が素通りする（2026-09-15 実測）。
-  last=$(date -j -u -f '%Y-%m-%dT%H:%M:%SZ' "$last" +%s 2>/dev/null || date -u -d "$last" +%s 2>/dev/null) || return 0
+  [ -n "${1:-}" ] || return 0
+  marker=$(project_run_marker "$1")
+  [ -f "$marker" ] || return 0
+  # ファイルの mtime を使う。文字列の時刻をパースするとタイムゾーンの取り違えで
+  # 判定が素通りする（-u を付けずにローカル解釈していた実バグがあった）。
+  last=$(stat -f %m "$marker" 2>/dev/null || stat -c %Y "$marker" 2>/dev/null) || return 0
   case "$last" in ''|*[!0-9]*) return 0 ;; esac
   now=$(date +%s)
   [ $((now - last)) -ge "$floor" ]

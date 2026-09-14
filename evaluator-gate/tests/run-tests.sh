@@ -1105,6 +1105,44 @@ out=$(nj2 m1 | EVALUATOR_GATE_NUDGE_INTERVAL=00 run_start)   # 1回目は督促
 out=$(nj2 m2 | EVALUATOR_GATE_NUDGE_INTERVAL=00 run_start)   # 00 が 0 扱いなら再督促してしまう
 if [ -z "$out" ]; then ok "T31f INTERVAL=00 でも既定間隔に丸め毎回督促しない"; else bad "T31f" "再督促: $out"; fi
 
+# --- T35: 消失プロジェクトの掃除（config に残る worktree の残骸を落とす）---
+# 2026-09-15 実測: 有効 24 件のうち 19 件が既に削除された worktree を指していた。
+GONE="$WORK/gone-repo"
+mkdir -p "$GONE"; git -C "$GONE" init -q -b main 2>/dev/null || git -C "$GONE" init -q
+git -C "$GONE" config user.email t@t; git -C "$GONE" config user.name t
+echo z > "$GONE/a"; git -C "$GONE" add -A >/dev/null; git -C "$GONE" commit -qm i >/dev/null
+(cd "$GONE" && bash "$PLUG/scripts/gate-config.sh" on >/dev/null)
+before=$(jq '.projects | length' "$GATE_HOME/config.json" 2>/dev/null)
+rm -rf "$GONE"
+( . "$PLUG/scripts/gate-lib.sh"; gc_stale_projects )
+after=$(jq '.projects | length' "$GATE_HOME/config.json" 2>/dev/null)
+if [ "${after:-0}" -lt "${before:-0}" ]; then
+  ok "T35 消失プロジェクトを config から落とす（${before}→${after}）"
+else bad "T35" "掃除されていない（${before}→${after}）"; fi
+
+# 実在するプロジェクトは残す
+STAY="$WORK/stay-repo"
+mkdir -p "$STAY"; git -C "$STAY" init -q -b main 2>/dev/null || git -C "$STAY" init -q
+git -C "$STAY" config user.email t@t; git -C "$STAY" config user.name t
+echo s > "$STAY/a"; git -C "$STAY" add -A >/dev/null; git -C "$STAY" commit -qm i >/dev/null
+(cd "$STAY" && bash "$PLUG/scripts/gate-config.sh" on >/dev/null)
+( . "$PLUG/scripts/gate-lib.sh"; gc_stale_projects )
+# config のキーは git rev-parse --show-toplevel の実パス。テスト側も同じ綴りで引く。
+STAY_KEY=$(git -C "$STAY" rev-parse --show-toplevel 2>/dev/null)
+if jq -e --arg p "$STAY_KEY" '.projects | has($p)' "$GATE_HOME/config.json" >/dev/null 2>&1; then
+  ok "T35b 実在プロジェクトは消さない"
+else bad "T35b" "実在プロジェクトが消えた"; fi
+
+# --- T36: 実行記録と最短間隔 ---
+( . "$PLUG/scripts/gate-lib.sh"; record_run "$STAY" ALLOW ALLOW ALLOW 12 )
+if [ -s "$GATE_HOME/runs.log" ]; then ok "T36 実行が runs.log に記録される"; else bad "T36" "runs.log が空"; fi
+if ( . "$PLUG/scripts/gate-lib.sh"; EVALUATOR_GATE_MIN_INTERVAL=0 min_interval_ok ); then
+  ok "T36b 既定（0）では抑制しない"
+else bad "T36b" "既定で抑制された"; fi
+if ( . "$PLUG/scripts/gate-lib.sh"; EVALUATOR_GATE_MIN_INTERVAL=3600 min_interval_ok ); then
+  bad "T36c" "間隔を設定しても抑制されない"
+else ok "T36c 間隔を設定すると直後の評価を見送る"; fi
+
 echo "----"
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

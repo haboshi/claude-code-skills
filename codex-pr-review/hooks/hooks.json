@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(gh pr create*)",
+            "command": "bash -c '\"${CLAUDE_PLUGIN_ROOT}/scripts/pr-review.sh\"'",
+            "timeout": 600,
+            "statusMessage": "Codex full review (PR)"
+          }
+        ]
+      }
+    ]
+  }
+}

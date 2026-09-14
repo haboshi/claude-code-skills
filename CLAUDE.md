@@ -47,7 +47,7 @@ Claude Code用プラグイン（スキル）のマーケットプレイスコレ
 { "name": "foo", "source": "./foo" }
 ```
 
-### 収録プラグイン一覧（18個）
+### 収録プラグイン一覧（19個）
 
 **ドキュメント生成**: pdf-creator-jp, bizdoc（ビジネス白基調のSVG図解付き1枚HTML生成 + doc-hub 統合管理）
 **画像生成**: image-creator, svg-header-image, svg-diagram, line-sticker-creator
@@ -56,7 +56,7 @@ Claude Code用プラグイン（スキル）のマーケットプレイスコレ
 **調査**: brave-research
 **セキュリティ**: web-vuln-report（非破壊の脆弱性診断→日本語報告書 HTML/PDF 生成）
 **メール・カレンダー**: spark-agent（Spark Desktop を複数アカウントの統合層にし、Claude Code と Codex の両方から同じスキルでメール確認・返信下書き・カレンダー確認と更新を行う運用層。コマンド正典は公式 use-spark、本プラグインはアカウント切り替え spark-ctx・診断 spark-doctor・送信/イベント変更の --confirm ゲート・Codex rules 生成を担う）
-**開発ツール**: skill-creator-pro（配布パイプライン特化）, harness-analytics（transcript ログ分析→改善示唆）, provider-harness（外部プロバイダ統合のメタスキル + ドメインスキル + /provider-harvest 知見還流）, evaluator-gate（Stop フック完了ゲート。Codex/Grok の外部評価者が完了主張を検証して差し戻し。/evaluator-gate 切替・/evaluate 所見評価）, orca-spinoff（Orca IDE の `orca` CLI で課題をチケット起票→別 worktree へフルハンドオフ。スクリプトなしの指示書型スキル）
+**開発ツール**: skill-creator-pro（配布パイプライン特化）, harness-analytics（transcript ログ分析→改善示唆）, provider-harness（外部プロバイダ統合のメタスキル + ドメインスキル + /provider-harvest 知見還流）, evaluator-gate（Stop フック完了ゲート。Codex/Grok の外部評価者が完了主張を検証して差し戻し。/evaluator-gate 切替・/evaluate 所見評価）, orca-spinoff（Orca IDE の `orca` CLI で課題をチケット起票→別 worktree へフルハンドオフ。スクリプトなしの指示書型スキル）, codex-pr-review（`gh pr create` を検知して PR 検収時に一度だけブランチ全差分の Codex レビューを走らせる PreToolUse フック。commit/push ごとの増分レビューは `~/.claude/skills/codex-bridge` が担当し、本プラグインは PR 時点の横断レビューだけを受け持つ）
 
 #### 図解系の住み分け
 
@@ -140,6 +140,9 @@ bash evaluator-gate/tests/run-tests.sh
 
 # Bash テスト（spark-agent — fake spark による決定論テスト。codex CLI があれば rules の判定も検証）
 bash spark-agent/tests/run-tests.sh
+
+# Bash テスト（codex-pr-review — fake codex-bridge による決定論テスト、実 LLM 呼び出しなし）
+bash codex-pr-review/tests/run-tests.sh
 ```
 
 ### 必要な環境変数（プラグインごと）

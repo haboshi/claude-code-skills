@@ -377,6 +377,22 @@
         "下書き",
         "アカウント切り替え"
       ]
+    },
+    {
+      "name": "codex-pr-review",
+      "description": "PR 作成時にブランチ全差分の Codex レビューを一度だけ走らせる PreToolUse フック。gh pr create を検知し、codex-bridge の増分レビュー（commit/push ごと）では見ない横断的な観点を PR 検収の一点に寄せる。settings.json を編集せずプラグインとしてフックを宣言するため、保護された設定に触れずに配線できる。draft PR と同一 HEAD の再実行はスキップし、codex-bridge が未導入の環境では無音。「PRレビュー」「PR検収」「gh pr create」で関係する。",
+      "source": "./codex-pr-review",
+      "strict": false,
+      "version": "0.1.0",
+      "category": "developer-tools",
+      "keywords": [
+        "pre-tool-use",
+        "pull-request",
+        "codex",
+        "code-review",
+        "PR検収",
+        "全差分レビュー"
+      ]
     }
   ]
 }

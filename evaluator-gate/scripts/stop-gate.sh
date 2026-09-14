@@ -357,7 +357,7 @@ fi
 
 # 最短間隔（既定 0 = 無効）。有効時は見送る。eval_base は進めないので、
 # 同一セッション内では次の停止でまとめて評価される。
-if ! min_interval_ok; then
+if ! min_interval_ok "$project"; then
   note "前回の評価から間隔が空いていないため今回は見送ります（EVALUATOR_GATE_MIN_INTERVAL）"
   exit 0
 fi

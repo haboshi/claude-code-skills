@@ -1114,6 +1114,9 @@ echo z > "$GONE/a"; git -C "$GONE" add -A >/dev/null; git -C "$GONE" commit -qm 
 (cd "$GONE" && bash "$PLUG/scripts/gate-config.sh" on >/dev/null)
 before=$(jq '.projects | length' "$GATE_HOME/config.json" 2>/dev/null)
 rm -rf "$GONE"
+# 掃除は 1 日 1 回に絞ってあり、先行テストの stop-gate 実行でマーカーが立っている。
+# ここでは掃除そのものを検証したいので明示的にリセットする。
+rm -f "$GATE_HOME/.gc-projects-at"
 ( . "$PLUG/scripts/gate-lib.sh"; gc_stale_projects )
 after=$(jq '.projects | length' "$GATE_HOME/config.json" 2>/dev/null)
 if [ "${after:-0}" -lt "${before:-0}" ]; then
@@ -1126,6 +1129,7 @@ mkdir -p "$STAY"; git -C "$STAY" init -q -b main 2>/dev/null || git -C "$STAY" i
 git -C "$STAY" config user.email t@t; git -C "$STAY" config user.name t
 echo s > "$STAY/a"; git -C "$STAY" add -A >/dev/null; git -C "$STAY" commit -qm i >/dev/null
 (cd "$STAY" && bash "$PLUG/scripts/gate-config.sh" on >/dev/null)
+rm -f "$GATE_HOME/.gc-projects-at"
 ( . "$PLUG/scripts/gate-lib.sh"; gc_stale_projects )
 # config のキーは git rev-parse --show-toplevel の実パス。テスト側も同じ綴りで引く。
 STAY_KEY=$(git -C "$STAY" rev-parse --show-toplevel 2>/dev/null)
@@ -1139,9 +1143,48 @@ if [ -s "$GATE_HOME/runs.log" ]; then ok "T36 実行が runs.log に記録され
 if ( . "$PLUG/scripts/gate-lib.sh"; EVALUATOR_GATE_MIN_INTERVAL=0 min_interval_ok ); then
   ok "T36b 既定（0）では抑制しない"
 else bad "T36b" "既定で抑制された"; fi
-if ( . "$PLUG/scripts/gate-lib.sh"; EVALUATOR_GATE_MIN_INTERVAL=3600 min_interval_ok ); then
+if ( . "$PLUG/scripts/gate-lib.sh"; EVALUATOR_GATE_MIN_INTERVAL=3600 min_interval_ok "$STAY" ); then
   bad "T36c" "間隔を設定しても抑制されない"
 else ok "T36c 間隔を設定すると直後の評価を見送る"; fi
+
+# 抑制はプロジェクト単位。別プロジェクトの実行が無関係なプロジェクトを止めてはいけない。
+if ( . "$PLUG/scripts/gate-lib.sh"; EVALUATOR_GATE_MIN_INTERVAL=3600 min_interval_ok "$WORK/other-project" ); then
+  ok "T36d 抑制が他プロジェクトへ波及しない"
+else bad "T36d" "別プロジェクトまで抑制された"; fi
+
+# ログのフィールドに改行やタブが混ざってもレコードが壊れない
+LOGLINES_BEFORE=$(wc -l < "$GATE_HOME/runs.log" | tr -d ' ')
+( . "$PLUG/scripts/gate-lib.sh"; record_run "$STAY" "$(printf 'ALLOW\nFAKE\tROW')" ALLOW ALLOW 1 )
+LOGLINES_AFTER=$(wc -l < "$GATE_HOME/runs.log" | tr -d ' ')
+if [ "$((LOGLINES_AFTER - LOGLINES_BEFORE))" -eq 1 ]; then
+  ok "T36e 制御文字を含む値でも 1 行 1 レコードを保つ"
+else bad "T36e" "レコードが増殖した（+$((LOGLINES_AFTER - LOGLINES_BEFORE))）"; fi
+
+# --- T37: 一時的に見えないだけのプロジェクトは opt-in を消さない ---
+# 外付けディスク・未マウント共有・未 clone のリポジトリを「消えた」と誤判定すると、
+# 有効化の判断を勝手に取り消してゲートが黙って外れる。
+UNMOUNTED="$WORK/nonexistent-mount/some-repo"
+( . "$PLUG/scripts/gate-lib.sh"
+  tmpf="$GATE_CONFIG.t37"
+  jq --arg p "$UNMOUNTED" '.projects[$p] = {enabled: true, updated: "x"}' "$GATE_CONFIG" > "$tmpf" && command mv -f "$tmpf" "$GATE_CONFIG"
+  rm -f "$GATE_HOME/.gc-projects-at"
+  gc_stale_projects )
+if jq -e --arg p "$UNMOUNTED" '.projects | has($p)' "$GATE_HOME/config.json" >/dev/null 2>&1; then
+  ok "T37 親ディレクトリごと無い場合は opt-in を消さない"
+else bad "T37" "未マウント相当のプロジェクトが消された"; fi
+
+# --- T37b: 掃除は 1 日 1 回に絞る（並行セッションとの lost update を減らす）---
+GONE2="$WORK/gone-repo-2"
+mkdir -p "$GONE2"; git -C "$GONE2" init -q -b main 2>/dev/null || git -C "$GONE2" init -q
+git -C "$GONE2" config user.email t@t; git -C "$GONE2" config user.name t
+echo q > "$GONE2/a"; git -C "$GONE2" add -A >/dev/null; git -C "$GONE2" commit -qm i >/dev/null
+(cd "$GONE2" && bash "$PLUG/scripts/gate-config.sh" on >/dev/null)
+GONE2_KEY=$(git -C "$GONE2" rev-parse --show-toplevel)
+rm -rf "$GONE2"
+( . "$PLUG/scripts/gate-lib.sh"; gc_stale_projects )   # マーカーが新しいので走らないはず
+if jq -e --arg p "$GONE2_KEY" '.projects | has($p)' "$GATE_HOME/config.json" >/dev/null 2>&1; then
+  ok "T37b 直近に掃除済みなら再実行しない"
+else bad "T37b" "毎回 config を書き換えている"; fi
 
 echo "----"
 echo "PASS=$PASS FAIL=$FAIL"

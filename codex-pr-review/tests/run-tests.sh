@@ -62,10 +62,40 @@ mkrepo r4 >/dev/null 2>&1
 OUT=$(HOME="${WORK}/empty-home" bash "${HOOK}" 2>&1)
 [ -z "$OUT" ] && ok "無音でスキップする" || ng "未導入でも何か出力した" "$OUT"
 
-echo "T5: draft PR はスキップ"
+echo "T5: draft PR はスキップ（判定は stdin の JSON から行う）"
 mkrepo r5 >/dev/null 2>&1
-OUT=$(HOME="${FAKE_HOME}" TOOL_INPUT='gh pr create --draft' bash "${HOOK}" 2>&1)
-[ -z "$OUT" ] && ok "draft では走らない" || ng "draft でも走った" "$OUT"
+# 配線側は TOOL_INPUT を export しない。stdin の JSON で判定できなければ draft ガードは死んでいる。
+OUT=$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"gh pr create --draft --title x"}}' | HOME="${FAKE_HOME}" bash "${HOOK}" 2>&1)
+[ -z "$OUT" ] && ok "stdin の --draft を見てスキップする" || ng "draft でも走った" "$OUT"
+OUT=$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"gh pr create --title x"}}' | HOME="${FAKE_HOME}" bash "${HOOK}" 2>&1)
+have "$OUT" "ブランチ全差分をレビュー" && ok "draft でなければ走る" || ng "通常の PR で走らない" "$OUT"
+
+echo "T5b: リポジトリ単位で無効化できる（差分を外部へ送らない選択肢）"
+mkrepo r5b >/dev/null 2>&1
+OUT=$(HOME="${FAKE_HOME}" CODEX_PR_REVIEW=0 bash "${HOOK}" 2>&1)
+[ -z "$OUT" ] && ok "環境変数で無効化できる" || ng "無効化が効かない" "$OUT"
+mkdir -p .claude; echo 'CBR_PR_REVIEW=0' > .claude/codex-review-limits
+OUT=$(HOME="${FAKE_HOME}" bash "${HOOK}" 2>&1)
+[ -z "$OUT" ] && ok "リポジトリ設定で無効化できる" || ng "リポジトリ設定が効かない" "$OUT"
+
+echo "T5c: 未完了のレビューを『PR レビュー済み』にしない"
+mkrepo r5c >/dev/null 2>&1
+cat > "${FAKE_HOME}/.claude/skills/codex-bridge/scripts/codex-push-review.sh" <<'EOS'
+#!/bin/bash
+echo "=== Codex Push Review: 未完了（時間切れ）==="
+EOS
+chmod +x "${FAKE_HOME}/.claude/skills/codex-bridge/scripts/codex-push-review.sh"
+OUT=$(HOME="${FAKE_HOME}" bash "${HOOK}" 2>&1)
+have "$OUT" "記録しません" && ok "未完了は記録しないと明示する" || ng "未完了を黙って記録した" "$OUT"
+OUT2=$(HOME="${FAKE_HOME}" bash "${HOOK}" 2>&1)
+have "$OUT2" "スキップ" && ng "未完了なのに次回スキップされた" "$OUT2" || ok "次回もレビューを試みる"
+# 偽スクリプトを元に戻す
+cat > "${FAKE_HOME}/.claude/skills/codex-bridge/scripts/codex-push-review.sh" <<'EOS'
+#!/bin/bash
+printf '%s\n' "$*" >> "${CBR_FAKE_LOG}"
+echo "=== Codex Push Review (fake) ==="
+EOS
+chmod +x "${FAKE_HOME}/.claude/skills/codex-bridge/scripts/codex-push-review.sh"
 
 echo "T6: git リポジトリ外では無音"
 mkdir -p "${WORK}/notrepo"; cd "${WORK}/notrepo"

@@ -127,8 +127,16 @@ cat > "$TMP" <<EOF || write_failed=1
 
 # READ はメールボックス・カレンダーを変更しないサブコマンドだけ（use-spark 1.3.1 で確認）。prefix_rule は
 # 語の後ろの引数も許可するため、後続引数で書き込みになるものを含めない: draft（signatures 含む）・comment・
-# action・contact-action・event は WRITE 側。thread --download-attachments と attachment --stream は
-# ローカルへの読み出しであり、サーバー側の状態は変えない。
+# action・contact-action・event は WRITE 側。
+#
+# thread と attachment を allow に置いている根拠（2026-09-15 に spark --help で実測。
+# 「ローカルへ書き込むので prompt にすべき」という指摘が出たため、再燃防止に残す）:
+#   - どちらも出力先を指定するオプションを持たない（--output / --dir / --path いずれも 0 個）。
+#   - attachment --stream は stdout に書く。help の文言どおり「ローカルのパスを読めない
+#     サンドボックス内エージェント向け」の出力形式であり、サンドボックス外への書き込みではない。
+#   - thread --download-attachments は Spark 自身の管理領域へ取り込むだけで、書き込み先を選べない。
+#   - stdout をシェルのリダイレクトで任意のパスへ落とせる点は READ 全体に共通で、
+#     この 2 つに固有の問題ではない（emails や search でも同じ）。
 READ = ["accounts", "folders", "emails", "search", "thread", "attachment", "events", "availability",
         "contacts", "team", "meetings", "meeting", "templates", "template", "skill", "--version"]
 WRITE = ["draft", "comment", "action", "contact-action", "event"]

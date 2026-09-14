@@ -1,7 +1,7 @@
 {
   "name": "codex-pr-review",
-  "version": "0.1.0",
-  "description": "PR 作成時にブランチ全差分の Codex レビューを一度だけ走らせる PreToolUse フック。gh pr create を検知し、codex-bridge の増分レビュー（commit/push ごと）では見ない横断的な観点を PR 検収の一点に寄せる。settings.json を編集せずプラグインとしてフックを宣言するため、保護された設定に触れずに配線できる。codex-bridge が未導入の環境では無音でスキップする。",
+  "version": "0.2.0",
+  "description": "PR 作成時にブランチ全差分の Codex レビューを一度だけ走らせる PreToolUse フック。gh pr create を検知し、codex-bridge の増分レビュー（commit/push ごと）では見ない横断的な観点を PR 検収の一点に寄せる。settings.json を編集せずプラグインとしてフックを宣言するため、保護された設定に触れずに配線できる。【データ送信】ブランチ全差分を外部モデル（Codex）へ送る。機密リポジトリでは .claude/codex-review-limits に CBR_PR_REVIEW=0 を書くか環境変数 CODEX_PR_REVIEW=0 で無効化する。draft PR・同一 HEAD の再実行・未完了レビューはスキップし、codex-bridge が未導入の環境では無音。",
   "author": {
     "name": "haboshi",
     "email": "haboshi@allambitious.co.jp"

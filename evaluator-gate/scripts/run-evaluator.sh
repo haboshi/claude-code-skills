@@ -40,6 +40,9 @@ fi
 case "$kind" in
   codex)
     command -v codex >/dev/null 2>&1 || { note "codex CLI 不在"; exit 127; }
+    # サブスク枠が上限なら Codex を呼ばない（購入クレジットの消費回避）。呼び出し側は UNAVAILABLE として
+    # Grok 単独で判定する。許可するなら EVALUATOR_GATE_ALLOW_CREDITS=1。
+    if codex_quota_exhausted; then note "Codex をスキップ: ${QUOTA_NOTE}。購入クレジットの消費を避けるため呼びません"; exit 3; fi
     # profile: EVALUATOR_GATE_CODEX_PROFILE が未設定なら、~/.codex/review.config.toml がある環境でだけ -p review を付ける
     # （配布先に profile が無くても動く。空文字を設定すると profile なしを強制できる）
     if [ -z "${EVALUATOR_GATE_CODEX_PROFILE+x}" ] && [ -f "${CODEX_HOME:-$HOME/.codex}/review.config.toml" ]; then

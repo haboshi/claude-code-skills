@@ -120,6 +120,14 @@ cut -f3 ~/.claude/evaluator-gate/runs.log | sort | uniq -c          # 判定の�
 終わると、その分は検証されないまま残る**。ゲートの保証が変わるため既定は無効。まず `runs.log` で
 実際の頻度を測ってから設定すること。
 
+### サブスク枠が上限のとき（クレジット消費回避・v0.5.2）
+
+ChatGPT の週次枠が 100% のまま Codex を呼ぶと購入クレジットから引かれる（2026-09-18 実測: ゲート 1 回
+約 13 クレジット）。`run-evaluator.sh` は直近の Codex セッションログの `rate_limits` から上限到達を判定し
+（ネットワーク不要・`$CODEX_HOME/sessions`）、上限なら Codex を呼ばず UNAVAILABLE として **Grok 単独**で
+判定する。差し戻し機能は残る。SessionStart で一度だけ知らせる。許可するなら
+`EVALUATOR_GATE_ALLOW_CREDITS=1`。記録が無い・古い（12 時間超）ときは枠ありとして扱う（fail-open）。
+
 ## 縮退動作一覧
 
 | 状況 | 検知 | 縮退動作 |

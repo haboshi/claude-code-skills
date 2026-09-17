@@ -19,6 +19,8 @@ export EVALUATOR_GATE_HOME="$WORK/gatehome"
 export EVALUATOR_GATE_GROK_BIN="$TESTS_DIR/fakes/grok"
 export EVALUATOR_GATE_EVAL_TIMEOUT=10
 export FAKE_CALL_LOG_DIR="$WORK/calllog"
+# 利用者の実 Codex セッションログ（サブスク枠の状態）をテストに持ち込まない。T38 でのみ差し替える
+export CODEX_HOME="$WORK/codex-home-empty"
 export PATH="$TESTS_DIR/fakes:$PATH"
 chmod +x "$TESTS_DIR/fakes/codex" "$TESTS_DIR/fakes/grok"
 mkdir -p "$FAKE_CALL_LOG_DIR"
@@ -1231,6 +1233,45 @@ rm -rf "$GONE2"
 if jq -e --arg p "$GONE2_KEY" '.projects | has($p)' "$GATE_HOME/config.json" >/dev/null 2>&1; then
   ok "T37b 直近に掃除済みなら再実行しない"
 else bad "T37b" "毎回 config を書き換えている"; fi
+
+# --- T38: サブスク枠が上限なら Codex を呼ばず Grok 単独で判定する（クレジット消費回避）---
+QH="$WORK/codex-home-t38"; mkdir -p "$QH/sessions/2026/09/18"
+mk_rollout38() { # $1 used_percent, $2 resets_at
+  printf '{"timestamp":"%s","type":"event_msg","payload":{"type":"token_count","info":{},"rate_limits":{"primary":{"used_percent":%s,"window_minutes":10080,"resets_at":%s},"secondary":null,"credits":{"balance":"9.9"}}}}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" "$2" > "$QH/sessions/2026/09/18/rollout-2026-09-18T00-00-00-t38.jsonl"
+}
+S=s38
+(cd "$REPO" && bash "$PLUG/scripts/gate-config.sh" on >/dev/null)
+out=$(startjson $S | run_start)
+mk_rollout38 100.0 $(( $(date +%s) + 3600 ))
+echo "quota-38" >> "$REPO/base.txt"
+reset_calls
+out=$(stopjson $S "実装が完了しました" | CODEX_HOME="$QH" run_gate 2>/dev/null)
+c=$(state_of $S | jq -r '.last_eval.codex'); g=$(state_of $S | jq -r '.last_eval.grok'); v=$(state_of $S | jq -r '.last_verdict')
+if [ "$(calls)" = "1" ] && [ "$c" = "UNAVAILABLE" ] && [ "$g" = "ALLOW" ] && [ "$v" = "ALLOW" ]; then
+  ok "T38 枠上限では Codex を呼ばず Grok 単独で ALLOW"
+else bad "T38" "calls=$(calls) codex=$c grok=$g verdict=$v"; fi
+export FAKE_GROK_OUTPUT="$BLOCK_OUT"
+echo "quota-38b" >> "$REPO/base.txt"
+reset_calls
+out=$(stopjson $S "実装が完了しました" | CODEX_HOME="$QH" run_gate 2>/dev/null)
+if [ "$(calls)" = "1" ] && printf '%s' "$out" | jq -e '.decision=="block"' >/dev/null 2>&1; then
+  ok "T38b 枠上限でも Grok の BLOCK は効く（ゲートが消えない）"
+else bad "T38b" "calls=$(calls) out=$(printf '%s' "$out" | head -c 120)"; fi
+export FAKE_GROK_OUTPUT="ALLOW: ok"
+echo "quota-38c" >> "$REPO/base.txt"
+reset_calls
+out=$(stopjson $S "実装が完了しました" | CODEX_HOME="$QH" EVALUATOR_GATE_ALLOW_CREDITS=1 run_gate 2>/dev/null)
+if [ "$(calls)" = "2" ]; then ok "T38c ALLOW_CREDITS=1 なら Codex も呼ぶ"; else bad "T38c" "calls=$(calls)"; fi
+mk_rollout38 100.0 $(( $(date +%s) - 60 ))
+echo "quota-38d" >> "$REPO/base.txt"
+reset_calls
+out=$(stopjson $S "実装が完了しました" | CODEX_HOME="$QH" run_gate 2>/dev/null)
+if [ "$(calls)" = "2" ]; then ok "T38d リセット時刻を過ぎた記録では Codex を呼ぶ"; else bad "T38d" "calls=$(calls)"; fi
+sb=$(startjson s38e | CODEX_HOME="$QH" bash "$PLUG/scripts/session-baseline.sh" 2>&1 >/dev/null)
+mk_rollout38 100.0 $(( $(date +%s) + 3600 ))
+sb=$(startjson s38f | CODEX_HOME="$QH" bash "$PLUG/scripts/session-baseline.sh" 2>&1 >/dev/null)
+printf '%s' "$sb" | grep -q "スキップ" && ok "T38e SessionStart で枠上限を知らせる" || bad "T38e" "$sb"
 
 echo "----"
 echo "PASS=$PASS FAIL=$FAIL"

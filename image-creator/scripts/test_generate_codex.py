@@ -6,6 +6,7 @@ subprocess（codex CLI）をモックして、可用性検出・プロンプト�
 env からの OPENAI_API_KEY 除去・パス抽出・コピーを検証する。
 """
 
+import json
 import os
 import sys
 import tempfile
@@ -378,3 +379,49 @@ class TestCodexProfileArgs(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSubscriptionQuota(unittest.TestCase):
+    """サブスク枠が上限のときは codex を呼ばずスキップする（クレジット消費回避）"""
+
+    def _home(self, used, resets_delta):
+        home = Path(tempfile.mkdtemp())
+        d = home / "sessions" / "2026" / "09" / "18"
+        d.mkdir(parents=True)
+        rec = {"timestamp": "2026-09-18T00:00:00Z", "type": "event_msg",
+               "payload": {"type": "token_count", "info": {},
+                           "rate_limits": {"primary": {"used_percent": used, "window_minutes": 10080,
+                                                       "resets_at": int(time.time()) + resets_delta},
+                                           "secondary": None, "credits": {"balance": "1.0"}}}}
+        (d / "rollout-2026-09-18T00-00-00-x.jsonl").write_text(json.dumps(rec) + "\n")
+        return home
+
+    def test_exhausted_before_reset(self):
+        ex, msg = generate_codex.subscription_quota_exhausted(codex_home=self._home(100.0, 3600))
+        self.assertTrue(ex)
+        self.assertIn("週次枠", msg)
+
+    def test_reset_passed(self):
+        ex, _ = generate_codex.subscription_quota_exhausted(codex_home=self._home(100.0, -60))
+        self.assertFalse(ex)
+
+    def test_has_room(self):
+        ex, _ = generate_codex.subscription_quota_exhausted(codex_home=self._home(42.0, 3600))
+        self.assertFalse(ex)
+
+    def test_no_records_is_fail_open(self):
+        ex, _ = generate_codex.subscription_quota_exhausted(codex_home=Path(tempfile.mkdtemp()))
+        self.assertFalse(ex)
+
+    def test_allow_credits_env(self):
+        with patch.dict(os.environ, {"ALLOW_CODEX_CREDITS": "1"}):
+            ex, _ = generate_codex.subscription_quota_exhausted(codex_home=self._home(100.0, 3600))
+        self.assertFalse(ex)
+
+    @patch("generate_codex.shutil.which", return_value="/usr/bin/codex")
+    def test_check_availability_reports_quota(self, _which):
+        with patch.dict(os.environ, {"CODEX_HOME": str(self._home(100.0, 3600))}):
+            ok, msg = generate_codex.check_availability()
+        self.assertFalse(ok)
+        self.assertIn("クレジット", msg)
+

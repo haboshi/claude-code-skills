@@ -331,6 +331,36 @@ state_write() {
 # 完了主張のハッシュ（同一 diff での主張差し替えを検知する）
 claim_hash() { printf '%s' "$1" | shasum -a 256 | cut -d' ' -f1; }
 
+# ChatGPT サブスクの週次枠が上限に達しているか。直近のセッションログ（$CODEX_HOME/sessions の rollout に
+# 記録される rate_limits）から判定する。ネットワークも Codex 呼び出しも使わない。
+# 上限のまま Codex を呼ぶと購入クレジットから引かれる（2026-09-18 実測: ゲート 1 回約 13 クレジット）ので、
+# 既定では Codex をスキップし Grok 単独で判定する。EVALUATOR_GATE_ALLOW_CREDITS=1 で許可。
+# 戻り値 0 = 上限到達、1 = 枠あり/不明（fail-open）。QUOTA_NOTE に表示用の 1 行を入れる。
+codex_quota_exhausted() {
+  QUOTA_NOTE=""
+  [ "${EVALUATOR_GATE_ALLOW_CREDITS:-0}" = "1" ] && return 1
+  command -v jq >/dev/null 2>&1 || return 1
+  local sess latest now used resets sec_used sec_resets bal
+  sess="${CODEX_HOME:-$HOME/.codex}/sessions"
+  [ -d "$sess" ] || return 1
+  latest=$(find "$sess" -name 'rollout-*.jsonl' -mmin -720 -print0 2>/dev/null | xargs -0 ls -t 2>/dev/null | head -8 | while IFS= read -r f; do
+    tail -c 1048576 "$f" 2>/dev/null | grep '"rate_limits"' | tail -1
+  done | jq -c 'select(.payload.rate_limits.primary.used_percent != null) | {ts:.timestamp, p:.payload.rate_limits.primary, s:.payload.rate_limits.secondary, c:.payload.rate_limits.credits}' 2>/dev/null | sort | tail -1)
+  [ -n "$latest" ] || return 1
+  now=$(date +%s)
+  used=$(printf '%s' "$latest" | jq -r '.p.used_percent'); resets=$(printf '%s' "$latest" | jq -r '.p.resets_at // 0')
+  sec_used=$(printf '%s' "$latest" | jq -r '.s.used_percent // empty'); sec_resets=$(printf '%s' "$latest" | jq -r '.s.resets_at // 0')
+  bal=$(printf '%s' "$latest" | jq -r '.c.balance // "-"')
+  case "$resets" in ''|*[!0-9]*) resets=0 ;; esac; case "$sec_resets" in ''|*[!0-9]*) sec_resets=0 ;; esac
+  if awk -v u="$used" 'BEGIN{exit !(u+0 >= 100)}' && [ "$resets" -gt "$now" ]; then
+    QUOTA_NOTE="サブスク週次枠 ${used}%（リセット $(date -r "$resets" '+%m-%d %H:%M' 2>/dev/null || echo "$resets")）・クレジット残高 ${bal}"; return 0
+  fi
+  if [ -n "$sec_used" ] && awk -v u="$sec_used" 'BEGIN{exit !(u+0 >= 100)}' && [ "$sec_resets" -gt "$now" ]; then
+    QUOTA_NOTE="サブスク短期枠 ${sec_used}%（リセット $(date -r "$sec_resets" '+%m-%d %H:%M' 2>/dev/null || echo "$sec_resets")）"; return 0
+  fi
+  return 1
+}
+
 # 完了・検証を主張する文面か。
 # 評価者を呼ぶのはこの判定が真のターンだけ（差し戻し中のターンは除く。stop-gate.sh 参照）。
 # 「完了」「完成」は述語の形に限る。2026-09-18 の実測（57 評価）で、「CI 完了を待っています」

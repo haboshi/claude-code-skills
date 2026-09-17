@@ -287,6 +287,24 @@ if [ "${force_eval:-0}" -eq 0 ] && [ -n "$ST_ALLOWED_SIG" ] && [ "$change_sig" =
   exit 0
 fi
 
+# 完了を主張していないターン（進捗報告・状況説明・待機報告）は評価者を呼ばない。
+# 2026-09-18 の実測では 57 評価のうち 16 回がこの種のターンで、評価者は「完了は主張していない」
+# としか言えなかった。eval_base は進めないので、見送った差分は次に完了を主張したターンで
+# まとめて評価される（検証されないまま残ることはない）。
+# ただし差し戻し中（前回 BLOCK）は文面に関係なく評価する。さもないと「状況を説明します」と
+# 書くだけで差し戻しを抜けられる。
+case "$current_claim" in
+  n:*)
+    if [ "$ST_LAST_VERDICT" != "BLOCK" ]; then
+      ST_CONSEC_BLOCKS=0
+      state_write "$session_id" "$project" "${ST_BASELINE_HEAD:-$current_head}" \
+                  "${ST_EVAL_BASE:-${ST_BASELINE_HEAD:-$current_head}}" \
+                  "$current_hash" "$current_claim" "ALLOW" "" 0 "no-claim" "no-claim" 0 "$current_br" "$ST_ALLOWED_SIG"
+      exit 0
+    fi
+    ;;
+esac
+
 # --- LLM 評価 ---
 wdir=$(mktemp -d "$GATE_TMP_DIR/${session_id}.XXXXXX" 2>/dev/null) || { note "tmp 作成失敗のため fail-open"; exit 0; }
 # evidence は評価後に必ず消す（完了主張と diff 抜粋をディスクに残さない）。デバッグ時のみ KEEP_TMP=1

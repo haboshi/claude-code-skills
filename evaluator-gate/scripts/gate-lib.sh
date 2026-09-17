@@ -331,10 +331,13 @@ state_write() {
 # 完了主張のハッシュ（同一 diff での主張差し替えを検知する）
 claim_hash() { printf '%s' "$1" | shasum -a 256 | cut -d' ' -f1; }
 
-# 完了・検証を主張する文面か（同一 diff でもこれが新たに現れたら再評価する）
-# 判定は「広めに拾う」側に倒す（見逃すとゲートを素通りされるが、拾いすぎても再評価するだけ）
+# 完了・検証を主張する文面か。
+# 評価者を呼ぶのはこの判定が真のターンだけ（差し戻し中のターンは除く。stop-gate.sh 参照）。
+# 「完了」「完成」は述語の形に限る。2026-09-18 の実測（57 評価）で、「CI 完了を待っています」
+# 「完了通知で」「完了にできない」のような名詞用法が進捗報告を完了主張として拾い、判定不能な
+# 評価を起こしていた。英単語は語境界を要求する（「undone」「redone」等の巻き込み防止）。
 is_completion_claim() {
-  printf '%s' "$1" | grep -qiE '完了|完成|実装しました|修正しました|対応しました|できました|終わりました|テスト.*(通|パス|成功|green)|全件パス|問題ありません|正常に動作|リリース(可能|できます)|出荷可能|マージ可能|done|completed|finished|ready to (ship|merge)|all tests? (pass|green)|tests? (are )?(passing|green)|verified|working (correctly|as expected)'
+  printf '%s' "$1" | grep -qiE '完了(しました|です|しています|いたしました|しております|済み)|完了([[:space:]。！!、]|$)|(すべて|全て|も|が|は|に)完了|完成(しました|です|しています)|実装しました|修正しました|対応しました|できました|終わりました|テスト.*(通|パス|成功|green)|全件パス|問題ありません|正常に動作|リリース(可能|できます)|出荷可能|マージ可能|(^|[^[:alnum:]])(done|completed|finished|verified)([^[:alnum:]]|$)|ready to (ship|merge)|all tests? (pass|green)|tests? (are )?(passing|green)|working (correctly|as expected)'
 }
 
 # base（起点）から現在の作業ツリーまでの「変更内容そのもの」の署名。

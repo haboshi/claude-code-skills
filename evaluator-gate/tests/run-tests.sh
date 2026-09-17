@@ -167,7 +167,10 @@ echo "wip content" >> "$REPO/newfile.txt"
 export FAKE_CODEX_OUTPUT="ALLOW: WIP として妥当"
 reset_calls
 out=$(stopjson s9 "作業の途中経過です" | run_gate)
-[ "$(calls)" = "2" ] || bad "T9-precond" "初回評価が走っていない calls=$(calls)"
+# 完了を主張しないターンは評価者を呼ばない（state には n: の主張ハッシュが残る）
+if [ "$(calls)" = "0" ] && [ "$(state_of s9 | jq -r '.last_eval.codex')" = "no-claim" ]; then
+  ok "T9-pre 完了主張のないターンは評価者を呼ばない（no-claim）"
+else bad "T9-precond" "calls=$(calls) codex=$(state_of s9 | jq -r '.last_eval.codex')"; fi
 # diff は同一のまま、主張だけ「完了」に差し替える → 再評価されなければならない
 reset_calls
 out=$(stopjson s9 "全テストがパスし、完全に実装完了しました" | run_gate)
@@ -177,6 +180,49 @@ reset_calls
 out=$(stopjson s9 "現在の状況を説明します。引き続き調査を進めます" | run_gate)
 if [ "$(calls)" = "0" ]; then ok "T9b 非完了主張の差し替えは再評価しない（クォータ保護）"; else bad "T9b" "calls=$(calls)"; fi
 export FAKE_CODEX_OUTPUT="ALLOW: ok"
+
+# --- T9c: 完了主張のないターンは eval_base を進めず、次の完了主張で差分をまとめて評価する ---
+S=s9c
+out=$(startjson $S | run_start)
+echo "wip-line-9c" >> "$REPO/base.txt"
+reset_calls
+out=$(stopjson $S "途中経過を報告します。引き続き作業します" | run_gate)
+eb=$(state_of $S | jq -r '.eval_base'); bh=$(state_of $S | jq -r '.baseline_head')
+if [ "$(calls)" = "0" ] && [ -z "$out" ] && [ "$eb" = "$bh" ]; then
+  ok "T9c 完了主張なし→評価者を呼ばず eval_base も進めない"
+else bad "T9c" "calls=$(calls) out=$out eb=$eb bh=$bh"; fi
+reset_calls
+out=$(stopjson $S "実装が完了しました" | run_gate)
+if [ "$(calls)" = "2" ] && grep -q "wip-line-9c" "$(promptf)"; then
+  ok "T9c-2 次の完了主張で見送った差分がまとめて評価される"
+else bad "T9c-2" "calls=$(calls) prompt_has_diff=$(grep -c wip-line-9c "$(promptf)")"; fi
+
+# --- T9d: 差し戻し中は完了主張のない文面でも評価する（「状況を説明します」で抜けられない）---
+S=s9d
+out=$(startjson $S | run_start)
+echo "todo-9d" >> "$REPO/base.txt"
+export FAKE_CODEX_OUTPUT="$BLOCK_OUT"
+out=$(stopjson $S "完了しました" | run_gate)
+printf '%s' "$out" | jq -e '.decision=="block"' >/dev/null 2>&1 || bad "T9d-precond" "BLOCK が出ない: $out"
+export FAKE_CODEX_OUTPUT="ALLOW: ok"
+echo "more-9d" >> "$REPO/base.txt"
+reset_calls
+out=$(stopjson $S "現在の状況を説明します" | run_gate)
+if [ "$(calls)" = "2" ]; then ok "T9d 差し戻し中は非完了主張でも再評価する（迂回防止）"; else bad "T9d" "calls=$(calls)"; fi
+
+# --- T9e: 完了主張の判定（名詞用法の「完了」は拾わない）---
+claim_ok() { ( set +u; . "$PLUG/scripts/gate-lib.sh" >/dev/null 2>&1; is_completion_claim "$1" ); }
+n9e=0
+claim_ok "すべて完了しました。" && n9e=$((n9e+1))
+claim_ok "## 完了" && n9e=$((n9e+1))
+claim_ok "新機能も完了" && n9e=$((n9e+1))
+claim_ok "Implementation is done." && n9e=$((n9e+1))
+claim_ok "develop へマージしました" && n9e=$((n9e+1))
+claim_ok "STG に反映済みです" && n9e=$((n9e+1))
+claim_ok "#1338 の CI 完了を待っています（完了通知で自動的にマージへ進みます）" && n9e=$((n9e+100))
+claim_ok "undone の扱いは未定。redone も同様に扱う" && n9e=$((n9e+100))
+claim_ok "完了にできない状態です" && n9e=$((n9e+100))
+if [ "$n9e" = "6" ]; then ok "T9e 述語の完了は拾い、名詞用法の完了は拾わない"; else bad "T9e" "score=${n9e}（期待 6）"; fi
 
 # --- T10: 両評価者 unavailable → UNAVAILABLE 記録 → クールダウン内は不起動 → 経過後に再評価 ---
 echo "more" >> "$REPO/base.txt"
@@ -203,14 +249,14 @@ out=$(startjson $S | run_start)
 printf 'x\n' >> "$REPO/base.txt"
 git -C "$REPO" add -A >/dev/null && git -C "$REPO" commit -qm "turn commit" >/dev/null   # clean tree, HEAD advanced
 export FAKE_CODEX_RC=1 FAKE_GROK_RC=1
-out=$(stopjson $S "実装してコミットしました" | run_gate)
+out=$(stopjson $S "実装してコミットしました。完了です" | run_gate)
 v=$(state_of $S | jq -r '.last_verdict'); eb=$(state_of $S | jq -r '.eval_base')
 sf="$EVALUATOR_GATE_HOME/state/$S.json"
 jq --argjson ep "$(( $(date +%s) - 1200 ))" '.updated_epoch=$ep' "$sf" > "$sf.t" && mv "$sf.t" "$sf"
 unset FAKE_CODEX_RC FAKE_GROK_RC
 export FAKE_CODEX_OUTPUT="ALLOW: 復旧"
 reset_calls
-out=$(stopjson $S "実装してコミットしました" | run_gate)
+out=$(stopjson $S "実装してコミットしました。完了です" | run_gate)
 if [ "$v" = "UNAVAILABLE" ] && [ "$eb" != "$(git -C "$REPO" rev-parse HEAD)" ] && [ "$(calls)" = "2" ]; then
   ok "T10b クリーンツリーのUNAVAILABLEも再評価（eval_base据え置き）"
 else bad "T10b" "v=$v eb_advanced=$([ "$eb" = "$(git -C "$REPO" rev-parse HEAD)" ] && echo yes) calls=$(calls)"; fi
@@ -276,7 +322,7 @@ mkdir -p "$WORK/outside"
 echo "OUTSIDE-SECRET-CONTENT" > "$WORK/outside/target.txt"
 ln -s "$WORK/outside/target.txt" "$REPO/innocent-link.txt"
 reset_calls
-out=$(stopjson s16 "リンクを追加しました" | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
+out=$(stopjson s16 "リンクを追加しました。完了です" | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
 if [ "$(calls)" = "2" ] && ! grep -q "OUTSIDE-SECRET-CONTENT" "$(promptf)"; then
   ok "T16 symlink参照先はevidenceに含まれない"
 else bad "T16" "calls=$(calls)"; fi
@@ -291,7 +337,7 @@ echo "unrelated" > "$REPO/.env.example"   # glob 展開の罠を仕込む
 echo "change" >> "$REPO/base.txt"
 reset_calls
 # あえて PWD をリポジトリ内（.env.example が見える場所）にして実行する
-out=$(cd "$REPO" && stopjson s17 "設定を追加" | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
+out=$(cd "$REPO" && stopjson s17 "設定を追加しました。完了です" | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
 if [ "$(calls)" = "2" ] && ! grep -qE "ENVFILE_UNIQUE_MARKER|CREDFILE_UNIQUE_MARKER|NESTED_ENV_MARKER" "$(promptf)"; then
   ok "T17 機微パス（untracked/ネスト/icase）はglob展開に影響されず除外"
 else bad "T17" "leak=$(grep -oE '[A-Z_]*_MARKER_XYZZY' "$(promptf)" | tr '\n' ',')"; fi
@@ -302,7 +348,7 @@ echo "TRACKED_ENV_MARKER_XYZZY" > "$REPO/.env"
 git -C "$REPO" add -f .env >/dev/null 2>&1; git -C "$REPO" commit -qm "track env" >/dev/null 2>&1
 echo "TRACKED_ENV_MARKER2_XYZZY" >> "$REPO/.env"
 reset_calls
-out=$(stopjson s17b "envを更新" | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
+out=$(stopjson s17b "envを更新しました。完了です" | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
 if [ "$(calls)" = "2" ] && ! grep -q "TRACKED_ENV_MARKER" "$(promptf)"; then
   ok "T17b tracked .env の内容もpathspecで除外（redact非依存）"
 else bad "T17b" "leak=$(grep -oE 'TRACKED_ENV_MARKER2?_XYZZY' "$(promptf)" | tr '\n' ',')"; fi
@@ -332,7 +378,7 @@ cat > "$REPO/settings.json" <<'JSON'
 {"password":"alpha beta gamma", "api_key": 'sierra tango'}
 JSON
 reset_calls
-out=$(stopjson s18 "設定を追加しました。API キーは sk-live-INMESSAGE-KEY-1234 を使用" | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
+out=$(stopjson s18 "設定を追加して完了しました。API キーは sk-live-INMESSAGE-KEY-1234 を使用" | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
 if [ "$(calls)" = "2" ] && \
    ! grep -qE "SUPERSECRET_PW|sk-proj-HARDCODED|AKIAIOSFODNN7EXAMPLE|ghp_abcdefghijklmnopqrstuvwxyz|sk-live-INMESSAGE|quoted_hunter2|json_hunter2|PEM-BODY-SECRET-MATERIAL|alpha|beta|gamma|sierra|tango" "$(promptf)" && \
    grep -q "REDACTED" "$(promptf)"; then
@@ -348,7 +394,7 @@ printf 'ECDSA_UNIQUE_MARKER_XYZZY\n' > "$REPO/id_ecdsa"
 git -C "$REPO" add -A >/dev/null 2>&1; git -C "$REPO" commit -qm "add creds" >/dev/null 2>&1
 for f in .npmrc .netrc terraform.tfvars id_ecdsa; do printf 'MORE_%s_MARKER\n' "$f" >> "$REPO/$f"; done
 reset_calls
-out=$(stopjson s19 "認証設定を更新" | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
+out=$(stopjson s19 "認証設定を更新しました。完了です" | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
 if [ "$(calls)" = "2" ] && ! grep -qE "NPMRC_UNIQUE_MARKER|NETRC_UNIQUE_MARKER|TFVARS_UNIQUE_MARKER|ECDSA_UNIQUE_MARKER|MORE_" "$(promptf)"; then
   ok "T19 追跡済みcredentialファイルの内容も除外"
 else bad "T19" "leak=$(grep -oE '[A-Z]+_UNIQUE_MARKER|MORE_[.a-z]+' "$(promptf)" | tr '\n' ',')"; fi
@@ -378,7 +424,7 @@ git -C "$REPO" add -A >/dev/null; git -C "$REPO" commit -qm "turn work" >/dev/nu
 export FAKE_CODEX_OUTPUT="BLOCK: コミットに未実装の痕跡
 turn.js:1 — TODO 残置のままコミット — 実装を完了させる"
 reset_calls
-out=$(stopjson $S "実装してコミットしました" | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
+out=$(stopjson $S "実装してコミットしました。完了です" | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
 if printf '%s' "$out" | jq -e '.decision=="block"' >/dev/null 2>&1 && [ "$(calls)" = "2" ] && \
    grep -q "turn.js" "$(promptf)"; then
   ok "T21 セッション初回のコミット済みターンも範囲評価（素通りしない）"
@@ -492,7 +538,7 @@ git -C "$REPO" add -A >/dev/null; git -C "$REPO" commit -qm "work on new branch"
 export FAKE_CODEX_OUTPUT="BLOCK: 未実装のままです
 newbranch.js:1 — TODO 残置 — 実装を完了させる"
 reset_calls
-out=$(stopjson $S "新ブランチで実装してコミットしました" | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
+out=$(stopjson $S "新ブランチで実装してコミットしました。完了です" | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
 if printf '%s' "$out" | jq -e '.decision=="block"' >/dev/null 2>&1 && [ "$(calls)" = "2" ] && \
    grep -q "newbranch.js" "$(promptf)"; then
   ok "T25f checkout -b + commit は作業として評価される（無評価受理しない）"
@@ -522,7 +568,7 @@ out=$(startjson $S | run_start)
 echo "wip body" > "$REPO/wip.txt"
 reset_calls
 out=$(stopjson $S "作業の途中経過です" | run_gate)
-[ "$(calls)" = "2" ] || bad "T25h-precond" "初回評価なし"
+[ "$(calls)" = "0" ] || bad "T25h-precond" "完了主張のないターンで評価が走った calls=$(calls)"
 git -C "$REPO" add -A >/dev/null; git -C "$REPO" commit -qm "commit wip as-is" >/dev/null
 reset_calls
 out=$(stopjson $S "全テストがパスし、完全に実装完了しました" | run_gate)
@@ -563,7 +609,7 @@ git -C "$UREPO" rev-parse HEAD >/dev/null 2>&1 || bad "T25i-setup" "root commit 
 export FAKE_CODEX_OUTPUT="BLOCK: 初回コミットに未実装
 root.js:1 — TODO 残置 — 実装を完了させる"
 reset_calls
-out=$(jq -n --arg s ub --arg c "$UREPO" '{session_id:$s, cwd:$c, hook_event_name:"Stop", stop_hook_active:false, last_assistant_message:"実装してコミットしました"}' | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
+out=$(jq -n --arg s ub --arg c "$UREPO" '{session_id:$s, cwd:$c, hook_event_name:"Stop", stop_hook_active:false, last_assistant_message:"実装してコミットしました。完了です"}' | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
 if printf '%s' "$out" | jq -e '.decision=="block"' >/dev/null 2>&1 && [ "$(calls)" = "2" ] && \
    grep -q "root.js" "$(promptf)"; then
   ok "T25i コミットゼロのリポジトリでも初回コミットを評価（証拠に root.js を含む）"
@@ -583,7 +629,7 @@ jq -n --arg s ub2 --arg c "$UREPO2" '{session_id:$s, cwd:$c, hook_event_name:"Se
 export FAKE_CODEX_OUTPUT="BLOCK: 未実装
 root.js:1 — TODO — 実装する"
 reset_calls
-out=$(jq -n --arg s ub2 --arg c "$UREPO2" '{session_id:$s, cwd:$c, hook_event_name:"Stop", stop_hook_active:false, last_assistant_message:"実装してコミットしました"}' | run_gate)
+out=$(jq -n --arg s ub2 --arg c "$UREPO2" '{session_id:$s, cwd:$c, hook_event_name:"Stop", stop_hook_active:false, last_assistant_message:"実装してコミットしました。完了です"}' | run_gate)
 if printf '%s' "$out" | jq -e '.decision=="block"' >/dev/null 2>&1 && [ "$(calls)" = "2" ]; then
   ok "T25n unbornでSessionStart再発火してもroot commitを評価"
 else bad "T25n" "calls=$(calls) out=$out"; fi
@@ -616,7 +662,7 @@ git -C "$REPO" checkout -q main
 out=$(startjson $S | run_start)
 git -C "$REPO" merge -q --no-edit side >/dev/null 2>&1
 reset_calls
-out=$(stopjson $S "マージしました" | run_gate)
+out=$(stopjson $S "マージしました。完了です" | run_gate)
 if printf '%s' "$out" | jq -e '.systemMessage' >/dev/null 2>&1 && \
    printf '%s' "$out" | jq -r '.systemMessage' | grep -qE "rebase|merge|取り込み" && [ "$(calls)" = "0" ]; then
   ok "T25l merge/rebase の取り込みは警告つき許可で可視化"
@@ -724,7 +770,7 @@ tx_toolres "Connected" >> "$TX"
 tx_user "はい" >> "$TX"
 echo "unrelated change 27" >> "$REPO/base.txt"
 reset_calls
-out=$(stopjson_tx s27 "user scope に追加し Connected を確認しました" "$TX" | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
+out=$(stopjson_tx s27 "user scope に追加し Connected を確認しました。完了です" "$TX" | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
 if [ "$(calls)" = "2" ] && grep -q "INSTRMARK_ANTHRO" "$(promptf)" && grep -q "USER_INSTRUCTION_BEGIN" "$(promptf)"; then
   ok "T27 元指示がプロンプトに描画される（リポジトリ外タスクの文脈が評価者に届く）"
 else bad "T27" "calls=$(calls) has_instr=$(grep -c INSTRMARK_ANTHRO "$(promptf)")"; fi
@@ -732,7 +778,7 @@ else bad "T27" "calls=$(calls) has_instr=$(grep -c INSTRMARK_ANTHRO "$(promptf)"
 # --- T27b: transcript が無ければ元指示は混入しない（従来動作を維持） ---
 echo "unrelated change 27b" >> "$REPO/base.txt"
 reset_calls
-out=$(stopjson s27b "設定を変更しました" | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
+out=$(stopjson s27b "設定を変更しました。完了です" | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
 if [ "$(calls)" = "2" ] && ! grep -q "INSTRMARK_ANTHRO" "$(promptf)"; then
   ok "T27b transcript不在時は元指示を混入しない（fail-openで従来動作）"
 else bad "T27b" "calls=$(calls)"; fi
@@ -789,7 +835,7 @@ git -C "$WT" add -A >/dev/null; git -C "$WT" commit -qm "fix display order" >/de
 # 親ツリーは別セッションの WIP で汚れている（＝「クリーンだから素通し」の分岐に入らない）
 printf 'other session wip T32MARK_FOREIGN\n' >> "$REPO/base.txt"
 reset_calls
-out=$(stopjson $S "display-order を修正し PR に出しました" | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
+out=$(stopjson $S "display-order を修正し PR に出しました。完了です" | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
 if [ "$(calls)" = "2" ] && grep -q "T32MARK_DELIVERABLE" "$(promptf)" && grep -q "fix/display-order" "$(promptf)"; then
   ok "T32 worktreeのブランチ差分が証拠に含まれる（作業ツリー外の成果物）"
 else bad "T32" "calls=$(calls) deliverable=$(grep -c T32MARK_DELIVERABLE "$(promptf)")"; fi
@@ -966,7 +1012,7 @@ printf 'export const bf = 1; // T34DMARK_BACKFILL\n' > "$WORK/wt34d/backfill.ts"
 git -C "$WORK/wt34d" add -A >/dev/null; git -C "$WORK/wt34d" commit -qm "backfill probe" >/dev/null
 printf 'wip t34d\n' >> "$REPO/base.txt"
 reset_calls
-out=$(stopjson_tx $S "実装して PR に出しました" "$TX34D" | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
+out=$(stopjson_tx $S "実装して PR に出しました。完了です" "$TX34D" | EVALUATOR_GATE_KEEP_TMP=1 run_gate)
 sse34d=$(state_of $S | jq -r '.session_start_epoch')
 if [ "$(calls)" = "2" ] && grep -q "T34DMARK_BACKFILL" "$(promptf)" && [ "$sse34d" = "$old_epoch34d" ]; then
   ok "T34d 旧schema+transcriptで会話開始時刻をバックフィルしブランチ検出が働く"

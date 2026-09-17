@@ -337,7 +337,7 @@ claim_hash() { printf '%s' "$1" | shasum -a 256 | cut -d' ' -f1; }
 # 「完了通知で」「完了にできない」のような名詞用法が進捗報告を完了主張として拾い、判定不能な
 # 評価を起こしていた。英単語は語境界を要求する（「undone」「redone」等の巻き込み防止）。
 is_completion_claim() {
-  printf '%s' "$1" | grep -qiE '完了(しました|です|しています|いたしました|しております|済み)|完了([[:space:]。！!、]|$)|(すべて|全て|も|が|は|に)完了|完成(しました|です|しています)|実装しました|修正しました|対応しました|できました|終わりました|テスト.*(通|パス|成功|green)|全件パス|問題ありません|正常に動作|リリース(可能|できます)|出荷可能|マージ可能|(^|[^[:alnum:]])(done|completed|finished|verified)([^[:alnum:]]|$)|ready to (ship|merge)|all tests? (pass|green)|tests? (are )?(passing|green)|working (correctly|as expected)'
+  printf '%s' "$1" | grep -qiE '完了(しました|です|しています|いたしました|しております|済み)|完了([[:space:]。！!、]|$)|(すべて|全て|も|が|は|に)完了|完成(しました|です|しています)|(実装|修正|対応|反映|マージ|リリース|デプロイ|出荷|移行|適用)(しました|済み|完了|いたしました)|できました|終わりました|テスト.*(通|パス|成功|green)|全件パス|問題ありません|正常に動作|リリース(可能|できます)|出荷可能|マージ可能|(^|[^[:alnum:]])(done|completed|finished|verified)([^[:alnum:]]|$)|ready to (ship|merge)|all tests? (pass|green)|tests? (are )?(passing|green)|working (correctly|as expected)'
 }
 
 # base（起点）から現在の作業ツリーまでの「変更内容そのもの」の署名。

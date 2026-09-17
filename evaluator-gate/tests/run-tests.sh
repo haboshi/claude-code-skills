@@ -217,10 +217,12 @@ claim_ok "すべて完了しました。" && n9e=$((n9e+1))
 claim_ok "## 完了" && n9e=$((n9e+1))
 claim_ok "新機能も完了" && n9e=$((n9e+1))
 claim_ok "Implementation is done." && n9e=$((n9e+1))
+claim_ok "develop へマージしました" && n9e=$((n9e+1))
+claim_ok "STG に反映済みです" && n9e=$((n9e+1))
 claim_ok "#1338 の CI 完了を待っています（完了通知で自動的にマージへ進みます）" && n9e=$((n9e+100))
 claim_ok "undone の扱いは未定。redone も同様に扱う" && n9e=$((n9e+100))
 claim_ok "完了にできない状態です" && n9e=$((n9e+100))
-if [ "$n9e" = "4" ]; then ok "T9e 述語の完了は拾い、名詞用法の完了は拾わない"; else bad "T9e" "score=${n9e}（期待 4）"; fi
+if [ "$n9e" = "6" ]; then ok "T9e 述語の完了は拾い、名詞用法の完了は拾わない"; else bad "T9e" "score=${n9e}（期待 6）"; fi
 
 # --- T10: 両評価者 unavailable → UNAVAILABLE 記録 → クールダウン内は不起動 → 経過後に再評価 ---
 echo "more" >> "$REPO/base.txt"

@@ -15,6 +15,11 @@ umask 077
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 . "$SCRIPT_DIR/gate-lib.sh"
 
+# サブスク枠が上限のときは、このセッションの Codex 評価がスキップされることを一度だけ知らせる
+if codex_quota_exhausted 2>/dev/null; then
+  printf 'evaluator-gate: %s。リセットまで Codex 評価はスキップし Grok 単独で判定します（EVALUATOR_GATE_ALLOW_CREDITS=1 で許可）\n' "$QUOTA_NOTE" >&2
+fi
+
 INPUT=$(cat 2>/dev/null || true)
 [ -n "$INPUT" ] || exit 0
 command -v jq >/dev/null 2>&1 || exit 0

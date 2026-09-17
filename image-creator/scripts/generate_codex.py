@@ -28,6 +28,7 @@ import argparse
 import os
 import re
 import shutil
+import json
 import subprocess
 import sys
 import tempfile
@@ -79,6 +80,63 @@ def candidate_image_dirs():
     return dirs
 
 
+def subscription_quota_exhausted(codex_home=None, threshold=100.0, lookback_min=720):
+    """ChatGPT サブスクの週次枠が上限に達しているか（直近セッションログの rate_limits から判定）。
+
+    上限のまま codex を呼ぶと購入クレジットから引かれる（2026-09-18 実測）。ネットワークは使わない。
+    Returns: (exhausted: bool, message: str)。記録が無い・読めないときは (False, ...) で fail-open。
+    """
+    if os.environ.get("ALLOW_CODEX_CREDITS") == "1":
+        return False, "ALLOW_CODEX_CREDITS=1（クレジット消費を許可）"
+    home = Path(codex_home or os.environ.get("CODEX_HOME") or (Path.home() / ".codex"))
+    sess = home / "sessions"
+    if not sess.is_dir():
+        return False, "セッションログなし"
+    cutoff = time.time() - lookback_min * 60
+    try:
+        files = [p for p in sess.rglob("rollout-*.jsonl") if p.stat().st_mtime >= cutoff]
+    except OSError:
+        return False, "セッションログを読めません"
+    files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    latest = None
+    for p in files[:8]:
+        try:
+            with open(p, "rb") as fh:
+                fh.seek(0, 2)
+                fh.seek(max(0, fh.tell() - 1024 * 1024))
+                tail = fh.read().decode("utf-8", "ignore")
+        except OSError:
+            continue
+        for line in reversed(tail.splitlines()):
+            if '"rate_limits"' not in line:
+                continue
+            try:
+                rec = json.loads(line)
+            except ValueError:
+                continue
+            rl = (rec.get("payload") or {}).get("rate_limits") or {}
+            pr = rl.get("primary") or {}
+            if pr.get("used_percent") is None:
+                continue
+            ts = rec.get("timestamp", "")
+            if latest is None or ts > latest[0]:
+                latest = (ts, pr, rl.get("secondary") or {}, rl.get("credits") or {})
+            break
+    if latest is None:
+        return False, f"直近 {lookback_min} 分に記録なし"
+    _, pr, sec, cr = latest
+    now = time.time()
+    for label, lim in (("週次枠", pr), ("短期枠", sec)):
+        used = lim.get("used_percent")
+        resets = lim.get("resets_at") or 0
+        if used is not None and float(used) >= threshold and resets > now:
+            when = time.strftime("%m-%d %H:%M", time.localtime(resets))
+            return True, (f"サブスク{label} {used}%（リセット {when}）。この間の codex 呼び出しは"
+                          f"購入クレジット（残高 {cr.get('balance', '-')}）から引かれるためスキップ。"
+                          "許可するなら ALLOW_CODEX_CREDITS=1")
+    return False, f"枠あり（週次 {pr.get('used_percent')}%）"
+
+
 def check_availability():
     """codex CLI が存在し、ChatGPT ログイン（サブスク枠）で使えるかを判定。
 
@@ -87,6 +145,9 @@ def check_availability():
     """
     if shutil.which("codex") is None:
         return False, "codex CLI が見つかりません（PATH に codex がない）"
+    exhausted, why = subscription_quota_exhausted()
+    if exhausted:
+        return False, why
     try:
         result = subprocess.run(
             ["codex", "login", "status"],

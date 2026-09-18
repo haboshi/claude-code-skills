@@ -1,0 +1,211 @@
+// 生成を止める側の検査。ここが 1 件でも拾ったら成果物を出さない。
+// 「見た目の指標」（交差数・並走区間・経路長・密度）はここに入れない。あれは verify-layout の記録であって合否ではない。
+import { normalize, edgesFor } from './normalize.mjs';
+import { findAbsolutePaths, describeLeak } from './leaks.mjs';
+
+const finding = (code, message, where) => ({ code, message, where });
+
+/** model.json の相互参照。JSON Schema では書けない検査はすべてここにある。 */
+export function checkModel(model) {
+  const out = [];
+  const D = normalize(model);
+
+  const screenIds = new Set(D.screens.map((s) => s.id));
+  const entityIds = new Set(D.entities.map((e) => e.id));
+  const processIds = new Set(D.processes.map((p) => p.id));
+  const areaIds = new Set(D.areas.map((a) => a.id));
+  const laneIds = new Set(D.lanes.map((l) => l.id));
+  const sourceIds = new Set(D.sources.map((s) => s.id));
+  const fieldsOf = new Map(D.entities.map((e) => [e.id, new Set(e.fields.map((f) => f.name))]));
+
+  const dup = (ids, label) => {
+    const seen = new Set();
+    for (const id of ids) {
+      if (seen.has(id)) out.push(finding('duplicate-id', `${label} の id が重複しています: ${id}`, label));
+      seen.add(id);
+    }
+  };
+  dup(D.screens.map((s) => s.key), 'screens');
+  dup(D.entities.map((e) => e.key), 'entities');
+  dup(D.processes.map((p) => p.key), 'processes');
+  dup(D.areas.map((a) => a.id), 'areas');
+  dup(D.lanes.map((l) => l.id), 'lanes');
+  dup(D.sources.map((s) => s.id), 'sources');
+
+  const ref = (id, set, where, what) => {
+    if (id != null && !set.has(id)) out.push(finding('undefined-ref', `${where} が存在しない ${what} を指しています: ${id}`, where));
+  };
+
+  for (const s of D.screens) {
+    for (const e of s.entities) ref(e, entityIds, `screens[${s.key}].entities`, 'entity');
+    for (const p of s.processes) ref(p, processIds, `screens[${s.key}].processes`, 'process');
+    ref(s.source, sourceIds, `screens[${s.key}].source`, 'source');
+    const keys = new Set();
+    for (const img of s.images) {
+      if (keys.has(img.key)) out.push(finding('duplicate-id', `screens[${s.key}].images の key が重複しています: ${img.key}`, `screens[${s.key}]`));
+      keys.add(img.key);
+    }
+  }
+
+  for (const t of D.transitions) {
+    ref(t.a, screenIds, `transitions[${t.id}].from`, 'screen');
+    ref(t.b, screenIds, `transitions[${t.id}].to`, 'screen');
+    if (t.a === t.b) out.push(finding('self-transition', `transitions[${t.id}] の遷移元と遷移先が同じ画面です`, `transitions[${t.id}]`));
+    if (t.pin) {
+      const screen = D.screens.find((s) => s.id === t.a);
+      const img = screen?.images.find((i) => i.key === t.pin.image);
+      if (!img) out.push(finding('undefined-ref', `transitions[${t.id}].pin が存在しない画像を指しています: ${t.pin.image}`, `transitions[${t.id}]`));
+      else if (img.historical) {
+        // 古い画像の座標を今回の根拠に使わない。落とすのではなく、明示的に拒否する。
+        out.push(finding('historical-pin', `transitions[${t.id}].pin が参考画像（historical）の座標を指しています。画面外の操作ラベルで表してください`, `transitions[${t.id}]`));
+      }
+    }
+  }
+
+  for (const e of D.entities) {
+    ref(e.area, areaIds, `entities[${e.key}].area`, 'area');
+    ref(e.source, sourceIds, `entities[${e.key}].source`, 'source');
+    const names = new Set();
+    for (const f of e.fields) {
+      if (names.has(f.name)) out.push(finding('duplicate-id', `entities[${e.key}].fields の name が重複しています: ${f.name}`, `entities[${e.key}]`));
+      names.add(f.name);
+    }
+  }
+
+  for (const r of D.relations) {
+    ref(r.a, entityIds, `relations[${r.id}].from.entity`, 'entity');
+    ref(r.b, entityIds, `relations[${r.id}].to.entity`, 'entity');
+    if (entityIds.has(r.a) && !fieldsOf.get(r.a).has(r.fa)) out.push(finding('undefined-ref', `relations[${r.id}].from.field が存在しない項目を指しています: ${r.fa}`, `relations[${r.id}]`));
+    if (entityIds.has(r.b) && !fieldsOf.get(r.b).has(r.fb)) out.push(finding('undefined-ref', `relations[${r.id}].to.field が存在しない項目を指しています: ${r.fb}`, `relations[${r.id}]`));
+  }
+
+  // 孤立エンティティ。ER に置いたのに誰とも関係しないカードは、図の意味を薄めるので落とす。
+  const connected = new Set(D.relations.flatMap((r) => [r.a, r.b]));
+  for (const e of D.entities) {
+    if (!connected.has(e.id)) out.push(finding('orphan-entity', `entities[${e.key}] がどの関係にも現れません`, `entities[${e.key}]`));
+  }
+
+  for (const p of D.processes) {
+    ref(p.lane, laneIds, `processes[${p.key}].lane`, 'lane');
+    ref(p.screen, screenIds, `processes[${p.key}].screen`, 'screen');
+    ref(p.source, sourceIds, `processes[${p.key}].source`, 'source');
+    for (const e of p.entities) ref(e, entityIds, `processes[${p.key}].entities`, 'entity');
+  }
+  for (const e of D.processEdges) {
+    ref(e.a, processIds, `process_edges[${e.id}].from`, 'process');
+    ref(e.b, processIds, `process_edges[${e.id}].to`, 'process');
+  }
+
+  for (const g of D.groups) {
+    for (const s of g.screens) ref(s, screenIds, `groups[${g.key}].screens`, 'screen');
+    for (const e of g.entities) ref(e, entityIds, `groups[${g.key}].entities`, 'entity');
+    for (const p of g.processes) ref(p, processIds, `groups[${g.key}].processes`, 'process');
+    if (g.primary) ref(g.primary, entityIds, `groups[${g.key}].primary_entity`, 'entity');
+  }
+
+  // 業務工程が 1 つでもあるなら、担当区分の一覧が要る。カードに空欄が出るのを防ぐ。
+  if (D.processes.length && !D.lanes.length) out.push(finding('missing-lanes', 'processes[] があるのに lanes[] が空です', 'lanes'));
+
+  const conds = new Set(D.processes.map((p) => p.cond).filter(Boolean));
+  for (const s of D.scenarios) {
+    for (const c of s.conditions) {
+      if (!conds.has(c)) out.push(finding('undefined-ref', `meta.scenarios[${s.id}].conditions が、どの工程も持たない条件を指しています: ${c}`, `meta.scenarios[${s.id}]`));
+    }
+    for (const p of s.include) ref(p, processIds, `meta.scenarios[${s.id}].include`, 'process');
+  }
+
+  for (const step of D.trace?.steps ?? []) {
+    const id = step.target;
+    if (!screenIds.has(`s-${id}`) && !entityIds.has(`e-${id}`)) {
+      out.push(finding('undefined-ref', `meta.trace.steps が存在しない画面・データ概念を指しています: ${id}`, 'meta.trace'));
+    }
+  }
+  for (const section of D.guide) ref(section.source, sourceIds, 'meta.guide[].source', 'source');
+
+  // 検証の証跡。空なら「未実施が無い」という主張になるので、無自覚な空配列を指摘する。
+  if (!D.notVerified.length) out.push(finding('empty-not-verified', 'not_verified[] が空です。実施していない検証が本当に無いか確認してください（無いなら、その旨を 1 行書いてください）', 'not_verified'));
+
+  return out;
+}
+
+/** source-manifest.json 側で宣言 sha256 と実体が食い違ったら止める。 */
+export function checkManifest(manifest) {
+  const out = [];
+  for (const s of manifest.sources ?? []) {
+    if (s.matches_declared === false) {
+      out.push(finding('sha256-mismatch', `sources[${s.id}] の宣言 sha256 が実ファイルと一致しません。入力が入れ替わっています`, `sources[${s.id}]`));
+    }
+  }
+  return out;
+}
+
+const overlaps = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+
+/** 配置の破れ。指標ではなく、図として読めなくなる状態だけを見る。 */
+export function checkLayout(layout, routing, model) {
+  const out = [];
+  const D = normalize(model);
+  for (const [mode, view] of Object.entries(layout.views ?? {})) {
+    const nodes = view.nodes ?? {};
+    const ids = Object.keys(nodes);
+
+    // カード重複。1px でも重なったら読めないので、面積ではなく矩形の交差で見る。
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        if (overlaps(nodes[ids[i]], nodes[ids[j]])) {
+          out.push(finding('card-overlap', `${mode}: カードが重なっています: ${ids[i]} / ${ids[j]}`, mode));
+        }
+      }
+    }
+
+    const edges = edgesFor(D, mode);
+    for (const e of edges) {
+      const route = view.edges?.[e.id];
+      if (!route) {
+        out.push(finding('missing-route', `${mode}: 辺 ${e.id} の経路がありません`, mode));
+        continue;
+      }
+      // カード貫通。両端のカードは端点が辺上に乗るため除外する。
+      if (routing.blocked(route.points, nodes, [e.a, e.b])) {
+        out.push(finding('card-pierced', `${mode}: 辺 ${e.id} が無関係なカードを貫通しています`, mode));
+      }
+    }
+
+    // ラベルとカードの重なり／ラベル同士の重なり。
+    const boxes = [];
+    for (const [id, route] of Object.entries(view.edges ?? {})) {
+      if (!route.labelBox) continue;
+      for (const nid of ids) {
+        if (overlaps(route.labelBox, nodes[nid])) out.push(finding('label-over-card', `${mode}: 辺 ${id} の説明ラベルがカード ${nid} に重なっています`, mode));
+      }
+      for (const prev of boxes) {
+        if (overlaps(route.labelBox, prev.box)) out.push(finding('label-over-label', `${mode}: 説明ラベルが重なっています: ${prev.id} / ${id}`, mode));
+      }
+      boxes.push({ id, box: route.labelBox });
+    }
+
+    // ER は左→右の参照順。逆行は「参照元が右にある」という読み違いを生むので止める。
+    if (mode === 'er') {
+      for (const r of D.relations) {
+        const a = nodes[r.a];
+        const b = nodes[r.b];
+        if (!a || !b) continue;
+        if (b.x + b.w / 2 < a.x + a.w / 2) {
+          out.push(finding('reversed-reference', `er: 参照順が逆行しています（参照先が参照元より左）: ${r.id}`, 'er'));
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/** 成果物に個人の絶対パスが混入していないか。値そのものは報告に出さない。 */
+export function checkArtifacts(files, { extra = [] } = {}) {
+  const out = [];
+  for (const [name, text] of Object.entries(files)) {
+    for (const hit of findAbsolutePaths(text, { extra })) {
+      out.push(finding('absolute-path', `${name} に絶対パスが混入しています: ${describeLeak(hit)}`, name));
+    }
+  }
+  return out;
+}

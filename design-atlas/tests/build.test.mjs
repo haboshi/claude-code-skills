@@ -76,3 +76,18 @@ test('根拠ソースの本文は既定で同梱しない', withDot, () => {
   assert.deepEqual(d.sourceBodies, {});
   assert.ok(d.sources.every((s) => s.embedded === false));
 });
+
+test('構造が破れているモデルでは書き出さない', withDot, async () => {
+  const fsMod = await import('node:fs');
+  const osMod = await import('node:os');
+  const pathMod = await import('node:path');
+  const { build } = await import('../scripts/build.mjs');
+  const dir = fsMod.mkdtempSync(pathMod.join(osMod.tmpdir(), 'design-atlas-broken-'));
+  const m = model();
+  m.screens[0].entities.push('ghost');
+  fsMod.writeFileSync(pathMod.join(dir, 'model.json'), JSON.stringify(m));
+  fsMod.writeFileSync(pathMod.join(dir, 'layout.json'), JSON.stringify(buildLayout(model(), rules())));
+  const out = pathMod.join(dir, 'index.html');
+  await assert.rejects(() => build(pathMod.join(dir, 'model.json'), out), /生成しません/);
+  assert.equal(fsMod.existsSync(out), false, '壊れた成果物が手元に残ってしまう');
+});

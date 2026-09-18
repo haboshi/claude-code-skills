@@ -59,7 +59,7 @@ Chrome の場所は `DESIGN_ATLAS_CHROME` で変えられる。
 S=<このプラグイン>/scripts
 node $S/manifest.mjs        <dir>/model.json                       # 入力の sha256
 node $S/layout.mjs          <dir>/model.json                       # 配置（dot + 経路探索）
-node $S/build.mjs           <dir>/model.json <out>/index.html      # 1 枚 HTML
+node $S/build.mjs           <dir>/model.json <out>/index.html      # 1 枚 HTML（構造が破れていれば書き出さない）
 node $S/verify-structure.mjs <dir>/model.json --artifacts <out> --out <out>/structure-verification.json
 node $S/verify-layout.mjs   <dir>/model.json --out <out>/layout-verification.json
 node $S/verify-browser.mjs  <out>/index.html --shots <out>/shots --out <out>/browser-verification.json

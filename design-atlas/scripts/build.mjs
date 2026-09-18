@@ -7,10 +7,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadModel, resolveWithin, ModelError } from './lib/model.mjs';
 import { toWebpDataUris } from './lib/webp.mjs';
+import { checkModel, checkLayout } from './lib/checks.mjs';
 import { normalize, edgesFor } from './lib/normalize.mjs';
 import { MODES } from './layout.mjs';
+import { createRequire } from 'node:module';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+const routing = createRequire(import.meta.url)('./routing.cjs');
 const asset = (...p) => fs.readFileSync(path.join(here, '..', ...p), 'utf8');
 
 const VIEW_TEXT = {
@@ -143,11 +146,20 @@ function collectSourceBodies(D, dir) {
   return bodies;
 }
 
-export async function build(modelPath, outPath, { inline = false } = {}) {
+export async function build(modelPath, outPath, { inline = false, force = false } = {}) {
   const { model, dir, sha256: modelSha } = loadModel(modelPath);
   const layoutPath = path.join(dir, 'layout.json');
   if (!fs.existsSync(layoutPath)) throw new ModelError('layout.json がありません。先に layout.mjs を走らせてください');
   const layout = JSON.parse(fs.readFileSync(layoutPath, 'utf8'));
+
+  // 構造が破れているなら書き出さない。壊れた成果物をいったん作ってから検査で咎めるのでは、
+  // 出来上がったファイルが手元に残り、そのまま渡されうる。verify-structure は後段で改めて
+  // 記録を残すが、止めるのはここ。
+  const broken = [...checkModel(model), ...checkLayout(layout, routing, model)];
+  if (broken.length && !force) {
+    const head = broken.slice(0, 5).map((f) => `  ✗ [${f.code}] ${f.message}`).join('\n');
+    throw new ModelError(`構造検査で ${broken.length} 件の指摘があるため生成しません:\n${head}${broken.length > 5 ? `\n  … 他 ${broken.length - 5} 件` : ''}`);
+  }
   const D = normalize(model);
   const outDir = path.dirname(path.resolve(outPath));
   const { images, copies, converted, note } = await collectImages(D, dir, outDir, { inline });
@@ -165,14 +177,16 @@ export async function build(modelPath, outPath, { inline = false } = {}) {
 if (import.meta.url === `file://${process.argv[1]}`) {
   const argv = process.argv.slice(2);
   const inline = argv.includes('--inline');
+  const force = argv.includes('--force');
   const [modelPath, outPath] = argv.filter((a) => !a.startsWith('--'));
   if (!modelPath) {
-    console.error('usage: build.mjs <model.json> [index.html] [--inline]');
+    console.error('usage: build.mjs <model.json> [index.html] [--inline] [--force]');
+    console.error('  --force: 構造検査の指摘を無視して生成する（壊れた図を確認したいときだけ）');
     process.exit(2);
   }
   try {
     const out = outPath ?? path.join(path.dirname(path.resolve(modelPath)), 'index.html');
-    const result = await build(modelPath, out, { inline });
+    const result = await build(modelPath, out, { inline, force });
     if (result.note) console.error(`  · ${result.note}`);
     console.log(JSON.stringify(result));
   } catch (e) {

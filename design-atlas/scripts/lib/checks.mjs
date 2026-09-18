@@ -3,7 +3,11 @@
 import { normalize, edgesFor } from './normalize.mjs';
 import { findAbsolutePaths, describeLeak } from './leaks.mjs';
 
-const finding = (code, message, where) => ({ code, message, where });
+// severity: 'stop' は生成を止める。'warn' は記録するだけで止めない。
+// チケットが「生成を止める」と定めた破れだけを stop にし、注意喚起はそれと混ぜない。
+const finding = (code, message, where, severity = 'stop') => ({ code, message, where, severity });
+
+export const blocking = (findings) => findings.filter((f) => f.severity !== 'warn');
 
 // id はビューワで DOM 属性・ファイル名・localStorage のキーになる。schema と同じ形を実行時にも要求し、
 // 属性からの脱出やディレクトリの跨ぎを、使う側ではなく入口で止める。
@@ -190,7 +194,7 @@ export function checkModel(model) {
   }
 
   // 検証の証跡。空なら「未実施が無い」という主張になるので、無自覚な空配列を指摘する。
-  if (!D.notVerified.length) out.push(finding('empty-not-verified', 'not_verified[] が空です。実施していない検証が本当に無いか確認してください（無いなら、その旨を 1 行書いてください）', 'not_verified'));
+  if (!D.notVerified.length) out.push(finding('empty-not-verified', 'not_verified[] が空です。実施していない検証が本当に無いか確認してください（無いなら、その旨を 1 行書いてください）', 'not_verified', 'warn'));
 
   return out;
 }

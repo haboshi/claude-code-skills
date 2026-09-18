@@ -55,9 +55,11 @@ test('埋め込み JSON がスクリプトを閉じない', withDot, () => {
   assert.ok(between.includes('<\\/script>'), '本文中の </script> が退避されている');
 });
 
-test('参考画像に付いた操作位置は埋め込まない', withDot, () => {
+test('撮影サイズの分からない画像の操作位置は埋め込まない', withDot, () => {
+  // 幅・高さが無いと座標を割合に直せず、位置の意味が決まらない。
+  // （参考画像に付いた操作位置の方は、構造検査が model の時点で撥ねる — checks.test.mjs 参照）
   const m = model();
-  m.screens[0].images = [{ key: 'top', path: 'shot.png', historical: true, width: 1440, height: 1050 }];
+  m.screens[0].images = [{ key: 'top', path: 'shot.png' }];
   m.transitions[1].pin = { image: 'top', x: 100, y: 200, w: 40, h: 20 };
   const d = buildData(m, buildLayout(m, rules()));
   assert.equal(d.transitions.find((t) => t.id === 't1').pin, null);
@@ -109,5 +111,22 @@ test('面の切り替えボタンは実在する面の数だけ出る', withDot,
   const m = model();
   delete m.processes;
   delete m.process_edges;
+  delete m.meta.scenarios;
+  m.screens.forEach((s) => { delete s.processes; });
+  m.groups.forEach((g) => { delete g.processes; });
   assert.equal([...header(renderHtml(buildData(m, buildLayout(m, rules())), m)).matchAll(/data-view="/g)].length, 3);
+});
+
+test('モデルの文字列が差し込み口として展開されない', withDot, () => {
+  const m = model();
+  // 題名に差し込み口の並びを書いても、それは題名の文字として出るだけで、
+  // 埋め込み JSON やスクリプト本体には化けない。
+  m.meta.title = '/*ATLAS_DATA*/';
+  m.meta.description = '/*ATLAS_JS*/';
+  const html = renderHtml(buildData(m, buildLayout(m, rules())), m);
+  const title = html.match(/<title>([\s\S]*?)<\/title>/)[1];
+  assert.equal(title, '/*ATLAS_DATA*/', '題名が JSON に置き換わっている');
+  const desc = html.match(/name="description" content="([\s\S]*?)"/)[1];
+  assert.equal(desc, '/*ATLAS_JS*/', '説明がスクリプト本体に置き換わっている');
+  assert.equal([...html.matchAll(/<script id="atlas-data"/g)].length, 1);
 });

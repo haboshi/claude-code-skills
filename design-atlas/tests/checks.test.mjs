@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { checkModel, checkManifest, checkArtifacts } from '../scripts/lib/checks.mjs';
+import { checkModel, checkManifest, checkArtifacts, blocking } from '../scripts/lib/checks.mjs';
 
 const base = () => JSON.parse(fs.readFileSync(new URL('./fixtures/library/model.json', import.meta.url), 'utf8'));
 const codes = (findings) => findings.map((f) => f.code);
@@ -66,10 +66,14 @@ test('id の重複は止める', () => {
   assert.ok(codes(checkModel(m)).includes('duplicate-id'));
 });
 
-test('not_verified が空なら指摘する（未実施が無いという主張を無自覚に出さない）', () => {
+test('not_verified が空なら指摘するが、生成は止めない', () => {
   const m = base();
   m.not_verified = [];
-  assert.ok(codes(checkModel(m)).includes('empty-not-verified'));
+  const f = checkModel(m);
+  assert.ok(codes(f).includes('empty-not-verified'));
+  // チケットが「生成を止める」と定めた破れではない。注意喚起と破れを混ぜない。
+  assert.equal(f.find((x) => x.code === 'empty-not-verified').severity, 'warn');
+  assert.deepEqual(blocking(f), []);
 });
 
 test('宣言 sha256 と実体の不一致は止める', () => {

@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { loadModel, ModelError } from './lib/model.mjs';
-import { checkModel, checkManifest, checkLayout, checkArtifacts } from './lib/checks.mjs';
+import { checkModel, checkManifest, checkLayout, checkArtifacts, blocking } from './lib/checks.mjs';
 
 const require = createRequire(import.meta.url);
 const routing = require('./routing.cjs');
@@ -50,7 +50,9 @@ export function verifyStructure(modelPath, { artifactDir, extra = [] } = {}) {
       '交差数・並走区間・経路長・カード密度（verify-layout が記録する。合否ではない）',
     ],
     findings,
-    passed: findings.length === 0,
+    warnings: findings.filter((f) => f.severity === 'warn').length,
+    // 止めるのは「生成を止める」と定めた破れだけ。注意喚起は記録に残すが合否は変えない。
+    passed: blocking(findings).length === 0,
   };
 }
 
@@ -69,7 +71,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     });
     const out = get('--out');
     if (out) fs.writeFileSync(out, JSON.stringify(report, null, 2) + '\n');
-    for (const f of report.findings) console.error(`  ✗ [${f.code}] ${f.message}`);
+    for (const f of report.findings) console.error(`  ${f.severity === 'warn' ? '△' : '✗'} [${f.code}] ${f.message}`);
     console.log(JSON.stringify({ passed: report.passed, findings: report.findings.length, performed: report.performed.length }));
     process.exit(report.passed ? 0 : 1);
   } catch (e) {

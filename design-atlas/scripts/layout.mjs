@@ -9,6 +9,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { loadModel, ModelError } from './lib/model.mjs';
 import { normalize, edgesFor } from './lib/normalize.mjs';
+import { checkModel, blocking } from './lib/checks.mjs';
 import { entitySize, entityCompactSize, screenSize, flowSize, groupSize } from './lib/sizes.mjs';
 
 const require = createRequire(import.meta.url);
@@ -144,6 +145,13 @@ function portsFor(D, mode, rules) {
 }
 
 export function buildLayout(model, rules) {
+  // 配置は多重度や参照が揃っている前提で座標を計算する。欠けたまま進むと素の TypeError になるので、
+  // ここで先に確かめる。止める対象は build と同じ（警告では止めない）。
+  const broken = blocking(checkModel(model));
+  if (broken.length) {
+    const head = broken.slice(0, 5).map((f) => `  ✗ [${f.code}] ${f.message}`).join('\n');
+    throw new ModelError(`構造検査で ${broken.length} 件の指摘があるため配置できません:\n${head}${broken.length > 5 ? `\n  … 他 ${broken.length - 5} 件` : ''}`);
+  }
   const D = normalize(model);
   const views = {};
   for (const mode of MODES) {

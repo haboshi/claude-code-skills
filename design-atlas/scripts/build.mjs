@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadModel, resolveWithin, ModelError } from './lib/model.mjs';
 import { toWebpDataUris } from './lib/webp.mjs';
-import { checkModel, checkLayout } from './lib/checks.mjs';
+import { checkModel, checkLayout, blocking } from './lib/checks.mjs';
 import { normalize, edgesFor } from './lib/normalize.mjs';
 import { MODES } from './layout.mjs';
 import { createRequire } from 'node:module';
@@ -102,17 +102,27 @@ export function renderHtml(data, model) {
   const views = Object.keys(data.layouts)
     .map((m, i) => `<button data-view="${m}" aria-pressed="${i === 0}">${escapeHtml(VIEW_TEXT[m].tab)}</button>`)
     .join('');
-  return asset('templates', 'index.html')
-    .replace('/*ATLAS_CSS*/', () => asset('scripts', 'viewer', 'styles.css'))
-    .replace('/*ATLAS_TITLE*/', () => escapeHtml(data.meta.title))
-    .replace('/*ATLAS_DESCRIPTION*/', () => escapeHtml(data.meta.description))
-    .replace('/*ATLAS_BRAND*/', () => escapeHtml(data.meta.title))
-    .replace('/*ATLAS_BRAND_SUB*/', () => escapeHtml(data.meta.subtitle))
-    .replace('/*ATLAS_SCENARIOS*/', () => scenarioOptions(D))
-    .replace('/*ATLAS_TRACE_BUTTON*/', () => trace)
-    .replace('/*ATLAS_VIEWS*/', () => views)
-    .replace('/*ATLAS_DATA*/', () => serialized)
-    .replace('/*ATLAS_JS*/', () => `${asset('scripts', 'routing.cjs')}\n${asset('scripts', 'viewer', 'app.js')}`);
+
+  const slots = {
+    ATLAS_CSS: () => asset('scripts', 'viewer', 'styles.css'),
+    ATLAS_TITLE: () => escapeHtml(data.meta.title),
+    ATLAS_DESCRIPTION: () => escapeHtml(data.meta.description),
+    ATLAS_BRAND: () => escapeHtml(data.meta.title),
+    ATLAS_BRAND_SUB: () => escapeHtml(data.meta.subtitle),
+    ATLAS_SCENARIOS: () => scenarioOptions(D),
+    ATLAS_TRACE_BUTTON: () => trace,
+    ATLAS_VIEWS: () => views,
+    ATLAS_DATA: () => serialized,
+    ATLAS_JS: () => `${asset('scripts', 'routing.cjs')}\n${asset('scripts', 'viewer', 'app.js')}`,
+  };
+
+  // 差し込みは 1 回で済ませる。順に replace すると、先に入れた値の中の
+  // 「/*ATLAS_DATA*/」のような文字列が次の段で本物の差し込み口として展開されてしまう
+  // （model.json の題名や説明にその並びを書けば、属性から抜け出せる）。
+  return asset('templates', 'index.html').replace(
+    /\/\*(ATLAS_[A-Z_]+)\*\//g,
+    (whole, name) => (Object.hasOwn(slots, name) ? slots[name]() : whole),
+  );
 }
 
 const escapeHtml = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -160,7 +170,7 @@ export async function build(modelPath, outPath, { inline = false, force = false 
   // 構造が破れているなら書き出さない。壊れた成果物をいったん作ってから検査で咎めるのでは、
   // 出来上がったファイルが手元に残り、そのまま渡されうる。verify-structure は後段で改めて
   // 記録を残すが、止めるのはここ。
-  const broken = [...checkModel(model), ...checkLayout(layout, routing, model)];
+  const broken = blocking([...checkModel(model), ...checkLayout(layout, routing, model)]);
   if (broken.length && !force) {
     const head = broken.slice(0, 5).map((f) => `  ✗ [${f.code}] ${f.message}`).join('\n');
     throw new ModelError(`構造検査で ${broken.length} 件の指摘があるため生成しません:\n${head}${broken.length > 5 ? `\n  … 他 ${broken.length - 5} 件` : ''}`);

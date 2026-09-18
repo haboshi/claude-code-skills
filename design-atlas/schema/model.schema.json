@@ -230,8 +230,8 @@
         },
         "embed": {
           "type": "boolean",
-          "default": true,
-          "description": "kind=file の本文を成果物に同梱するか。false にすると根拠ボタンは出るが本文は見えない。"
+          "default": false,
+          "description": "kind=file の本文を成果物に同梱するか。既定は false（同梱しない）。true にすると根拠ボタンから本文が読めるが、その本文ごと配布物に載るため、同梱していることが成果物の見える場所に表示される。"
         },
         "note": { "type": "string" }
       }

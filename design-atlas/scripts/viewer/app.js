@@ -267,10 +267,12 @@ function showGuide(){
  const questions=D.openQuestions.length?`<h3>確定前の設計</h3><ul>${D.openQuestions.map(q=>`<li>${esc(q.text)}${q.scope?` <small>（${esc(q.scope)}）</small>`:''}</li>`).join('')}</ul>`:'';
  // 未実施の検証は必ず出す。ここを省くと「全部確かめた」と読まれる。
  const unverified=`<h3>実施していない検証</h3>${D.notVerified.length?`<ul>${D.notVerified.map(t=>`<li>${esc(t)}</li>`).join('')}</ul>`:'<p>未実施の検証は記録されていません。</p>'}`;
+ // 本文を同梱したときは、それを黙って配らない。配布物に何が載っているかを読み手に見せる。
+ const embedded=D.embedsSourceText?`<h3>同梱している本文</h3><p>この設計マップには、根拠にした入力の<b>本文そのもの</b>が埋め込まれています（「根拠：…」から読めます）。配布先を選んでください。</p>`:'<h3>同梱している本文</h3><p>根拠にした入力の本文は埋め込んでいません。出典の表記だけを載せています。</p>';
  const evidence=D.evidence?`<h3>この版の証跡</h3><p>入力 ${D.evidence.sources} 件・model.json の SHA-256 は <code>${esc(D.evidence.model_sha256.slice(0,16))}…</code>。実行した検査の一覧と日時は同梱の検証結果ファイルにあります。</p>`:'';
  const weights=`<h3>線の太さの意味</h3><p>${[3,2,1].map(w=>`<b>${esc(weightText[w]||'')}</b>`).join(' / ')} の 3 段階です。関係の種類を表すもので、件数や利用頻度を測った値ではありません。線をクリックすると、その分類の理由が開きます。</p>`;
  const sourceList=D.sources.length?`<h3>根拠にした入力</h3><ul>${D.sources.map(s=>`<li>${esc(s.path??s.note??s.id)}${s.range?` ${esc(s.range)}`:''}${s.commit?` <code>${esc(s.commit)}</code>`:''}</li>`).join('')}</ul>`:'';
- openViewer('図の読み方と根拠','ABOUT THIS ATLAS','<button class="active">ガイド</button>',`<div class="guide-content">${weights}${sections}${questions}${unverified}${sourceList}${evidence}</div>`);
+ openViewer('図の読み方と根拠','ABOUT THIS ATLAS','<button class="active">ガイド</button>',`<div class="guide-content">${weights}${sections}${questions}${unverified}${sourceList}${embedded}${evidence}</div>`);
 }
 function traceExample(){
  if(!D.trace)return;

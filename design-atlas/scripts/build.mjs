@@ -78,6 +78,8 @@ export function buildData(model, layout, { modelSha, images = {}, sourceBodies =
     sources: D.sources.map((s) => ({ ...s, embedded: sourceBodies[s.id] != null })),
     sourceBodies,
     evidence: modelSha ? { model_sha256: modelSha, sources: D.sources.length } : null,
+    // 根拠ソースの本文を同梱したか。同梱したなら、その事実を成果物の見える場所に出す。
+    embedsSourceText: Object.keys(sourceBodies).length > 0,
   };
 }
 
@@ -133,7 +135,8 @@ async function collectImages(D, dir, outDir, { inline }) {
 function collectSourceBodies(D, dir) {
   const bodies = {};
   for (const s of D.sources) {
-    if (s.kind !== 'file' || s.embed === false) continue;
+    // 既定は同梱しない。本文には案件固有の内容が入りうるので、明示的に許したときだけ載せる。
+    if (s.kind !== 'file' || s.embed !== true) continue;
     const abs = resolveWithin(dir, s.path, `sources[${s.id}].path`);
     bodies[s.id] = fs.readFileSync(abs, 'utf8');
   }

@@ -102,6 +102,22 @@ export function checkModel(model) {
     if (entityIds.has(r.b) && !fieldsOf.get(r.b).has(r.fb)) out.push(finding('undefined-ref', `relations[${r.id}].to.field が存在しない項目を指しています: ${r.fb}`, `relations[${r.id}]`));
   }
 
+  // 設計候補の食い違い。未実装の項目・概念に繋がる関係は破線（proposed）でなければならない。
+  // 逆向き（既存どうしを結ぶ関係を候補と宣言する）は正当なので通す — 関係そのものが候補のことがある。
+  const proposedEntity = new Set(D.entities.filter((e) => e.status === 'proposed').map((e) => e.id));
+  const proposedField = new Map(D.entities.map((e) => [e.id, new Set(e.fields.filter((f) => f.proposed).map((f) => f.name))]));
+  for (const r of D.relations) {
+    if (r.proposed) continue;
+    for (const [entityId, fieldName, side] of [[r.a, r.fa, 'from'], [r.b, r.fb, 'to']]) {
+      if (!entityIds.has(entityId)) continue;
+      if (proposedEntity.has(entityId)) {
+        out.push(finding('proposed-mismatch', `relations[${r.id}].${side} が設計候補のデータ概念を指しているのに、関係が候補になっていません（破線で描けません）`, `relations[${r.id}]`));
+      } else if (proposedField.get(entityId)?.has(fieldName)) {
+        out.push(finding('proposed-mismatch', `relations[${r.id}].${side} が設計候補の項目 ${fieldName} を指しているのに、関係が候補になっていません（破線で描けません）`, `relations[${r.id}]`));
+      }
+    }
+  }
+
   // 孤立エンティティ。ER に置いたのに誰とも関係しないカードは、図の意味を薄めるので落とす。
   const connected = new Set(D.relations.flatMap((r) => [r.a, r.b]));
   for (const e of D.entities) {

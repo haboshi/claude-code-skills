@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Claude Code用スキルコレクション",
-    "version": "0.15.0",
+    "version": "0.16.0",
     "homepage": "https://github.com/haboshi/claude-code-skills"
   },
   "plugins": [
@@ -392,6 +392,23 @@
         "code-review",
         "PR検収",
         "全差分レビュー"
+      ]
+    },
+    {
+      "name": "design-atlas",
+      "description": "宣言的な model.json 1 枚から、画面遷移・ER・業務フローを 1 枚の HTML で横断して辿れる「設計マップ（Design Atlas）」を決定論的に生成する。配置は Graphviz dot ＋ 自作の経路探索でブラウザを開かずに決まり、構造検査（未定義参照・孤立・カード貫通・ラベル衝突・参照順の逆行・絶対パスの混入）は生成を止め、配置の指標は記録だけにとどめる。実ブラウザ検証を必須段に置き、入力の sha256・実行した検査・実施していない検証を成果物自身に書き出す。図を 1 枚描く依頼は drawio / mermaid-to-webp / svg-diagram / bizdoc が担当する。",
+      "source": "./design-atlas",
+      "strict": false,
+      "version": "0.1.0",
+      "category": "developer-tools",
+      "keywords": [
+        "design-atlas",
+        "設計マップ",
+        "画面遷移",
+        "ER図",
+        "業務フロー",
+        "architecture",
+        "graphviz"
       ]
     }
   ]

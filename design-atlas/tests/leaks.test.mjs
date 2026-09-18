@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { findAbsolutePaths, describeLeak } from '../scripts/lib/leaks.mjs';
 
+// 検体は架空の絶対パス。ここだけは実文字列で書く（packaging.test.mjs がこのファイルを対象外にしている）。
+
 test('ホームディレクトリの絶対パスを検出する', () => {
   const hits = findAbsolutePaths('see /Users/someone/projects/a.json for details');
   assert.equal(hits.length, 1);

@@ -47,7 +47,7 @@ Claude Code用プラグイン（スキル）のマーケットプレイスコレ
 { "name": "foo", "source": "./foo" }
 ```
 
-### 収録プラグイン一覧（19個）
+### 収録プラグイン一覧（21個）
 
 **ドキュメント生成**: pdf-creator-jp, bizdoc（ビジネス白基調のSVG図解付き1枚HTML生成 + doc-hub 統合管理）
 **画像生成**: image-creator, svg-header-image, svg-diagram, line-sticker-creator
@@ -55,6 +55,8 @@ Claude Code用プラグイン（スキル）のマーケットプレイスコレ
 **音声**: tts（発音辞書機能を内蔵）
 **調査**: brave-research
 **セキュリティ**: web-vuln-report（非破壊の脆弱性診断→日本語報告書 HTML/PDF 生成）
+**AWS**: aws-harness（AWS 操作を専用 MCP と shim 経由に寄せ、実行先アカウント・環境の確認と Secrets の実行時解決を強制する）
+**設計**: design-atlas（宣言的な model.json 1 枚から、画面遷移・ER・業務フローを 1 枚 HTML で横断して辿れる設計マップを生成。配置は Graphviz dot ＋ 自作の経路探索でブラウザ非依存、構造検査は生成を止め、配置の指標は記録だけにとどめ、実ブラウザ検証を必須段に置く）
 **メール・カレンダー**: spark-agent（Spark Desktop を複数アカウントの統合層にし、Claude Code と Codex の両方から同じスキルでメール確認・返信下書き・カレンダー確認と更新を行う運用層。コマンド正典は公式 use-spark、本プラグインはアカウント切り替え spark-ctx・診断 spark-doctor・送信/イベント変更の --confirm ゲート・Codex rules 生成を担う）
 **開発ツール**: skill-creator-pro（配布パイプライン特化）, harness-analytics（transcript ログ分析→改善示唆）, provider-harness（外部プロバイダ統合のメタスキル + ドメインスキル + /provider-harvest 知見還流）, evaluator-gate（Stop フック完了ゲート。Codex/Grok の外部評価者が完了主張を検証して差し戻し。/evaluator-gate 切替・/evaluate 所見評価）, orca-spinoff（Orca IDE の `orca` CLI で課題をチケット起票→別 worktree へフルハンドオフ。スクリプトなしの指示書型スキル）, codex-pr-review（`gh pr create` を検知して PR 検収時に一度だけブランチ全差分の Codex レビューを走らせる PreToolUse フック。commit/push ごとの増分レビューは `~/.claude/skills/codex-bridge` が担当し、本プラグインは PR 時点の横断レビューだけを受け持つ）
 
@@ -69,6 +71,7 @@ Claude Code用プラグイン（スキル）のマーケットプレイスコレ
 | Mermaid 記法の図を画像化する | mermaid-to-webp | WebP / PNG |
 | LLM に自由レイアウトの SVG を描かせる | svg-diagram | SVG |
 | 業務文書の中に図解を入れる | bizdoc（自前のインライン SVG パターン8種） | 1枚 HTML |
+| 画面遷移・ER・業務フローを横断して辿らせたい | **design-atlas**（本リポ） | 1枚 HTML（対話式） |
 | ラスタ画像・インフォグラフィック | image-creator / codex-imagegen | PNG |
 
 draw.io 本体の図解知識は [jgraph/drawio-mcp](https://github.com/jgraph/drawio-mcp) の公式プラグインが
@@ -85,7 +88,7 @@ drawio-bridge が補う、という分担にしている。
 ### スクリプト言語
 
 - Python スクリプト: image-creator, pdf-creator-jp, brave-research, skill-creator-pro, line-sticker-creator
-- Node.js スクリプト: svg-to-webp, svg-header-image, svg-diagram, mermaid-to-webp, tts, harness-analytics, bizdoc, drawio-bridge
+- Node.js スクリプト: svg-to-webp, svg-header-image, svg-diagram, mermaid-to-webp, tts, harness-analytics, bizdoc, drawio-bridge, design-atlas（外部バイナリに Graphviz `dot` と Chrome を要求する。npm 依存は足していない）
 - Bash スクリプト: provider-harness（SessionEnd/SessionStart フック用。macOS 標準 bash 3.2 互換）, evaluator-gate（Stop フック用。同じく bash 3.2 互換）, spark-agent（両エージェント共通の運用スクリプト。bash 3.2 互換。`$VAR` の直後に日本語が続くと変数名を誤認するため `${VAR}` で囲む）
 
 Python は `uv run --with <deps>` で実行（venv不要）。Node.js は各プラグインの `node_modules` を使用。
@@ -134,6 +137,9 @@ cd bizdoc && npm test
 
 # drawio-bridge（検証・SVG後処理・CLI検出。draw.io Desktop 未導入なら実 CLI テストは skip）
 cd drawio-bridge && npm test
+
+# design-atlas（スキーマ検査・配置・生成。Graphviz 未導入なら配置テストは skip）
+cd design-atlas && npm test
 
 # Bash テスト（evaluator-gate — fake 評価者による決定論テスト、実 LLM 呼び出しなし）
 bash evaluator-gate/tests/run-tests.sh

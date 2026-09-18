@@ -51,7 +51,8 @@ function currentSet(){
 function imageSrc(key){return D.images[key]??null}
 function screenNode(s,x,y,w,withPorts){
  const shot=s.images[0];
- const imageH=Math.round(w*(shot&&shot.width&&shot.height?shot.height/shot.width:D.imageRatio));
+ // 画像が無いモデルでも成立させる。空の枠を高さ分だけ確保すると、画面カードが間延びして読めなくなる。
+ const imageH=shot?Math.round(w*(shot.width&&shot.height?shot.height/shot.width:D.imageRatio)):0;
  let pins='',ports='';
  if(withPorts){const outgoing=D.transitions.filter(t=>t.a===s.id);let pi=0;
    for(const t of outgoing){
@@ -62,8 +63,9 @@ function screenNode(s,x,y,w,withPorts){
  }
  const src=shot?imageSrc(shot.key):null;
  const el=document.createElement('article');el.className='node screen-node';el.dataset.id=s.id;
- const figure=src?`<button class="shot-open" data-preview="${s.id}" aria-label="${esc(s.name)}のスクリーンショットを拡大"><img src="${esc(src)}" alt="${esc(s.name)}の画面" draggable="false"></button>`:'<span class="historical-shot">画像なし</span>';
- el.innerHTML=`<div class="node-head"><span class="node-code">${s.code}</span><button class="node-title" data-select="${s.id}">${esc(s.name)}</button><button class="drag-handle" aria-label="${esc(s.name)}の配置を移動">⠿</button></div><div class="shot" style="height:${imageH}px">${shot&&shot.historical?'<span class="historical-shot">参考画像 · 現行版は詳細から開く</span>':''}${figure}${pins}</div><div class="node-footer"><span>${esc(s.role)}</span><button data-select="${s.id}">${s.entities.length} データ ↗</button></div>${ports?`<div class="action-ports">${ports}</div>`:''}`;
+ const figure=src?`<button class="shot-open" data-preview="${s.id}" aria-label="${esc(s.name)}のスクリーンショットを拡大"><img src="${esc(src)}" alt="${esc(s.name)}の画面" draggable="false"></button>`:'';
+ const shotBlock=imageH?`<div class="shot" style="height:${imageH}px">${shot.historical?'<span class="historical-shot">参考画像 · 現行版は詳細から開く</span>':''}${figure}${pins}</div>`:(pins?`<div class="shot" style="height:0">${pins}</div>`:'');
+ el.innerHTML=`<div class="node-head"><span class="node-code">${s.code}</span><button class="node-title" data-select="${s.id}">${esc(s.name)}</button><button class="drag-handle" aria-label="${esc(s.name)}の配置を移動">⠿</button></div>${shotBlock}<div class="node-footer"><span>${esc(s.role)}</span><button data-select="${s.id}">${s.entities.length} データ ↗</button></div>${ports?`<div class="action-ports">${ports}</div>`:''}`;
  addNode(el,s.id,x,y,w,46+imageH+37+(ports?70:0));
 }
 function entityNode(e,x,y,w,compact=false){

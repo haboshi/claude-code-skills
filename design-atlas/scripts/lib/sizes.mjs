@@ -13,7 +13,8 @@ export function entityCompactSize(cards) {
 
 export function screenSize(screen, cards, { portCount = 0 } = {}) {
   const c = cards.screen;
-  const image = Math.round(c.width * imageRatio(screen, c));
+  // 画像が無いモデルでは画像枠を確保しない（capture は任意段で、画像ゼロでも成立させるため）。
+  const image = screen.images?.length ? Math.round(c.width * imageRatio(screen, c)) : 0;
   const rows = portCount ? Math.ceil(portCount / c.portsPerRow) : 0;
   return { w: c.width, h: c.head + image + c.footer + rows * c.portRow };
 }

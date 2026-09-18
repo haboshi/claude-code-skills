@@ -12,6 +12,11 @@ export async function capture(modelPath, outDir, { width = 1440, height = 1050 }
   const { model, dir } = loadModel(modelPath);
   const targets = (model.screens ?? []).filter((s) => s.mock?.href);
   if (!targets.length) throw new ModelError('screens[].mock.href がありません。撮る対象がありません');
+  for (const s of targets) {
+    if (typeof s.id !== 'string' || !/^[a-z0-9][a-z0-9_-]*$/.test(s.id)) {
+      throw new ModelError(`screens[].id に使えない文字が含まれています（英小文字・数字・_・- のみ）: ${JSON.stringify(String(s.id)).slice(0, 40)}`);
+    }
+  }
   fs.mkdirSync(outDir, { recursive: true });
 
   const session = await launchChrome();
@@ -26,7 +31,9 @@ export async function capture(modelPath, outDir, { width = 1440, height = 1050 }
       const url = pathToFileURL(abs).href + (s.mock.href.includes('?') ? '?' + s.mock.href.split('?')[1] : '');
       await navigate(url, 15000);
       const shot = await cdp.send('Page.captureScreenshot', { format: 'png' }, sessionId);
-      const file = path.join(outDir, `${s.id}.png`);
+      // capture は verify-structure より前に走る任意段なので、id はまだ検査されていない。
+      // 書き出し名に使う前にここで確かめ、outDir の外へ出られないようにする。
+      const file = resolveWithin(outDir, `${s.id}.png`, `screens[].id`);
       fs.writeFileSync(file, Buffer.from(shot.data, 'base64'));
       captured.push({ key: s.id, label: '画面上部', path: path.relative(dir, file), captured_at: new Date().toISOString(), historical: false, width, height });
     }

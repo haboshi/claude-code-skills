@@ -125,3 +125,16 @@ test('禁止語の混入は絶対パスと別の指摘として出す', () => {
   assert.ok(!findings[0].message.includes('絶対パス'));
   assert.ok(!findings[0].message.includes('acme-internal'), '禁止語そのものを報告に出さない');
 });
+
+test('capture は撮影前に画面 id を確かめる（verify-structure より前に走る段のため）', async () => {
+  const { capture } = await import('../scripts/capture.mjs');
+  const fsMod = await import('node:fs');
+  const osMod = await import('node:os');
+  const pathMod = await import('node:path');
+  const dir = fsMod.mkdtempSync(pathMod.join(osMod.tmpdir(), 'design-atlas-cap-'));
+  fsMod.writeFileSync(pathMod.join(dir, 'model.json'), JSON.stringify({
+    meta: { id: 'x', title: 'x' },
+    screens: [{ id: '../../escape', name: 'ずるい画面', mock: { href: 'a.html' } }],
+  }));
+  await assert.rejects(() => capture(pathMod.join(dir, 'model.json'), dir), /使えない文字/);
+});

@@ -69,3 +69,10 @@ test('trace が無いモデルではヘッダーのボタンごと出ない', wi
   const html = renderHtml(buildData(m, buildLayout(m, rules())), m);
   assert.doesNotMatch(html, /id="trace-example"/);
 });
+
+test('根拠ソースの本文は既定で同梱しない', withDot, () => {
+  const d = data();
+  assert.equal(d.embedsSourceText, false, '既定で本文を載せない');
+  assert.deepEqual(d.sourceBodies, {});
+  assert.ok(d.sources.every((s) => s.embedded === false));
+});

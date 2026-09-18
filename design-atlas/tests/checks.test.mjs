@@ -99,3 +99,22 @@ test('ディレクトリを跨ぐ画像キーは止める', () => {
   m.screens[0].images = [{ key: '../../escape', path: 'shot.png' }];
   assert.ok(codes(checkModel(m)).includes('invalid-id'));
 });
+
+test('設計候補のデータ概念に繋がる関係が破線でなければ止める', () => {
+  const m = base();
+  // reservation は status: proposed。そこへ繋がる関係から候補印を外すと、線の見た目と中身が食い違う。
+  delete m.relations[2].proposed;
+  assert.ok(codes(checkModel(m)).includes('proposed-mismatch'));
+});
+
+test('設計候補の項目に繋がる関係が破線でなければ止める', () => {
+  const m = base();
+  m.entities[2].fields[1].proposed = true; // loan.member_no を候補にする
+  assert.ok(codes(checkModel(m)).includes('proposed-mismatch'));
+});
+
+test('既存どうしを結ぶ関係を候補と宣言するのは通す', () => {
+  const m = base();
+  m.relations[0].proposed = true; // member → loan（どちらも実在）
+  assert.ok(!codes(checkModel(m)).includes('proposed-mismatch'));
+});

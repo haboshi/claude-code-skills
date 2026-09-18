@@ -1,0 +1,18 @@
+{
+  "$comment": "配置規則の既定値。model.json と同じディレクトリに layout-rules.json を置くと、この内容へ浅くマージして上書きできる。カード寸法はビューワの CSS を実測して得た値で、ブラウザを開かずに再配置するために使う。ブラウザ描画時には実寸で測り直されるので、ここは層割当と初期経路のための近似である。",
+  "direction": "LR",
+  "rankSeparation": 250,
+  "nodeSeparation": 130,
+  "groupPadding": 70,
+  "margin": { "x": 120, "y": 140 },
+  "cards": {
+    "entity": { "width": 360, "head": 140, "field": 44 },
+    "entityCompact": { "width": 420, "height": 105 },
+    "screen": { "width": 420, "head": 60, "footer": 47, "imageRatio": 0.729, "portRow": 56, "portsPerRow": 3 },
+    "flow": { "width": 320, "height": 167, "wrapAt": 14, "wrapExtra": 18 },
+    "group": { "width": 420, "height": 140 }
+  },
+  "flow": { "rankSeparation": 151, "nodeSeparation": 101, "exceptionOffset": { "x": 170, "y": 200 } },
+  "screens": { "rankSeparation": 220, "nodeSeparation": 120 },
+  "overview": { "rankSeparation": 220, "nodeSeparation": 120 }
+}

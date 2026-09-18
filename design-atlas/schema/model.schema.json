@@ -1,0 +1,466 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/haboshi/claude-code-skills/design-atlas/schema/model.schema.json",
+  "title": "Design Atlas model",
+  "description": "設計マップ 1 枚分の宣言的な入力。3 面（画面遷移・ER・業務フロー）は一級市民として専用の構造検査を持ち、extensions[] は汎用で検査が弱い。この文書は契約の正本であり、実行時の検査は verify-structure.mjs が行う（相互参照の検査は JSON Schema では書けないため）。",
+  "type": "object",
+  "required": ["meta", "screens", "entities"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "meta": { "$ref": "#/$defs/meta" },
+    "sources": { "type": "array", "items": { "$ref": "#/$defs/source" } },
+    "lanes": {
+      "type": "array",
+      "description": "担当区分。processes[].lane の参照先。",
+      "items": { "$ref": "#/$defs/lane" }
+    },
+    "screens": { "type": "array", "items": { "$ref": "#/$defs/screen" } },
+    "transitions": { "type": "array", "items": { "$ref": "#/$defs/transition" } },
+    "areas": {
+      "type": "array",
+      "description": "ER の業務領域。各エンティティはちょうど 1 領域に属する。層割当の cluster になる。",
+      "items": { "$ref": "#/$defs/area" }
+    },
+    "entities": { "type": "array", "items": { "$ref": "#/$defs/entity" } },
+    "relations": { "type": "array", "items": { "$ref": "#/$defs/relation" } },
+    "processes": { "type": "array", "items": { "$ref": "#/$defs/process" } },
+    "process_edges": { "type": "array", "items": { "$ref": "#/$defs/processEdge" } },
+    "groups": {
+      "type": "array",
+      "description": "業務グループ。俯瞰ビューの帯と一覧の「業務から探す」に使う。ER の areas[] とは別概念で、画面・データ・業務工程を横断してまとめる。",
+      "items": { "$ref": "#/$defs/group" }
+    },
+    "open_questions": {
+      "type": "array",
+      "description": "未確定として残す設計。ガイドに区別して表示する。",
+      "items": {
+        "type": "object",
+        "required": ["text"],
+        "additionalProperties": false,
+        "properties": {
+          "text": { "type": "string" },
+          "scope": { "type": "string", "description": "どの面の話か。screens / er / flow / all など。" }
+        }
+      }
+    },
+    "not_verified": {
+      "type": "array",
+      "description": "実施していない検証。成果物に必ず書き出す。空配列は「未実施が無い」という主張になるので、無自覚に空にしない。",
+      "items": { "type": "string" }
+    },
+    "extensions": {
+      "type": "array",
+      "description": "3 面に収まらない任意の図。ノードと辺の参照整合だけを検査し、方向・孤立・多重度の検査は行わない。成果物にも『検査が弱い面』と表示する。",
+      "items": {
+        "type": "object",
+        "required": ["id", "label", "nodes"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "$ref": "#/$defs/id" },
+          "label": { "type": "string" },
+          "description": { "type": "string" },
+          "nodes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "label"],
+              "additionalProperties": false,
+              "properties": {
+                "id": { "$ref": "#/$defs/id" },
+                "label": { "type": "string" },
+                "note": { "type": "string" }
+              }
+            }
+          },
+          "edges": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["from", "to"],
+              "additionalProperties": false,
+              "properties": {
+                "from": { "$ref": "#/$defs/id" },
+                "to": { "$ref": "#/$defs/id" },
+                "label": { "type": "string" },
+                "weight": { "$ref": "#/$defs/weight" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]*$",
+      "description": "英小文字・数字・_・- のみ。面ごとの接頭辞（s- / e- / b-）は生成側が付けるので書かない。"
+    },
+    "weight": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3,
+      "description": "線の太さ。3=強い / 2=参照・依存 / 1=補助・候補。関係の種類を表す指標であり、件数・頻度の実測値ではない。"
+    },
+    "meta": {
+      "type": "object",
+      "required": ["id", "title"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id", "description": "手動配置の保存キーに使う。プロジェクトごとに一意にする。" },
+        "title": { "type": "string" },
+        "subtitle": { "type": "string", "description": "ヘッダー左の小さい英字ラベル。" },
+        "description": { "type": "string", "description": "<meta name=description>。" },
+        "project": { "type": "string", "description": "doc-hub のプロジェクト ID。publish.mjs が使う。" },
+        "model_version": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "モデルを改訂したら上げる。上げると閲覧者の手動配置を持ち込まずに初期配置へ戻る。"
+        },
+        "accent": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+        "labels": { "$ref": "#/$defs/labels" },
+        "scenarios": {
+          "type": "array",
+          "description": "業務フローの経路絞り込み。processes[].condition の値を束ねて 1 つの選択肢にする。",
+          "items": {
+            "type": "object",
+            "required": ["id", "label"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "$ref": "#/$defs/id" },
+              "label": { "type": "string" },
+              "conditions": {
+                "type": "array",
+                "description": "この経路に含める processes[].condition の値。",
+                "items": { "type": "string" }
+              },
+              "include": {
+                "type": "array",
+                "description": "condition では拾えないが経路上は見せたい工程の id。",
+                "items": { "$ref": "#/$defs/id" }
+              }
+            }
+          }
+        },
+        "guide": {
+          "type": "array",
+          "description": "「図の読み方」に出す散文。open_questions[] / not_verified[] は生成側が自動で節を足すので、ここには重ねて書かない。",
+          "items": {
+            "type": "object",
+            "required": ["heading", "body"],
+            "additionalProperties": false,
+            "properties": {
+              "heading": { "type": "string" },
+              "body": { "type": "array", "items": { "type": "string" } },
+              "source": { "$ref": "#/$defs/id", "description": "この節の根拠にする sources[].id。" }
+            }
+          }
+        },
+        "trace": {
+          "type": "object",
+          "description": "「1 件をたどる」導線。省略するとヘッダーのボタンごと出ない。",
+          "required": ["label", "title", "steps"],
+          "additionalProperties": false,
+          "properties": {
+            "label": { "type": "string", "description": "ヘッダーのボタン文言。" },
+            "title": { "type": "string" },
+            "subtitle": { "type": "string" },
+            "note": { "type": "string" },
+            "steps": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["target", "title"],
+                "additionalProperties": false,
+                "properties": {
+                  "target": { "type": "string", "description": "screens[].id か entities[].id。接頭辞なしで書く。" },
+                  "title": { "type": "string" },
+                  "description": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "labels": {
+      "type": "object",
+      "description": "成果物に出る語の差し替え。省略時は既定の日本語を使う。",
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "entities[].status の表示名。既定は observed=実装で確認 / derived=表示・概念の整理 / proposed=設計候補。"
+        },
+        "field_roles": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "フィールドの役割の表示名。既定は key=KEY / ref=REF / value=（空）。"
+        },
+        "weights": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "線の太さの呼び名。既定は 3=強い関係 / 2=参照・依存 / 1=補助・候補。"
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "required": ["id", "kind"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "kind": {
+          "enum": ["file", "commit", "note"],
+          "description": "file=同梱して本文を見せる / commit=コミットに辿らせる / note=打合せメモ等の出典表記のみ。"
+        },
+        "path": {
+          "type": "string",
+          "description": "model.json のあるディレクトリからの相対パス。絶対パスと `..` での脱出は拒否する。"
+        },
+        "commit": { "type": "string" },
+        "range": { "type": "string", "description": "引用した範囲（§2-3〜2-6 / L10-L80 など）。" },
+        "fetched_at": { "type": "string", "format": "date-time" },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "宣言しておくと、実ファイルと違ったとき verify-structure が生成を止める。"
+        },
+        "embed": {
+          "type": "boolean",
+          "default": false,
+          "description": "kind=file の本文を成果物に同梱するか。既定は false（同梱しない）。true にすると根拠ボタンから本文が読めるが、その本文ごと配布物に載るため、同梱していることが成果物の見える場所に表示される。"
+        },
+        "note": { "type": "string" }
+      }
+    },
+    "lane": {
+      "type": "object",
+      "required": ["id", "label"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "label": { "type": "string" },
+        "color": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+        "external": { "type": "boolean", "default": false, "description": "社外の担当か。" }
+      }
+    },
+    "screen": {
+      "type": "object",
+      "required": ["id", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "description": "誰が使う画面か。" },
+        "description": { "type": "string" },
+        "note": { "type": "string" },
+        "version": { "type": "string", "description": "対象版の表記。" },
+        "entities": { "type": "array", "items": { "$ref": "#/$defs/id" }, "description": "この画面が扱うデータ概念。" },
+        "processes": { "type": "array", "items": { "$ref": "#/$defs/id" }, "description": "この画面が担う業務工程。" },
+        "source": { "$ref": "#/$defs/id", "description": "根拠にする sources[].id。" },
+        "mock": {
+          "type": "object",
+          "description": "動くモックへの導線。古い画像を根拠にしないための出口。",
+          "required": ["href"],
+          "additionalProperties": false,
+          "properties": {
+            "href": { "type": "string", "description": "成果物からの相対 URL。" },
+            "label": { "type": "string" }
+          }
+        },
+        "images": {
+          "type": "array",
+          "description": "スクリーンショット。先頭がカード上に出る代表画像。撮影日時はモデル取得日時と別に持つ。",
+          "items": {
+            "type": "object",
+            "required": ["key", "path"],
+            "additionalProperties": false,
+            "properties": {
+              "key": { "$ref": "#/$defs/id" },
+              "label": { "type": "string" },
+              "path": { "type": "string", "description": "model.json からの相対パス。" },
+              "captured_at": { "type": "string", "format": "date-time" },
+              "historical": {
+                "type": "boolean",
+                "default": false,
+                "description": "現行版より古い参考画像か。真なら画像内の操作位置を遷移の根拠に使わない。"
+              },
+              "width": { "type": "integer", "minimum": 1 },
+              "height": { "type": "integer", "minimum": 1 }
+            }
+          }
+        }
+      }
+    },
+    "transition": {
+      "type": "object",
+      "required": ["from", "to", "trigger"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "from": { "$ref": "#/$defs/id" },
+        "to": { "$ref": "#/$defs/id" },
+        "trigger": { "type": "string", "description": "何を押すと動くか。" },
+        "description": { "type": "string" },
+        "selector": { "type": "string", "description": "根拠にした DOM セレクタ。" },
+        "carry": { "type": "string", "description": "遷移先へ引き継ぐもの。引き継がないなら、その旨を書く。" },
+        "weight": { "$ref": "#/$defs/weight" },
+        "reason": { "type": "string", "description": "その太さにした理由。成果物に表示する。" },
+        "pin": {
+          "type": "object",
+          "description": "画像内の操作位置。historical な画像では生成側が落とす。",
+          "required": ["image", "x", "y"],
+          "additionalProperties": false,
+          "properties": {
+            "image": { "$ref": "#/$defs/id" },
+            "x": { "type": "number" },
+            "y": { "type": "number" },
+            "w": { "type": "number" },
+            "h": { "type": "number" }
+          }
+        }
+      }
+    },
+    "area": {
+      "type": "object",
+      "required": ["id", "label"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "label": { "type": "string" }
+      }
+    },
+    "entity": {
+      "type": "object",
+      "required": ["id", "name", "area", "fields"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "type": "string" },
+        "area": { "$ref": "#/$defs/id", "description": "areas[].id。ちょうど 1 つ。" },
+        "status": {
+          "enum": ["observed", "derived", "proposed"],
+          "default": "observed",
+          "description": "observed=実装で確認できる / derived=表示や概念の整理 / proposed=未実装の設計候補。"
+        },
+        "origin": { "type": "string", "description": "どこにある実体か（テーブル名・配列名・画面名）。" },
+        "source": { "$ref": "#/$defs/id" },
+        "note": { "type": "string" },
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string", "description": "relations[] が指す名前。エンティティ内で一意。" },
+              "label": { "type": "string" },
+              "role": {
+                "enum": ["key", "ref", "value"],
+                "default": "value",
+                "description": "key=識別に使う / ref=他を参照する / value=値。実 DB の PK・FK 制約を意味しない。"
+              },
+              "proposed": { "type": "boolean", "default": false, "description": "まだ無く、設計候補として置いている項目か。" }
+            }
+          }
+        }
+      }
+    },
+    "relation": {
+      "type": "object",
+      "required": ["from", "to"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "from": { "$ref": "#/$defs/endpoint" },
+        "to": { "$ref": "#/$defs/endpoint" },
+        "label": { "type": "string" },
+        "weight": { "$ref": "#/$defs/weight" },
+        "reason": { "type": "string" },
+        "proposed": { "type": "boolean", "default": false, "description": "真なら破線。配置でも弱い制約として扱う。" }
+      }
+    },
+    "endpoint": {
+      "type": "object",
+      "required": ["entity", "field", "cardinality"],
+      "additionalProperties": false,
+      "properties": {
+        "entity": { "$ref": "#/$defs/id" },
+        "field": { "type": "string", "description": "entities[].fields[].name。存在しない名前は生成を止める。" },
+        "cardinality": {
+          "type": "string",
+          "description": "1 / 0..1 / 0..N / 1..N など。配置の都合で書き換えない。"
+        }
+      }
+    },
+    "process": {
+      "type": "object",
+      "required": ["id", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "number": { "type": "integer", "description": "原資料の工程番号。連番でなくてよい。" },
+        "name": { "type": "string" },
+        "lane": { "$ref": "#/$defs/id", "description": "lanes[].id。" },
+        "condition": { "type": "string", "description": "この工程が通る経路。meta.scenarios[].conditions が束ねる。" },
+        "description": { "type": "string" },
+        "screen": { "$ref": "#/$defs/id", "description": "対応する操作画面。" },
+        "entities": { "type": "array", "items": { "$ref": "#/$defs/id" } },
+        "reads": { "type": "string", "description": "何を読み取るか。" },
+        "writes": { "type": "string", "description": "何を残すか。" },
+        "lead_time": { "type": "string" },
+        "system": { "type": "string", "description": "現行のツール。" },
+        "source": { "$ref": "#/$defs/id" },
+        "supplement": {
+          "type": "boolean",
+          "default": false,
+          "description": "原資料に番号が無く、後から補った工程か。成果物で区別して表示する。"
+        }
+      }
+    },
+    "processEdge": {
+      "type": "object",
+      "required": ["from", "to"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "from": { "$ref": "#/$defs/id" },
+        "to": { "$ref": "#/$defs/id" },
+        "label": { "type": "string", "description": "分岐条件。" },
+        "kind": {
+          "enum": ["normal", "exception"],
+          "default": "normal",
+          "description": "exception は手戻り・例外。層割当の制約から外し、外周へ落とす。"
+        },
+        "primary": {
+          "type": "boolean",
+          "default": false,
+          "description": "主経路の 1 本か。真にした辺を優先して一直線に並べる。"
+        },
+        "weight": { "$ref": "#/$defs/weight" },
+        "reason": { "type": "string" }
+      }
+    },
+    "group": {
+      "type": "object",
+      "required": ["id", "label"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "label": { "type": "string" },
+        "subtitle": { "type": "string" },
+        "screens": { "type": "array", "items": { "$ref": "#/$defs/id" } },
+        "entities": { "type": "array", "items": { "$ref": "#/$defs/id" } },
+        "processes": { "type": "array", "items": { "$ref": "#/$defs/id" } },
+        "primary_entity": {
+          "$ref": "#/$defs/id",
+          "description": "俯瞰ビューでこのグループの代表として置くデータ概念。省略時は entities[] の先頭。"
+        }
+      }
+    }
+  }
+}

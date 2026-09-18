@@ -1,0 +1,9 @@
+{
+  "name": "design-atlas",
+  "version": "0.1.0",
+  "description": "宣言的な model.json 1 枚から、画面遷移・ER・業務フローを 1 枚の HTML で横断して辿れる設計マップ（Design Atlas）を決定論的に生成する。構造検査・実ブラウザ検証・証跡（入力の sha256／未実施の検証）を成果物自身に残す。",
+  "author": {
+    "name": "haboshi",
+    "email": "haboshi@allambitious.co.jp"
+  }
+}

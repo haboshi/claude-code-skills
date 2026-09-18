@@ -87,8 +87,9 @@ function flowLayout(D, sizes, edges, rules) {
     incident.get(e.a)?.push(e);
     incident.get(e.b)?.push(e);
   }
+  // 本線が無いモデル（全部が例外辺）では退避先が決まらない。退避せずそのまま置く。
   const exceptionOnly = [...incident.entries()].filter(([, es]) => es.length && es.every((e) => e.kind === 'exception')).map(([id]) => id);
-  if (exceptionOnly.length) {
+  if (exceptionOnly.length && exceptionOnly.length < Object.keys(nodes).length) {
     const others = Object.entries(nodes).filter(([id]) => !exceptionOnly.includes(id));
     const floor = Math.max(...others.map(([, n]) => n.y + n.h));
     exceptionOnly.forEach((id, i) => {

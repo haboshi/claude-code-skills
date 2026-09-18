@@ -151,3 +151,42 @@ test('保存キーとディレクトリ名になる meta.id / meta.project も�
   const b = base(); b.meta.project = 'Bad Project';
   assert.ok(codes(checkModel(b)).includes('invalid-id'));
 });
+
+test('拡張面でも辺の参照整合は検査する（検査が弱い面でも、書いた範囲は見る）', () => {
+  const m = base();
+  m.extensions = [{
+    id: 'infra', label: 'インフラ',
+    nodes: [{ id: 'web', label: 'Web' }],
+    edges: [{ from: 'web', to: 'missing' }],
+  }];
+  assert.ok(codes(checkModel(m)).some((c) => c === 'undefined-ref'));
+});
+
+test('拡張面の辺が揃っていれば通る', () => {
+  const m = base();
+  m.extensions = [{
+    id: 'infra', label: 'インフラ',
+    nodes: [{ id: 'web', label: 'Web' }, { id: 'db', label: 'DB' }],
+    edges: [{ from: 'web', to: 'db', label: '接続' }],
+  }];
+  assert.deepEqual(checkModel(m), []);
+});
+
+test('辺の id の重複は止める（黙って 1 本に潰れるため）', () => {
+  const m = base();
+  m.relations[1].id = m.relations[0].id;
+  assert.ok(codes(checkModel(m)).includes('duplicate-id'));
+});
+
+test('画像 key は画面をまたいで一意にする', () => {
+  const m = base();
+  m.screens[0].images = [{ key: 'top', path: 'a.png' }];
+  m.screens[1].images = [{ key: 'top', path: 'b.png' }];
+  assert.ok(codes(checkModel(m)).includes('duplicate-id'));
+});
+
+test('多重度の書き忘れは配置段より前に止める', () => {
+  const m = base();
+  delete m.relations[0].to.cardinality;
+  assert.ok(codes(checkModel(m)).includes('missing-cardinality'));
+});

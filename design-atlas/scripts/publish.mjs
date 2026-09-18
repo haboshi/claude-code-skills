@@ -48,7 +48,9 @@ export function publish(modelPath, artifactDir, { slug: slugOpt, update = false 
   if (slug.includes('/') || slug.includes(path.sep) || slug === '.' || slug === '..') throw new ModelError(`slug がディレクトリ名として使えません: ${slug}`);
   const docsDir = path.join(PROJECTS, projectId, 'docs');
   fs.mkdirSync(docsDir, { recursive: true });
-  const existing = fs.readdirSync(docsDir).find((n) => n.endsWith(`-${slug}`));
+  // 接尾辞一致だと slug「atlas」が既存の「…-design-atlas」にも当たる。日付接頭辞込みで厳密に見る。
+  const exact = new RegExp(`^\\d{4}-\\d{2}-\\d{2}-${slug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`);
+  const existing = fs.readdirSync(docsDir).find((n) => exact.test(n));
   if (existing && !update) throw new ModelError(`同じ slug のドキュメントが既にあります: ${existing}（--update で更新してください）`);
   const name = existing && update ? existing : `${today()}-${slug}`;
   const docDir = path.join(docsDir, name);
@@ -104,12 +106,15 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const get = (flag) => { const i = argv.indexOf(flag); return i < 0 ? undefined : argv[i + 1]; };
   const positional = argv.filter((a, i) => !a.startsWith('--') && !['--slug'].includes(argv[i - 1]));
   const [modelPath, artifactDir] = positional;
-  if (!modelPath) {
-    console.error('usage: publish.mjs <model.json> [artifact-dir] [--slug <slug>] [--update]');
+  if (!modelPath || !artifactDir) {
+    console.error('usage: publish.mjs <model.json> <artifact-dir> [--slug <slug>] [--update]');
+    // artifact-dir を省略可にすると model.json の隣を丸ごと配ることになり、根拠ソースの原本や
+    // 素材画像まで doc-hub に入る。既定で安全にならないので、明示させる。
+    console.error('  artifact-dir は生成物だけを置いたディレクトリを指す（model.json の隣ではない）');
     process.exit(2);
   }
   try {
-    const result = publish(modelPath, artifactDir ?? path.dirname(path.resolve(modelPath)), {
+    const result = publish(modelPath, artifactDir, {
       slug: get('--slug'),
       update: argv.includes('--update'),
     });

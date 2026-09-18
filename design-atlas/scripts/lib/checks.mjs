@@ -61,6 +61,13 @@ export function checkModel(model) {
   dup(D.areas.map((a) => a.id), 'areas');
   dup(D.lanes.map((l) => l.id), 'lanes');
   dup(D.sources.map((s) => s.id), 'sources');
+  // 辺の id は経路と DOM の対応づけに使う。重複すると片方が黙って消えるので、ここで落とす。
+  dup(D.transitions.map((t) => t.id), 'transitions');
+  dup(D.relations.map((r) => r.id), 'relations');
+  dup(D.processEdges.map((e) => e.id), 'process_edges');
+  dup(D.groups.map((g) => g.key), 'groups');
+  // 画像 key は成果物では 1 つの辞書と 1 つの assets/ に集まる。画面をまたいだ重複も落とす。
+  dup(D.screens.flatMap((s) => s.images.map((i) => i.key)), 'screens[].images の key（画面をまたいで一意にする）');
 
   const ref = (id, set, where, what) => {
     if (id != null && !set.has(id)) out.push(finding('undefined-ref', `${where} が存在しない ${what} を指しています: ${id}`, where));
@@ -103,6 +110,10 @@ export function checkModel(model) {
   }
 
   for (const r of D.relations) {
+    // 多重度は配置段で文字数を読む。欠けていると素の TypeError になるので、ここで落とす。
+    for (const [value, side] of [[r.ca, 'from'], [r.cb, 'to']]) {
+      if (typeof value !== 'string' || !value) out.push(finding('missing-cardinality', `relations[${r.id}].${side}.cardinality がありません（1 / 0..1 / 0..N など）`, `relations[${r.id}]`));
+    }
     ref(r.a, entityIds, `relations[${r.id}].from.entity`, 'entity');
     ref(r.b, entityIds, `relations[${r.id}].to.entity`, 'entity');
     if (entityIds.has(r.a) && !fieldsOf.get(r.a).has(r.fa)) out.push(finding('undefined-ref', `relations[${r.id}].from.field が存在しない項目を指しています: ${r.fa}`, `relations[${r.id}]`));
@@ -167,6 +178,16 @@ export function checkModel(model) {
     }
   }
   for (const section of D.guide) ref(section.source, sourceIds, 'meta.guide[].source', 'source');
+
+  // 拡張面は方向・孤立・多重度を見ない代わりに、参照整合だけは見る（そう明示した以上、その範囲は実装する）。
+  for (const ext of D.extensions) {
+    const nodeIds = new Set((ext.nodes ?? []).map((n) => n.id));
+    for (const e of ext.edges ?? []) {
+      for (const [id, side] of [[e.from, 'from'], [e.to, 'to']]) {
+        if (!nodeIds.has(id)) out.push(finding('undefined-ref', `extensions[${ext.id}].edges[].${side} が、この面に無いノードを指しています: ${id}`, `extensions[${ext.id}]`));
+      }
+    }
+  }
 
   // 検証の証跡。空なら「未実施が無い」という主張になるので、無自覚な空配列を指摘する。
   if (!D.notVerified.length) out.push(finding('empty-not-verified', 'not_verified[] が空です。実施していない検証が本当に無いか確認してください（無いなら、その旨を 1 行書いてください）', 'not_verified'));

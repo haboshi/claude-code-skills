@@ -73,3 +73,20 @@ test('dot が無い環境では理由のあるエラーで止まる', () => {
   // ENOENT を握りつぶして黙って別配置に落とすと、生成物の由来が説明できなくなる。
   assert.match(fs.readFileSync(new URL('../scripts/layout.mjs', import.meta.url), 'utf8'), /ENOENT[\s\S]*dot が見つかりません/);
 });
+
+test('全工程が例外辺だけのモデルでも素のエラーにしない', withDot, () => {
+  const m = model();
+  m.processes = [
+    { id: 'a', number: 1, name: '例外だけ A', lane: 'counter', condition: 'overdue' },
+    { id: 'b', number: 2, name: '例外だけ B', lane: 'counter', condition: 'overdue' },
+  ];
+  m.process_edges = [{ from: 'a', to: 'b', label: '手戻り', kind: 'exception' }];
+  m.screens.forEach((s) => { s.processes = []; });
+  m.groups.forEach((g) => { g.processes = []; });
+  m.meta.scenarios = [{ id: 'all', label: '全経路', conditions: ['overdue'] }];
+  const layout = buildLayout(m, rules());
+  assert.equal(Object.keys(layout.views.flow.nodes).length, 2);
+  for (const n of Object.values(layout.views.flow.nodes)) {
+    assert.ok(Number.isFinite(n.x) && Number.isFinite(n.y), '座標が数値のまま');
+  }
+});

@@ -23,6 +23,22 @@ const PROBE = `(() => {
     out.modes.push({ mode, cards: cards.length, expectedCards, edges: drawn.length, expectedEdges, invisible, missingPaths, bounds: state.bounds });
   }
   out.images = [...document.images].map((img) => ({ src: img.getAttribute('src')?.slice(0, 40) ?? '', ok: img.complete && img.naturalWidth > 0 }));
+
+  // 押しても何も開かないボタンは、DOM を数えるだけの検査では見つからない。
+  // 開く仕掛けのあるものは実際に押して、中身が入ったか確かめる。
+  const dialog = document.querySelector('#viewer');
+  const openedBy = (el) => {
+    if (!el) return null;
+    try { dialog.close(); } catch { /* 開いていない */ }
+    el.click();
+    const filled = dialog.open && document.querySelector('#viewer-content')?.textContent.trim().length > 0;
+    try { dialog.close(); } catch { /* すでに閉じている */ }
+    return filled;
+  };
+  out.interactions = {
+    guide: openedBy(document.querySelector('#guide')),
+    source: openedBy(document.querySelector('.source-button[data-source]')),
+  };
   return out;
 })()`;
 
@@ -35,7 +51,9 @@ export async function verifyBrowser(htmlPath, { shotDir, timeoutMs = 60000 } = {
     artifact_sha256: null,
     chrome: null,
     performed: [],
+    // この版で実行できなかった検査だけを入れる。常に当てはまる但し書きは caveat へ。
     not_performed: [],
+    caveat: 'この段はブラウザが描画した DOM と画像を機械で見ただけで、読みやすさは人が見ていない。',
     findings: [],
     screenshots: [],
     passed: false,
@@ -48,7 +66,9 @@ export async function verifyBrowser(htmlPath, { shotDir, timeoutMs = 60000 } = {
     session = await launchChrome({ timeoutMs });
   } catch (e) {
     // 迂回しない。起動できなかったという事実をそのまま残す。
+    // ただし「未実施」は合格ではないので、指摘としても 1 件立てる（CLI は exit 1 になる）。
     report.not_performed.push(`Chrome を起動できなかったため、実ブラウザ検証は未実施: ${e.message}`);
+    report.findings.push({ code: 'chrome-unavailable', message: `Chrome を起動できないため、この版は実ブラウザ検証を通していません: ${e.message}` });
     return report;
   }
 
@@ -94,6 +114,11 @@ export async function verifyBrowser(htmlPath, { shotDir, timeoutMs = 60000 } = {
         if (m.invisible) report.findings.push({ code: 'invisible-card', message: `${m.mode}: 大きさが 0 のカードが ${m.invisible} 件あります` });
         if (m.missingPaths) report.findings.push({ code: 'empty-path', message: `${m.mode}: 経路が空の関係線が ${m.missingPaths} 本あります` });
       }
+      for (const [name, ok] of Object.entries(probe.interactions ?? {})) {
+        // null = そのボタン自体が無い（モデルにガイドも根拠も無いだけ）。false = あるのに開かない。
+        if (ok === false) report.findings.push({ code: 'dead-control', message: `${name} のボタンを押しても中身が開きません` });
+      }
+      report.performed.push('開く仕掛けのあるボタンを実際に押して中身が入ることを確認');
       const brokenImages = (probe.images ?? []).filter((i) => !i.ok).length;
       if (brokenImages) report.findings.push({ code: 'broken-image', message: `読み込めない画像が ${brokenImages} 件あります` });
       report.views = probe.modes ?? [];
@@ -120,7 +145,6 @@ export async function verifyBrowser(htmlPath, { shotDir, timeoutMs = 60000 } = {
 
   for (const e of consoleErrors) report.findings.push({ code: 'js-error', message: `JS エラー: ${String(e).slice(0, 200)}` });
   for (const e of failedRequests) report.findings.push({ code: 'request-failed', message: `読み込みに失敗しました: ${e}` });
-  report.not_performed.push('人による目視の確認（この段はブラウザが描画した DOM と画像を機械で見ただけで、読みやすさを判断していない）');
   report.passed = report.findings.length === 0 && report.chrome !== null;
   return report;
 }
@@ -143,6 +167,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   if (out) fs.writeFileSync(out, JSON.stringify(report, null, 2) + '\n');
   for (const f of report.findings) console.error(`  ✗ [${f.code}] ${f.message}`);
   for (const n of report.not_performed) console.error(`  · 未実施: ${n}`);
+  console.error(`  · 但し書き: ${report.caveat}`);
   console.log(JSON.stringify({ passed: report.passed, chrome: report.chrome, findings: report.findings.length, screenshots: report.screenshots.length }));
   process.exit(report.passed ? 0 : 1);
 }

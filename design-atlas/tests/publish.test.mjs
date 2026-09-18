@@ -81,3 +81,15 @@ test('ディレクトリを跨ぐ meta.project は拒否する', async () => {
     assert.throws(() => publish(path.join(dir, 'model.json'), dir), /meta\.project/);
   });
 });
+
+test('slug は日付接頭辞込みで厳密に突き合わせる', async () => {
+  await withHub(async ({ hub, publish }) => {
+    const dir = artifact();
+    // 無関係な既存文書。接尾辞一致だと slug「atlas」がこれに当たってしまう。
+    const docs = path.join(hub, 'projects', 'demo', 'docs', '2026-01-01-design-atlas');
+    fs.mkdirSync(docs, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'model.json'), JSON.stringify({ meta: { id: 'demo', project: 'demo', title: 'atlas' } }));
+    const r = publish(path.join(dir, 'model.json'), dir);
+    assert.ok(!r.name.includes('design-atlas'), '無関係な文書を掴んでいる');
+  });
+});

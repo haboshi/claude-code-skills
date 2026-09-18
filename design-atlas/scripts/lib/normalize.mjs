@@ -211,9 +211,10 @@ export function overviewEdges(D) {
   const edges = [];
   D.groups.forEach((g, i) => {
     for (const sid of g.screens) {
-      edges.push({ id: `gs-${sid}`, a: g.id, b: sid, label: '担当画面', type: 'mapping', strength: 1, reason: '業務と担当画面の対応づけ' });
+      // id にグループを含める。1 つの画面が複数のグループに属しても辺が潰れない。
+      edges.push({ id: `gs-${g.id}-${sid}`, a: g.id, b: sid, label: '担当画面', type: 'mapping', strength: 1, reason: '業務と担当画面の対応づけ' });
       if (g.primary && D.screens.find((s) => s.id === sid)?.entities.includes(g.primary)) {
-        edges.push({ id: `se-${sid}`, a: sid, b: g.primary, label: 'データの対応', type: 'mapping', strength: 2, reason: '画面で扱う代表データ' });
+        edges.push({ id: `se-${g.id}-${sid}`, a: sid, b: g.primary, label: 'データの対応', type: 'mapping', strength: 2, reason: '画面で扱う代表データ' });
       }
     }
     const next = D.groups[i + 1];

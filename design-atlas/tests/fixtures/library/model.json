@@ -8,9 +8,33 @@
     "project": "aozora-library",
     "model_version": 1,
     "scenarios": [
-      { "id": "all", "label": "全経路", "conditions": ["all", "reserve", "overdue"] },
-      { "id": "reserve", "label": "予約あり", "conditions": ["all", "reserve"] },
-      { "id": "overdue", "label": "延滞", "conditions": ["overdue"], "include": ["lend"] }
+      {
+        "id": "all",
+        "label": "全経路",
+        "conditions": [
+          "all",
+          "reserve",
+          "overdue"
+        ]
+      },
+      {
+        "id": "reserve",
+        "label": "予約あり",
+        "conditions": [
+          "all",
+          "reserve"
+        ]
+      },
+      {
+        "id": "overdue",
+        "label": "延滞",
+        "conditions": [
+          "overdue"
+        ],
+        "include": [
+          "lend"
+        ]
+      }
     ],
     "guide": [
       {
@@ -28,23 +52,62 @@
       "subtitle": "『空の見つけかた』 · 貸出中",
       "note": "この例は架空の記録です。",
       "steps": [
-        { "target": "lend", "title": "貸出画面で資料を出す", "description": "利用者番号と資料番号を読み取る。" },
-        { "target": "loan", "title": "貸出記録を確認する", "description": "返却期限と延長回数を持つ。" }
+        {
+          "target": "lend",
+          "title": "貸出画面で資料を出す",
+          "description": "利用者番号と資料番号を読み取る。"
+        },
+        {
+          "target": "loan",
+          "title": "貸出記録を確認する",
+          "description": "返却期限と延長回数を持つ。"
+        }
       ]
     }
   },
   "sources": [
-    { "id": "spec", "kind": "file", "path": "spec.md", "fetched_at": "2026-02-10T00:00:00.000Z", "note": "画面仕様の抜粋" },
-    { "id": "minutes", "kind": "note", "range": "§3", "note": "2026-02-10 打合せメモ" }
+    {
+      "id": "spec",
+      "kind": "file",
+      "path": "spec.md",
+      "fetched_at": "2026-02-10T00:00:00.000Z",
+      "note": "画面仕様の抜粋",
+      "embed": true
+    },
+    {
+      "id": "minutes",
+      "kind": "note",
+      "range": "§3",
+      "note": "2026-02-10 打合せメモ"
+    }
   ],
   "lanes": [
-    { "id": "counter", "label": "カウンター", "color": "#2f6f57" },
-    { "id": "backoffice", "label": "整理担当", "color": "#7a5a2a" },
-    { "id": "vendor", "label": "取次", "color": "#8a6d3b", "external": true }
+    {
+      "id": "counter",
+      "label": "カウンター",
+      "color": "#2f6f57"
+    },
+    {
+      "id": "backoffice",
+      "label": "整理担当",
+      "color": "#7a5a2a"
+    },
+    {
+      "id": "vendor",
+      "label": "取次",
+      "color": "#8a6d3b",
+      "external": true
+    }
   ],
   "areas": [
-    { "id": "people", "label": "利用者" },
-    { "id": "holdings", "label": "蔵書と貸出" }
+    {
+      "id": "people",
+      "label": "利用者"
+    },
+    {
+      "id": "holdings",
+      "label": "蔵書と貸出"
+    }
   ],
   "screens": [
     {
@@ -53,8 +116,15 @@
       "role": "カウンター",
       "description": "利用者番号と資料番号から貸出を登録する",
       "note": "延滞があると警告を出す",
-      "entities": ["member", "item", "loan"],
-      "processes": ["accept", "lend"],
+      "entities": [
+        "member",
+        "item",
+        "loan"
+      ],
+      "processes": [
+        "accept",
+        "lend"
+      ],
       "source": "spec"
     },
     {
@@ -62,8 +132,13 @@
       "name": "蔵書検索",
       "role": "全員",
       "description": "資料を探して所在と貸出状況を見る",
-      "entities": ["item", "reservation"],
-      "processes": ["search"],
+      "entities": [
+        "item",
+        "reservation"
+      ],
+      "processes": [
+        "search"
+      ],
       "source": "spec"
     },
     {
@@ -71,15 +146,45 @@
       "name": "延滞一覧",
       "role": "カウンター",
       "description": "期限を過ぎた貸出を一覧する",
-      "entities": ["loan", "member"],
-      "processes": ["remind"],
+      "entities": [
+        "loan",
+        "member"
+      ],
+      "processes": [
+        "remind"
+      ],
       "source": "spec"
     }
   ],
   "transitions": [
-    { "id": "t0", "from": "shelf", "to": "lend", "trigger": "この資料を貸し出す", "description": "検索結果から貸出へ", "selector": "a[data-act=\"lend\"]", "carry": "資料番号" },
-    { "id": "t1", "from": "lend", "to": "overdue", "trigger": "延滞を確認", "description": "警告から一覧へ", "selector": "#btn-overdue", "carry": "利用者の絞り込みなし", "weight": 2 },
-    { "id": "t2", "from": "overdue", "to": "lend", "trigger": "この利用者の貸出へ", "description": "督促対象から貸出画面へ", "selector": ".row a", "carry": "利用者番号" }
+    {
+      "id": "t0",
+      "from": "shelf",
+      "to": "lend",
+      "trigger": "この資料を貸し出す",
+      "description": "検索結果から貸出へ",
+      "selector": "a[data-act=\"lend\"]",
+      "carry": "資料番号"
+    },
+    {
+      "id": "t1",
+      "from": "lend",
+      "to": "overdue",
+      "trigger": "延滞を確認",
+      "description": "警告から一覧へ",
+      "selector": "#btn-overdue",
+      "carry": "利用者の絞り込みなし",
+      "weight": 2
+    },
+    {
+      "id": "t2",
+      "from": "overdue",
+      "to": "lend",
+      "trigger": "この利用者の貸出へ",
+      "description": "督促対象から貸出画面へ",
+      "selector": ".row a",
+      "carry": "利用者番号"
+    }
   ],
   "entities": [
     {
@@ -91,8 +196,16 @@
       "source": "spec",
       "note": "カード番号で識別する。",
       "fields": [
-        { "name": "member_no", "label": "利用者番号", "role": "key" },
-        { "name": "name", "label": "氏名", "role": "value" }
+        {
+          "name": "member_no",
+          "label": "利用者番号",
+          "role": "key"
+        },
+        {
+          "name": "name",
+          "label": "氏名",
+          "role": "value"
+        }
       ]
     },
     {
@@ -104,8 +217,16 @@
       "source": "spec",
       "note": "1 冊ごとに資料番号を持つ。",
       "fields": [
-        { "name": "item_no", "label": "資料番号", "role": "key" },
-        { "name": "title", "label": "書名", "role": "value" }
+        {
+          "name": "item_no",
+          "label": "資料番号",
+          "role": "key"
+        },
+        {
+          "name": "title",
+          "label": "書名",
+          "role": "value"
+        }
       ]
     },
     {
@@ -117,10 +238,26 @@
       "source": "spec",
       "note": "返却で閉じる。延長は回数を持つ。",
       "fields": [
-        { "name": "loan_id", "label": "貸出ID", "role": "key" },
-        { "name": "member_no", "label": "利用者番号", "role": "ref" },
-        { "name": "item_no", "label": "資料番号", "role": "ref" },
-        { "name": "due", "label": "返却期限", "role": "value" }
+        {
+          "name": "loan_id",
+          "label": "貸出ID",
+          "role": "key"
+        },
+        {
+          "name": "member_no",
+          "label": "利用者番号",
+          "role": "ref"
+        },
+        {
+          "name": "item_no",
+          "label": "資料番号",
+          "role": "ref"
+        },
+        {
+          "name": "due",
+          "label": "返却期限",
+          "role": "value"
+        }
       ]
     },
     {
@@ -132,45 +269,312 @@
       "source": "minutes",
       "note": "保存モデルは未確定。",
       "fields": [
-        { "name": "reservation_id", "label": "予約ID（候補）", "role": "key", "proposed": true },
-        { "name": "item_no", "label": "資料番号", "role": "ref" },
-        { "name": "member_no", "label": "利用者番号", "role": "ref" }
+        {
+          "name": "reservation_id",
+          "label": "予約ID（候補）",
+          "role": "key",
+          "proposed": true
+        },
+        {
+          "name": "item_no",
+          "label": "資料番号",
+          "role": "ref"
+        },
+        {
+          "name": "member_no",
+          "label": "利用者番号",
+          "role": "ref"
+        }
       ]
     }
   ],
   "relations": [
-    { "id": "r0", "from": { "entity": "member", "field": "member_no", "cardinality": "1" }, "to": { "entity": "loan", "field": "member_no", "cardinality": "0..N" }, "label": "利用者の貸出", "weight": 3 },
-    { "id": "r1", "from": { "entity": "item", "field": "item_no", "cardinality": "1" }, "to": { "entity": "loan", "field": "item_no", "cardinality": "0..N" }, "label": "資料の貸出", "weight": 3 },
-    { "id": "r2", "from": { "entity": "item", "field": "item_no", "cardinality": "1" }, "to": { "entity": "reservation", "field": "item_no", "cardinality": "0..N" }, "label": "資料の予約", "proposed": true },
-    { "id": "r3", "from": { "entity": "member", "field": "member_no", "cardinality": "1" }, "to": { "entity": "reservation", "field": "member_no", "cardinality": "0..N" }, "label": "利用者の予約", "proposed": true }
+    {
+      "id": "r0",
+      "from": {
+        "entity": "member",
+        "field": "member_no",
+        "cardinality": "1"
+      },
+      "to": {
+        "entity": "loan",
+        "field": "member_no",
+        "cardinality": "0..N"
+      },
+      "label": "利用者の貸出",
+      "weight": 3
+    },
+    {
+      "id": "r1",
+      "from": {
+        "entity": "item",
+        "field": "item_no",
+        "cardinality": "1"
+      },
+      "to": {
+        "entity": "loan",
+        "field": "item_no",
+        "cardinality": "0..N"
+      },
+      "label": "資料の貸出",
+      "weight": 3
+    },
+    {
+      "id": "r2",
+      "from": {
+        "entity": "item",
+        "field": "item_no",
+        "cardinality": "1"
+      },
+      "to": {
+        "entity": "reservation",
+        "field": "item_no",
+        "cardinality": "0..N"
+      },
+      "label": "資料の予約",
+      "proposed": true
+    },
+    {
+      "id": "r3",
+      "from": {
+        "entity": "member",
+        "field": "member_no",
+        "cardinality": "1"
+      },
+      "to": {
+        "entity": "reservation",
+        "field": "member_no",
+        "cardinality": "0..N"
+      },
+      "label": "利用者の予約",
+      "proposed": true
+    }
   ],
   "processes": [
-    { "id": "search", "number": 1, "name": "資料を探す", "lane": "counter", "condition": "all", "description": "書名や著者から所在を調べる。", "screen": "shelf", "entities": ["item"], "reads": "書名・著者", "writes": "なし", "lead_time": "0", "system": "蔵書検索", "source": "spec" },
-    { "id": "accept", "number": 2, "name": "利用者を確認する", "lane": "counter", "condition": "all", "description": "カードを読み、延滞の有無を見る。", "screen": "lend", "entities": ["member"], "reads": "利用者番号", "writes": "なし", "lead_time": "0", "system": "貸出", "source": "spec" },
-    { "id": "lend", "number": 3, "name": "貸し出す", "lane": "counter", "condition": "all", "description": "貸出を登録し返却期限を決める。", "screen": "lend", "entities": ["loan"], "reads": "資料番号・利用者番号", "writes": "貸出記録", "lead_time": "0", "system": "貸出", "source": "spec" },
-    { "id": "hold", "number": 4, "name": "取り置く", "lane": "backoffice", "condition": "reserve", "description": "予約のある資料を棚から外す。", "screen": "shelf", "entities": ["reservation", "item"], "reads": "予約一覧", "writes": "取り置きの記録", "lead_time": "1", "system": "未定", "source": "minutes" },
-    { "id": "order", "number": 5, "name": "取次へ発注する", "lane": "vendor", "condition": "reserve", "description": "在庫が無い資料を取次へ手配する。", "screen": "shelf", "entities": ["item"], "reads": "不足資料", "writes": "発注", "lead_time": "要確認", "system": "電話・FAX", "source": "minutes" },
-    { "id": "remind", "number": 6, "name": "督促する", "lane": "counter", "condition": "overdue", "description": "期限を過ぎた貸出に連絡する。", "screen": "overdue", "entities": ["loan", "member"], "reads": "延滞一覧", "writes": "連絡の記録", "lead_time": "1", "system": "電話", "source": "spec" },
-    { "id": "shelve", "number": 7, "name": "書架へ戻す", "lane": "backoffice", "condition": "all", "description": "返却された資料を棚へ戻す。", "screen": "shelf", "entities": ["item"], "reads": "返却分", "writes": "所在", "lead_time": "0", "system": "手作業", "source": "spec", "supplement": true }
+    {
+      "id": "search",
+      "number": 1,
+      "name": "資料を探す",
+      "lane": "counter",
+      "condition": "all",
+      "description": "書名や著者から所在を調べる。",
+      "screen": "shelf",
+      "entities": [
+        "item"
+      ],
+      "reads": "書名・著者",
+      "writes": "なし",
+      "lead_time": "0",
+      "system": "蔵書検索",
+      "source": "spec"
+    },
+    {
+      "id": "accept",
+      "number": 2,
+      "name": "利用者を確認する",
+      "lane": "counter",
+      "condition": "all",
+      "description": "カードを読み、延滞の有無を見る。",
+      "screen": "lend",
+      "entities": [
+        "member"
+      ],
+      "reads": "利用者番号",
+      "writes": "なし",
+      "lead_time": "0",
+      "system": "貸出",
+      "source": "spec"
+    },
+    {
+      "id": "lend",
+      "number": 3,
+      "name": "貸し出す",
+      "lane": "counter",
+      "condition": "all",
+      "description": "貸出を登録し返却期限を決める。",
+      "screen": "lend",
+      "entities": [
+        "loan"
+      ],
+      "reads": "資料番号・利用者番号",
+      "writes": "貸出記録",
+      "lead_time": "0",
+      "system": "貸出",
+      "source": "spec"
+    },
+    {
+      "id": "hold",
+      "number": 4,
+      "name": "取り置く",
+      "lane": "backoffice",
+      "condition": "reserve",
+      "description": "予約のある資料を棚から外す。",
+      "screen": "shelf",
+      "entities": [
+        "reservation",
+        "item"
+      ],
+      "reads": "予約一覧",
+      "writes": "取り置きの記録",
+      "lead_time": "1",
+      "system": "未定",
+      "source": "minutes"
+    },
+    {
+      "id": "order",
+      "number": 5,
+      "name": "取次へ発注する",
+      "lane": "vendor",
+      "condition": "reserve",
+      "description": "在庫が無い資料を取次へ手配する。",
+      "screen": "shelf",
+      "entities": [
+        "item"
+      ],
+      "reads": "不足資料",
+      "writes": "発注",
+      "lead_time": "要確認",
+      "system": "電話・FAX",
+      "source": "minutes"
+    },
+    {
+      "id": "remind",
+      "number": 6,
+      "name": "督促する",
+      "lane": "counter",
+      "condition": "overdue",
+      "description": "期限を過ぎた貸出に連絡する。",
+      "screen": "overdue",
+      "entities": [
+        "loan",
+        "member"
+      ],
+      "reads": "延滞一覧",
+      "writes": "連絡の記録",
+      "lead_time": "1",
+      "system": "電話",
+      "source": "spec"
+    },
+    {
+      "id": "shelve",
+      "number": 7,
+      "name": "書架へ戻す",
+      "lane": "backoffice",
+      "condition": "all",
+      "description": "返却された資料を棚へ戻す。",
+      "screen": "shelf",
+      "entities": [
+        "item"
+      ],
+      "reads": "返却分",
+      "writes": "所在",
+      "lead_time": "0",
+      "system": "手作業",
+      "source": "spec",
+      "supplement": true
+    }
   ],
   "process_edges": [
-    { "from": "search", "to": "accept", "label": "在庫あり", "primary": true },
-    { "from": "search", "to": "hold", "label": "予約あり" },
-    { "from": "search", "to": "order", "label": "在庫なし" },
-    { "from": "hold", "to": "accept", "label": "取り置き後" },
-    { "from": "order", "to": "hold", "label": "入荷後" },
-    { "from": "accept", "to": "lend", "label": "延滞なし", "primary": true },
-    { "from": "lend", "to": "shelve", "label": "返却後", "primary": true },
-    { "from": "accept", "to": "remind", "label": "延滞あり", "kind": "exception" },
-    { "from": "remind", "to": "lend", "label": "解消後", "kind": "exception" }
+    {
+      "from": "search",
+      "to": "accept",
+      "label": "在庫あり",
+      "primary": true
+    },
+    {
+      "from": "search",
+      "to": "hold",
+      "label": "予約あり"
+    },
+    {
+      "from": "search",
+      "to": "order",
+      "label": "在庫なし"
+    },
+    {
+      "from": "hold",
+      "to": "accept",
+      "label": "取り置き後"
+    },
+    {
+      "from": "order",
+      "to": "hold",
+      "label": "入荷後"
+    },
+    {
+      "from": "accept",
+      "to": "lend",
+      "label": "延滞なし",
+      "primary": true
+    },
+    {
+      "from": "lend",
+      "to": "shelve",
+      "label": "返却後",
+      "primary": true
+    },
+    {
+      "from": "accept",
+      "to": "remind",
+      "label": "延滞あり",
+      "kind": "exception"
+    },
+    {
+      "from": "remind",
+      "to": "lend",
+      "label": "解消後",
+      "kind": "exception"
+    }
   ],
   "groups": [
-    { "id": "find", "label": "資料を見つける", "subtitle": "検索 → 取り置き", "screens": ["shelf"], "entities": ["item", "reservation"], "processes": ["search", "hold", "order"], "primary_entity": "item" },
-    { "id": "circulate", "label": "貸し出す・返す", "subtitle": "確認 → 貸出 → 督促", "screens": ["lend", "overdue"], "entities": ["member", "loan"], "processes": ["accept", "lend", "remind", "shelve"], "primary_entity": "loan" }
+    {
+      "id": "find",
+      "label": "資料を見つける",
+      "subtitle": "検索 → 取り置き",
+      "screens": [
+        "shelf"
+      ],
+      "entities": [
+        "item",
+        "reservation"
+      ],
+      "processes": [
+        "search",
+        "hold",
+        "order"
+      ],
+      "primary_entity": "item"
+    },
+    {
+      "id": "circulate",
+      "label": "貸し出す・返す",
+      "subtitle": "確認 → 貸出 → 督促",
+      "screens": [
+        "lend",
+        "overdue"
+      ],
+      "entities": [
+        "member",
+        "loan"
+      ],
+      "processes": [
+        "accept",
+        "lend",
+        "remind",
+        "shelve"
+      ],
+      "primary_entity": "loan"
+    }
   ],
   "open_questions": [
-    { "text": "予約の保存モデルと取り置き期限の扱いが未確定。", "scope": "er" },
-    { "text": "延長回数の上限と督促の段階が未確定。", "scope": "flow" }
+    {
+      "text": "予約の保存モデルと取り置き期限の扱いが未確定。",
+      "scope": "er"
+    },
+    {
+      "text": "延長回数の上限と督促の段階が未確定。",
+      "scope": "flow"
+    }
   ],
   "not_verified": [
     "実機での貸出操作は行っていない。画面仕様の抜粋からの整理である。",

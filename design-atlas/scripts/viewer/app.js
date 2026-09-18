@@ -257,12 +257,13 @@ function preview(id,key){const s=screen(id);if(!s||!s.images.length)return;viewi
  openViewer(s.name,caption,s.images.map(i=>`<button data-image="${esc(i.key)}" class="${i.key===imageKey?'active':''}">${esc(i.label)}</button>`).join(''),imageSrc(shown.key)?`<img src="${esc(imageSrc(shown.key))}" alt="${esc(s.name)}：${esc(shown.label)}">`:'<p>この画像は同梱されていません。</p>');
 }
 function showSource(file,find=''){
- const source=D.sources[file];if(!source)return;
- const lines=source.split('\n');let index=find?lines.findIndex(l=>l.includes(find)):-1;
+ const text=D.sourceBodies[file];if(!text)return;
+ const lines=text.split('\n');let index=find?lines.findIndex(l=>l.includes(find)):-1;
  if(index<0&&find){const safe=find.replace(/[#.\[\]"=]/g,' ').trim().split(/\s+/).find(w=>w.length>4);index=safe?lines.findIndex(l=>l.includes(safe)):-1;}
  const start=Math.max(0,index-6),end=index>=0?Math.min(lines.length,index+45):Math.min(lines.length,100);
- const text=lines.slice(start,end).map((l,i)=>String(start+i+1).padStart(4,' ')+'  '+l).join('\n');
- openViewer('根拠：'+file,'CURRENT SOURCE / 現行ソース（画像とは取得時点が異なります）',`<button class="active">${start+1}–${end} 行 / 全 ${lines.length} 行</button><button data-source-full="${esc(file)}">全文を見る</button>`,`<pre>${esc(text)}</pre>`);
+ const excerpt=lines.slice(start,end).map((l,i)=>String(start+i+1).padStart(4,' ')+'  '+l).join('\n');
+ const meta=source(file);
+ openViewer('根拠：'+(meta?.path??meta?.note??file),'CURRENT SOURCE / 現行ソース（画像とは取得時点が異なります）',`<button class="active">${start+1}–${end} 行 / 全 ${lines.length} 行</button>${lines.length>end-start?`<button data-source-full="${esc(file)}">全文を見る</button>`:''}`,`<pre>${esc(excerpt)}</pre>`);
 }
 function showGuide(){
  const sections=D.guide.map(g=>`<h3>${esc(g.heading)}</h3>${g.body.map(p=>`<p>${esc(p)}</p>`).join('')}${g.source?sourceButton(g.source):''}`).join('');
@@ -312,7 +313,7 @@ document.addEventListener('click',event=>{
  if(b.dataset.preview){preview(b.dataset.preview,b.dataset.imageKey);return}
  if(b.dataset.image){preview(viewingScreen.id,b.dataset.image);return}
  if(b.dataset.source){showSource(b.dataset.source,b.dataset.find);return}
- if(b.dataset.sourceFull){$('#viewer-content').innerHTML=`<pre>${esc(D.sources[b.dataset.sourceFull].split('\n').map((l,i)=>(i+1)+'  '+l).join('\n'))}</pre>`;return}
+ if(b.dataset.sourceFull){$('#viewer-content').innerHTML=`<pre>${esc(D.sourceBodies[b.dataset.sourceFull].split('\n').map((l,i)=>(i+1)+'  '+l).join('\n'))}</pre>`;return}
  if(b.hasAttribute('data-guide'))showGuide();if(b.hasAttribute('data-example'))traceExample();
 });
 $('#group-list').innerHTML=D.groups.map((g,i)=>`<button data-group="${g.id}"><span>${String(i+1).padStart(2,'0')}</span>${esc(g.name)}</button>`).join('');

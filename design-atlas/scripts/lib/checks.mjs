@@ -243,7 +243,10 @@ export function checkArtifacts(files, { extra = [] } = {}) {
   const out = [];
   for (const [name, text] of Object.entries(files)) {
     for (const hit of findAbsolutePaths(text, { extra })) {
-      out.push(finding('absolute-path', `${name} に絶対パスが混入しています: ${describeLeak(hit)}`, name));
+      // --forbid で渡した語と、環境由来の絶対パスは別の話。まとめて「絶対パス」と呼ばない。
+      const isPath = hit.kind !== '指定文字列';
+      out.push(finding(isPath ? 'absolute-path' : 'forbidden-term',
+        `${name} に${isPath ? '絶対パスが' : '持ち出し禁止の語が'}混入しています: ${describeLeak(hit)}`, name));
     }
   }
   return out;

@@ -118,3 +118,10 @@ test('既存どうしを結ぶ関係を候補と宣言するのは通す', () =>
   m.relations[0].proposed = true; // member → loan（どちらも実在）
   assert.ok(!codes(checkModel(m)).includes('proposed-mismatch'));
 });
+
+test('禁止語の混入は絶対パスと別の指摘として出す', () => {
+  const findings = checkArtifacts({ 'index.html': '<p>acme-internal</p>' }, { extra: ['acme-internal'] });
+  assert.deepEqual(codes(findings), ['forbidden-term']);
+  assert.ok(!findings[0].message.includes('絶対パス'));
+  assert.ok(!findings[0].message.includes('acme-internal'), '禁止語そのものを報告に出さない');
+});

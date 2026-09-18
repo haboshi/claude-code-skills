@@ -137,7 +137,7 @@ export function normalize(model) {
     const kind = e.kind ?? 'normal';
     const weight = e.weight ?? (kind === 'exception' ? 3 : 2);
     return {
-      id: autoId(e, 'b-edge-', i),
+      id: autoId(e, 'pe', i),
       a: PROCESS(e.from),
       b: PROCESS(e.to),
       label: e.label ?? '',

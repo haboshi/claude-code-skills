@@ -138,3 +138,16 @@ test('capture は撮影前に画面 id を確かめる（verify-structure より
   }));
   await assert.rejects(() => capture(pathMod.join(dir, 'model.json'), dir), /使えない文字/);
 });
+
+test('DOM 属性になる辺の id も検査する', () => {
+  const m = base();
+  m.transitions[0].id = 'x" onclick="alert(1)';
+  assert.ok(codes(checkModel(m)).includes('invalid-id'));
+});
+
+test('保存キーとディレクトリ名になる meta.id / meta.project も検査する', () => {
+  const a = base(); a.meta.id = '../escape';
+  assert.ok(codes(checkModel(a)).includes('invalid-id'));
+  const b = base(); b.meta.project = 'Bad Project';
+  assert.ok(codes(checkModel(b)).includes('invalid-id'));
+});

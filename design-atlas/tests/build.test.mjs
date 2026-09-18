@@ -91,3 +91,23 @@ test('構造が破れているモデルでは書き出さない', withDot, async
   await assert.rejects(() => build(pathMod.join(dir, 'model.json'), out), /生成しません/);
   assert.equal(fsMod.existsSync(out), false, '壊れた成果物が手元に残ってしまう');
 });
+
+test('groups[] の無いモデルでは俯瞰の面ごと出さない', withDot, () => {
+  const m = model();
+  delete m.groups;
+  const layout = buildLayout(m, rules());
+  assert.equal(layout.views.overview, undefined, '描けない面の配置を作らない');
+  const html = renderHtml(buildData(m, layout), m);
+  assert.doesNotMatch(html, /data-view="overview"/, '押しても何も起きないボタンを出さない');
+  assert.match(html, /data-view="er"/);
+});
+
+test('面の切り替えボタンは実在する面の数だけ出る', withDot, () => {
+  // 「見る順番」の導線はビューワが実行時に組むので、HTML に出るのはヘッダーのボタンだけ。
+  const header = (html) => html.split('</nav>')[0];
+  assert.equal([...header(renderHtml(data(), model())).matchAll(/data-view="/g)].length, 4);
+  const m = model();
+  delete m.processes;
+  delete m.process_edges;
+  assert.equal([...header(renderHtml(buildData(m, buildLayout(m, rules())), m)).matchAll(/data-view="/g)].length, 3);
+});

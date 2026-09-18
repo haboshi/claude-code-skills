@@ -17,10 +17,10 @@ const routing = createRequire(import.meta.url)('./routing.cjs');
 const asset = (...p) => fs.readFileSync(path.join(here, '..', ...p), 'utf8');
 
 const VIEW_TEXT = {
-  overview: { eyebrow: 'CONNECTED VIEW', title: '画面・業務・データの対応', description: '業務のまとまりごとに、担当画面と代表データを重ねた俯瞰図です。', caption: (D) => `${D.groups.length}業務 · ${D.screens.length}画面` },
-  screens: { eyebrow: 'SCREEN CONNECTIONS', title: '画面と操作のつながり', description: '丸い番号は画面内の操作位置。下部の操作ラベルは詳細表示・画面外の操作です。', caption: (D) => `${D.screens.length}画面 · ${D.transitions.length}遷移` },
-  er: { eyebrow: 'ENTITY RELATIONSHIPS', title: 'データの関係と参照キー', description: '左の参照元から右の参照先へ。業務領域ごとにまとめ、項目の位置へ接続します。', caption: (D) => `参照元 → 参照先 · ${D.entities.length}概念 · ${D.relations.length}関係` },
-  flow: { eyebrow: 'BUSINESS FLOW', title: '業務の前後関係', description: '左から右へ進み、分岐を上下に配置します。手戻り・例外は外周の線です。', caption: (D) => `${D.processes.length}工程 · ${D.lanes.length}担当区分` },
+  overview: { tab: 'つながり', eyebrow: 'CONNECTED VIEW', title: '画面・業務・データの対応', description: '業務のまとまりごとに、担当画面と代表データを重ねた俯瞰図です。', caption: (D) => `${D.groups.length}業務 · ${D.screens.length}画面` },
+  screens: { tab: '画面遷移', eyebrow: 'SCREEN CONNECTIONS', title: '画面と操作のつながり', description: '丸い番号は画面内の操作位置。下部の操作ラベルは詳細表示・画面外の操作です。', caption: (D) => `${D.screens.length}画面 · ${D.transitions.length}遷移` },
+  er: { tab: 'ER図', eyebrow: 'ENTITY RELATIONSHIPS', title: 'データの関係と参照キー', description: '左の参照元から右の参照先へ。業務領域ごとにまとめ、項目の位置へ接続します。', caption: (D) => `参照元 → 参照先 · ${D.entities.length}概念 · ${D.relations.length}関係` },
+  flow: { tab: '業務フロー', eyebrow: 'BUSINESS FLOW', title: '業務の前後関係', description: '左から右へ進み、分岐を上下に配置します。手戻り・例外は外周の線です。', caption: (D) => `${D.processes.length}工程 · ${D.lanes.length}担当区分` },
 };
 
 /** 条件コードの表示名。その条件を含む経路のうち、最も絞り込みの強いものの名前を使う。 */
@@ -98,6 +98,10 @@ export function renderHtml(data, model) {
   // </ を壊しておかないと、本文中の文字列が <script> を閉じてしまう。
   const serialized = JSON.stringify(data).replace(/<\//g, '<\\/');
   const trace = data.trace ? `<button id="trace-example" class="quiet">${escapeHtml(data.trace.label)}</button>` : '';
+  // 面の切り替えボタンは、実際に配置がある面だけ出す。押しても何も起きないボタンを並べない。
+  const views = Object.keys(data.layouts)
+    .map((m, i) => `<button data-view="${m}" aria-pressed="${i === 0}">${escapeHtml(VIEW_TEXT[m].tab)}</button>`)
+    .join('');
   return asset('templates', 'index.html')
     .replace('/*ATLAS_CSS*/', () => asset('scripts', 'viewer', 'styles.css'))
     .replace('/*ATLAS_TITLE*/', () => escapeHtml(data.meta.title))
@@ -106,6 +110,7 @@ export function renderHtml(data, model) {
     .replace('/*ATLAS_BRAND_SUB*/', () => escapeHtml(data.meta.subtitle))
     .replace('/*ATLAS_SCENARIOS*/', () => scenarioOptions(D))
     .replace('/*ATLAS_TRACE_BUTTON*/', () => trace)
+    .replace('/*ATLAS_VIEWS*/', () => views)
     .replace('/*ATLAS_DATA*/', () => serialized)
     .replace('/*ATLAS_JS*/', () => `${asset('scripts', 'routing.cjs')}\n${asset('scripts', 'viewer', 'app.js')}`);
 }

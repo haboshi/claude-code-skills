@@ -123,6 +123,9 @@ export function sizesFor(D, mode, rules) {
       sizes[s.id] = screenSize(s, cards, { portCount });
     }
   } else {
+    // 俯瞰は業務グループを軸に組み立てる。groups[] が無いモデルでは面ごと出さない
+    // （置くカードが無いのに配置だけ作ると、ビューワが何も描けない面が残る）。
+    if (!D.groups.length) return {};
     for (const g of D.groups) sizes[g.id] = groupSize(cards);
     for (const s of D.screens) sizes[s.id] = screenSize(s, cards);
     for (const g of D.groups) if (g.primary) sizes[g.primary] = entityCompactSize(cards);

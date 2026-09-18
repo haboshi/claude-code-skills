@@ -37,6 +37,13 @@ export function checkModel(model) {
       seen.add(id);
     }
   };
+  // meta.id は保存キー、辺の id は DOM 属性になる。自動採番でない（model が書いた）ものも同じ形を要求する。
+  checkIds(out, [D.meta.id], 'meta.id');
+  if (D.meta.project != null) checkIds(out, [D.meta.project], 'meta.project');
+  checkIds(out, D.transitions.map((t) => t.id), 'transitions');
+  checkIds(out, D.relations.map((r) => r.id), 'relations');
+  checkIds(out, D.processEdges.map((e) => e.id), 'process_edges');
+  checkIds(out, D.extensions.flatMap((e) => [...(e.nodes ?? []).map((n) => n.id)]), 'extensions[].nodes');
   checkIds(out, D.screens.map((s) => s.key), 'screens');
   checkIds(out, D.entities.map((e) => e.key), 'entities');
   checkIds(out, D.processes.map((p) => p.key), 'processes');

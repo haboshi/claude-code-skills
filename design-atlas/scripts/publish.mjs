@@ -15,6 +15,14 @@ const PROJECTS = path.join(HUB, 'projects');
 const here = path.dirname(fileURLToPath(import.meta.url));
 
 const slugify = (s) => String(s).toLowerCase().replace(/[^a-z0-9ぁ-んァ-ヶ一-龯]+/g, '-').replace(/^-|-$/g, '') || 'design-atlas';
+const SAFE_SEGMENT = /^[a-z0-9][a-z0-9_-]*$/;
+
+/** doc-hub の中でディレクトリ名になる値。model 由来なので、結合する前に 1 階層分だと確かめる。 */
+function safeSegment(value, label) {
+  const s = String(value);
+  if (!SAFE_SEGMENT.test(s)) throw new ModelError(`${label} は英小文字・数字・_・- のみ使えます: ${JSON.stringify(s).slice(0, 40)}`);
+  return s;
+}
 const today = () => new Date().toISOString().slice(0, 10);
 
 /** bizdoc の hub.mjs を探す。プラグインは独立して入るので、無いことを異常にしない。 */
@@ -29,12 +37,15 @@ function findHub() {
 
 export function publish(modelPath, artifactDir, { slug: slugOpt, update = false } = {}) {
   const { model } = loadModel(modelPath);
-  const projectId = model.meta?.project ?? model.meta?.id;
-  if (!projectId) throw new ModelError('meta.project も meta.id もありません。doc-hub のプロジェクトを決められません');
+  const rawProject = model.meta?.project ?? model.meta?.id;
+  if (!rawProject) throw new ModelError('meta.project も meta.id もありません。doc-hub のプロジェクトを決められません');
+  const projectId = safeSegment(rawProject, 'meta.project');
   const indexPath = path.join(artifactDir, 'index.html');
   if (!fs.existsSync(indexPath)) throw new ModelError(`index.html がありません: ${artifactDir}`);
 
+  // slugify は記号を潰すので `..` は残らないが、結合前にもう一度 1 階層分であることを確かめる。
   const slug = slugify(slugOpt ?? model.meta.title);
+  if (slug.includes('/') || slug.includes(path.sep) || slug === '.' || slug === '..') throw new ModelError(`slug がディレクトリ名として使えません: ${slug}`);
   const docsDir = path.join(PROJECTS, projectId, 'docs');
   fs.mkdirSync(docsDir, { recursive: true });
   const existing = fs.readdirSync(docsDir).find((n) => n.endsWith(`-${slug}`));

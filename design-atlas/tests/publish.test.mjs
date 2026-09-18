@@ -73,3 +73,11 @@ test('reindex を実行していないときは、それを伝える', async () 
     }
   });
 });
+
+test('ディレクトリを跨ぐ meta.project は拒否する', async () => {
+  await withHub(async ({ publish }) => {
+    const dir = artifact();
+    fs.writeFileSync(path.join(dir, 'model.json'), JSON.stringify({ meta: { id: 'demo', project: '../../escape', title: 'x' } }));
+    assert.throws(() => publish(path.join(dir, 'model.json'), dir), /meta\.project/);
+  });
+});

@@ -63,7 +63,8 @@ function erLayout(D, sizes, edges, rules) {
     lines.push('}');
   }
   // 設計候補の関係は読む向きを同じに保ちつつ、層割当への影響を弱める。
-  for (const e of edges) lines.push(`${q(e.a)} -> ${q(e.b)} [weight=${e.proposed ? 1 : e.strength ?? 2},constraint=true];`);
+  // 確定した関係どうしは同じ重みにする。線の太さ（weight）は関係の種類を表すもので、層割当の優先度ではない。
+  for (const e of edges) lines.push(`${q(e.a)} -> ${q(e.b)} [weight=${e.proposed ? 1 : 3},constraint=true];`);
   lines.push('}');
   return dot(lines, sizes, rules.margin);
 }

@@ -5,6 +5,18 @@ import { findAbsolutePaths, describeLeak } from './leaks.mjs';
 
 const finding = (code, message, where) => ({ code, message, where });
 
+// id はビューワで DOM 属性・ファイル名・localStorage のキーになる。schema と同じ形を実行時にも要求し、
+// 属性からの脱出やディレクトリの跨ぎを、使う側ではなく入口で止める。
+const ID = /^[a-z0-9][a-z0-9_-]*$/;
+
+function checkIds(out, ids, label) {
+  for (const id of ids) {
+    if (typeof id !== 'string' || !ID.test(id)) {
+      out.push(finding('invalid-id', `${label} の id に使えない文字が含まれています（英小文字・数字・_・- のみ）: ${JSON.stringify(String(id)).slice(0, 40)}`, label));
+    }
+  }
+}
+
 /** model.json の相互参照。JSON Schema では書けない検査はすべてここにある。 */
 export function checkModel(model) {
   const out = [];
@@ -25,6 +37,17 @@ export function checkModel(model) {
       seen.add(id);
     }
   };
+  checkIds(out, D.screens.map((s) => s.key), 'screens');
+  checkIds(out, D.entities.map((e) => e.key), 'entities');
+  checkIds(out, D.processes.map((p) => p.key), 'processes');
+  checkIds(out, D.areas.map((a) => a.id), 'areas');
+  checkIds(out, D.lanes.map((l) => l.id), 'lanes');
+  checkIds(out, D.sources.map((s) => s.id), 'sources');
+  checkIds(out, D.groups.map((g) => g.key), 'groups');
+  checkIds(out, D.scenarios.map((s) => s.id), 'meta.scenarios');
+  checkIds(out, D.screens.flatMap((s) => s.images.map((i) => i.key)), 'screens[].images');
+  checkIds(out, D.extensions.map((e) => e.id), 'extensions');
+
   dup(D.screens.map((s) => s.key), 'screens');
   dup(D.entities.map((e) => e.key), 'entities');
   dup(D.processes.map((p) => p.key), 'processes');

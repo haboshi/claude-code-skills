@@ -55,7 +55,14 @@ export async function verifyBrowser(htmlPath, { shotDir, timeoutMs = 60000 } = {
   const consoleErrors = [];
   const failedRequests = [];
   try {
-    const { cdp, sessionId, navigate, evaluate, close } = session;
+    const { cdp, sessionId, navigate, close } = session;
+    // Promise を返す式を待つ。cdp.mjs の evaluate は awaitPromise を渡さないので、
+    // 描画待ちがその場で通り抜けてしまう（待っているつもりで待っていない状態になる）。
+    const evaluate = async (expression) => {
+      const { result, exceptionDetails } = await cdp.send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true }, sessionId);
+      if (exceptionDetails) throw new Error(`Runtime.evaluate: ${exceptionDetails.exception?.description ?? exceptionDetails.text ?? 'ページ側で例外'}`);
+      return result.value;
+    };
     try {
       cdp.on((m) => {
         if (m.sessionId !== sessionId) return;

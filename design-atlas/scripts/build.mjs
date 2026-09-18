@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadModel, resolveWithin, ModelError } from './lib/model.mjs';
+import { toWebpDataUris } from './lib/webp.mjs';
 import { normalize, edgesFor } from './lib/normalize.mjs';
 import { MODES } from './layout.mjs';
 
@@ -84,7 +85,7 @@ function scenarioOptions(D) {
   if (!D.scenarios.length) return '';
   const has = D.scenarios.some((s) => s.id === 'all');
   const head = has ? '' : '<option value="all">全経路</option>';
-  return head + D.scenarios.map((s) => `<option value="${s.id}">${s.label}</option>`).join('');
+  return head + D.scenarios.map((s) => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.label)}</option>`).join('');
 }
 
 export function renderHtml(data, model) {
@@ -107,25 +108,26 @@ export function renderHtml(data, model) {
 const escapeHtml = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
 /** 画像を集める。既定は成果物の隣へ複製して相対パスで参照する（差分が見えるように）。 */
-function collectImages(D, dir, outDir, { inline }) {
-  const images = {};
+async function collectImages(D, dir, outDir, { inline }) {
+  const sources = {};
   const copies = [];
+  const images = {};
   for (const s of D.screens) {
     for (const img of s.images) {
       const abs = resolveWithin(dir, img.path, `screens[${s.key}].images[${img.key}].path`);
       if (!fs.existsSync(abs)) throw new ModelError(`画像がありません: ${img.path}`);
-      if (inline) {
-        const ext = path.extname(abs).slice(1).toLowerCase();
-        const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : ext === 'svg' ? 'image/svg+xml' : 'image/jpeg';
-        images[img.key] = `data:${mime};base64,${fs.readFileSync(abs).toString('base64')}`;
-      } else {
-        const rel = path.posix.join('assets', `${img.key}${path.extname(abs)}`);
+      if (inline) sources[img.key] = abs;
+      else {
+        // key は検査済みだが、書き出し先を作るときも basename に落として外へ出られないようにする。
+        const rel = path.posix.join('assets', `${path.basename(img.key)}${path.extname(abs)}`);
         copies.push([abs, path.join(outDir, rel)]);
         images[img.key] = rel;
       }
     }
   }
-  return { images, copies };
+  if (!inline) return { images, copies, note: null };
+  const { images: inlined, converted, note } = await toWebpDataUris(sources);
+  return { images: inlined, copies, converted, note };
 }
 
 function collectSourceBodies(D, dir) {
@@ -138,14 +140,14 @@ function collectSourceBodies(D, dir) {
   return bodies;
 }
 
-export function build(modelPath, outPath, { inline = false } = {}) {
+export async function build(modelPath, outPath, { inline = false } = {}) {
   const { model, dir, sha256: modelSha } = loadModel(modelPath);
   const layoutPath = path.join(dir, 'layout.json');
   if (!fs.existsSync(layoutPath)) throw new ModelError('layout.json がありません。先に layout.mjs を走らせてください');
   const layout = JSON.parse(fs.readFileSync(layoutPath, 'utf8'));
   const D = normalize(model);
   const outDir = path.dirname(path.resolve(outPath));
-  const { images, copies } = collectImages(D, dir, outDir, { inline });
+  const { images, copies, converted, note } = await collectImages(D, dir, outDir, { inline });
   const data = buildData(model, layout, { modelSha, images, sourceBodies: collectSourceBodies(D, dir) });
   const html = renderHtml(data, model);
   fs.mkdirSync(outDir, { recursive: true });
@@ -154,7 +156,7 @@ export function build(modelPath, outPath, { inline = false } = {}) {
     fs.copyFileSync(from, to);
   }
   fs.writeFileSync(outPath, html);
-  return { bytes: Buffer.byteLength(html), images: Object.keys(images).length, inline };
+  return { bytes: Buffer.byteLength(html), images: Object.keys(images).length, inline, converted: converted ?? null, note: note ?? null };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
@@ -167,7 +169,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   }
   try {
     const out = outPath ?? path.join(path.dirname(path.resolve(modelPath)), 'index.html');
-    console.log(JSON.stringify(build(modelPath, out, { inline })));
+    const result = await build(modelPath, out, { inline });
+    if (result.note) console.error(`  · ${result.note}`);
+    console.log(JSON.stringify(result));
   } catch (e) {
     console.error(e instanceof ModelError ? e.message : e);
     process.exit(1);

@@ -86,3 +86,16 @@ test('成果物の絶対パス混入は止め、値そのものは報告しな�
 test('相対パスだけの成果物は通る', () => {
   assert.deepEqual(checkArtifacts({ 'index.html': '<a href="mock/lend.html">開く</a>' }), []);
 });
+
+test('属性から抜け出せる id は止める', () => {
+  const m = base();
+  m.areas.push({ id: 'x" onload="alert(1)', label: '注入' });
+  m.entities[0].area = 'x" onload="alert(1)';
+  assert.ok(codes(checkModel(m)).includes('invalid-id'));
+});
+
+test('ディレクトリを跨ぐ画像キーは止める', () => {
+  const m = base();
+  m.screens[0].images = [{ key: '../../escape', path: 'shot.png' }];
+  assert.ok(codes(checkModel(m)).includes('invalid-id'));
+});
